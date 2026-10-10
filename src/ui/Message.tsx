@@ -9,7 +9,7 @@ import { abortSave, openSave, writeSave, type SaveTarget } from "../native.ts";
 import { usePromise } from "../hooks.ts";
 import { LINK_SRC, clock, fmtDuration, isGif, linkHref, num, osmUrl, parseGeoUri, stamp, textDir, type Gif } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
-import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, previewText, senderMember, senderName, stripReplyFallback, toast, useChange } from "./common.tsx";
+import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, previewText, senderMember, senderName, stripReplyFallback, toast, useChange } from "./common.tsx";
 import { AudioPlayer, trackFor } from "./Voice.tsx";
 import { PollBody } from "./Poll.tsx";
 import { EmojiPanel, GifView } from "./Emoji.tsx";
@@ -267,8 +267,7 @@ function MsgMenu({ x, y, items, onReact, onMore, onClose }: { x: number; y: numb
   const [closing, close] = useDismiss(onClose, 160);
   const [pos, setPos] = useState<{ left: number; top: number }>();
   useEffect(() => { // keep it on screen
-    const r = ref.current!.getBoundingClientRect();
-    setPos({ left: Math.max(8, Math.min(x - r.width / 2, innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, innerHeight - r.height - 8)) });
+    setPos(menuPos(x, y, ref.current!));
     ref.current!.focus({ preventScroll: true });
   }, [x, y]);
   useEffect(() => {
