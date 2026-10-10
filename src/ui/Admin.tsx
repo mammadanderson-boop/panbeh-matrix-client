@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { EventTimeline, EventType, RoomEvent, RoomStateEvent, Visibility, type Room, type RoomMember } from "matrix-js-sdk";
-import { client } from "../matrix.ts";
+import { client, spaceChildren } from "../matrix.ts";
 import { useTick } from "../hooks.ts";
-import { aliasLocalpart, HISTORY, JOIN_RULES, levelAt, levelOptions, normalize, num, roleLabel, supportsKnock, withLevel, type PowerLevels } from "../logic.ts";
+import { aliasLocalpart, HISTORY, JOIN_RULES, levelAt, levelOptions, normalize, num, roleLabel, supportsKnock, supportsKnockRestricted, supportsRestricted, withLevel, type PowerLevels } from "../logic.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, ContextMenu, errText, me, Select, Sheet } from "./common.tsx";
 import { useLongPress } from "./useLongPress.ts";
@@ -176,6 +176,15 @@ export function canManage(room: Room) {
     || (!room.isSpaceRoom() && (can(EventType.RoomHistoryVisibility) || (can(EventType.RoomEncryption) && !room.hasEncryptionStateEvent())));
 }
 
+/** The space a "space members" join rule points at: the one it already names, else a joined space listing this room.
+ *  ponytail: one space only; the allow list can name several. */
+function parentSpace(room: Room) {
+  const allowed = room.currentState.getStateEvents(EventType.RoomJoinRules, "")?.getContent().allow
+    ?.find((a: { type?: string }) => a.type === "m.room_membership")?.room_id;
+  const spaces = client.getRooms().filter((s) => s.isSpaceRoom() && s.getMyMembership() === "join" && s.roomId !== room.roomId);
+  return spaces.find((s) => s.roomId === allowed) ?? spaces.find((s) => spaceChildren(s.roomId).includes(room.roomId));
+}
+
 /** Members above the default level, highest first. */
 const adminsOf = (room: Room) => {
   const base = levels(room).users_default ?? 0;
@@ -190,9 +199,15 @@ export function GroupSettings({ room, onUser }: { room: Room; onUser: (id: strin
   const can = (t: string) => room.currentState.maySendStateEvent(t, me());
   const send = (type: string, content: object) => act(() => client.sendStateEvent(room.roomId, type as never, content as never, ""));
   const space = room.isSpaceRoom();
-  const rule = room.getJoinRule();
-  const rules = ["public", "invite", ...(supportsKnock(room.getVersion()) ? ["knock"] : [])];
+  const rule = room.getJoinRule(), v = room.getVersion();
+  const parent = parentSpace(room);
+  const rules = ["public", "invite", ...(supportsKnock(v) ? ["knock"] : []),
+    ...(parent && supportsRestricted(v) ? ["restricted"] : []), ...(parent && supportsKnockRestricted(v) ? ["knock_restricted"] : [])];
   if (!rules.includes(rule)) rules.push(rule);
+  const ruleLabel = (r: string) => (!parent || !r.endsWith("restricted") ? JOIN_RULES[r] ?? r
+    : r === "restricted" ? `اعضای فضای «${parent.name}»` : `اعضای فضای «${parent.name}»، یا با درخواست عضویت`);
+  const setRule = (r: string) => send(EventType.RoomJoinRules, r.endsWith("restricted") && parent
+    ? { join_rule: r, allow: [{ type: "m.room_membership", room_id: parent.roomId }] } : { join_rule: r });
   const history = room.getHistoryVisibility();
 
   return (
@@ -211,8 +226,7 @@ export function GroupSettings({ room, onUser }: { room: Room; onUser: (id: strin
       {page === "permissions" && <Sheet title="دسترسی‌ها" onClose={() => setPage(null)}><Permissions room={room} /></Sheet>}
       {can(EventType.RoomJoinRules) && (
         <label className="select-row">پیوستن
-          <Select value={rule} disabled={busy} options={rules.map((r) => [r, JOIN_RULES[r] ?? r])}
-            onChange={(r) => send(EventType.RoomJoinRules, { join_rule: r })} />
+          <Select value={rule} disabled={busy} options={rules.map((r) => [r, ruleLabel(r)])} onChange={setRule} />
         </label>
       )}
       {!space && can(EventType.RoomHistoryVisibility) && (
