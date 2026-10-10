@@ -189,7 +189,7 @@ button:disabled { opacity: 0.6; cursor: default; }
   position: relative; padding: 10px 12px 12px; white-space: nowrap; color: var(--muted); font-weight: 500; font-size: 14px;
   border-radius: 10px 10px 0 0; transition: color 0.15s, background 0.15s;
 }
-.folders button:hover { background: var(--hover); }
+@media (hover: hover) { .folders button:hover { background: var(--hover); } } /* touch: :hover sticks to the last tapped tab */
 .folders button.on { color: var(--accent); }
 /* reordering: the bar stops scrolling under the finger, the held tab floats above its neighbours */
 .folders.sorting { touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -211,7 +211,7 @@ button:disabled { opacity: 0.6; cursor: default; }
   display: flex; align-items: center; gap: 12px; width: calc(100% - 16px); margin: 0 8px; padding: 9px 10px;
   border-radius: 12px; text-align: start; transition: background 0.2s, color 0.2s;
 }
-.room-item:hover { background: var(--hover); }
+@media (hover: hover) { .room-item:hover { background: var(--hover); } }
 .room-item.active { background: var(--accent); color: #fff; }
 .room-item.active .room-time, .room-item.active .room-preview { color: rgba(255, 255, 255, 0.85); }
 .room-item.active .badge { background: #fff; color: var(--accent); }
@@ -233,7 +233,7 @@ button:disabled { opacity: 0.6; cursor: default; }
 .room-main, .thread-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100vh; /* minus #root's safe-area padding, or the composer sits under the gesture bar */ height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
 .thread-panel { background: var(--chat-bg); border-inline-start: 1px solid var(--border); animation: slide-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
 @keyframes slide-in { from { transform: translateX(calc(var(--fwd) * 40px)); opacity: 0; } }
-@media (max-width: 1000px) {
+@media (max-width: 1240px) { /* the 380px chat list + a 400px thread: below this the chat would be squeezed */
   .room.with-thread { grid-template-columns: 1fr; }
   .room.with-thread .room-main { display: none; }
 }
