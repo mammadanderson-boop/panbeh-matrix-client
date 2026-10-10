@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld("panbehDesktop", {
   /** Pass a boolean to change it; resolves to the current setting. */
   autostart: (on) => ipcRenderer.invoke("autostart", on),
   info: () => ipcRenderer.invoke("info"),
+  /** Where the download of this blob: URL was saved, once it finishes; null if it was cancelled. */
+  downloadPath: (url) => ipcRenderer.invoke("download-path", url),
+  /** Opens a file downloadPath reported; false if it's gone. */
+  openDownload: (path) => ipcRenderer.invoke("open-download", path),
   /** Registers the listener, then asks for links that arrived before the page was ready (cold start). */
   onLink: (cb) => {
     const h = (_e, link) => cb(link);

@@ -3,10 +3,12 @@ package ir.panbeh.app;
 import android.Manifest;
 import android.app.Activity;
 import android.app.NotificationManager;
+import android.content.ActivityNotFoundException;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
@@ -24,6 +26,7 @@ import android.webkit.WebView;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,6 +37,7 @@ import androidx.activity.result.ActivityResult;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.fragment.app.FragmentActivity;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.view.WindowCompat;
@@ -289,6 +293,9 @@ public class PanbehPlugin extends Plugin {
         Save sv = new Save();
         sv.uri = uri;
         sv.picked = true;
+        try { // so tapping the file again can still open it after a restart
+            getContext().getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (RuntimeException ignored) { } // provider didn't offer it: it re-downloads next time
         try {
             sv.out = getContext().getContentResolver().openOutputStream(uri, "wt");
             if (sv.out == null) throw new IOException("can't open the file");
@@ -332,7 +339,12 @@ public class PanbehPlugin extends Plugin {
                 v.put(MediaStore.MediaColumns.IS_PENDING, 0);
                 getContext().getContentResolver().update(sv.uri, v, null, null);
             }
-            call.resolve();
+            String uri = (sv.uri != null ? sv.uri : FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", sv.file)).toString();
+            // ponytail: grows by one short string per saved file, never pruned; trim it if anyone saves thousands
+            Set<String> saved = new HashSet<>(savedPrefs().getStringSet("uris", new HashSet<>()));
+            saved.add(uri);
+            savedPrefs().edit().putStringSet("uris", saved).apply();
+            call.resolve(new JSObject().put("uri", uri));
         } catch (IOException | RuntimeException e) {
             drop(sv);
             call.reject(e.getMessage());
@@ -345,6 +357,34 @@ public class PanbehPlugin extends Plugin {
         Save sv = saves.remove(call.getString("id", ""));
         if (sv != null) drop(sv);
         call.resolve();
+    }
+
+    private SharedPreferences savedPrefs() { return getContext().getSharedPreferences("panbeh.saved", Context.MODE_PRIVATE); }
+
+    /** Opens a file saveClose wrote, in the app the system picks for its type. Rejects "gone" when it was deleted or moved
+     *  (the page then downloads it again) and "no app" when nothing can open it. Only URIs this app saved: the page can't
+     *  hand other apps arbitrary content (e.g. its own cache through the FileProvider). */
+    @PluginMethod
+    public void openFile(PluginCall call) {
+        String s = call.getString("uri", "");
+        if (!savedPrefs().getStringSet("uris", new HashSet<>()).contains(s)) { call.reject("gone"); return; }
+        Uri uri = Uri.parse(s);
+        ContentResolver cr = getContext().getContentResolver();
+        try (InputStream in = cr.openInputStream(uri)) {
+            if (in == null) throw new IOException();
+        } catch (Exception e) {
+            call.reject("gone");
+            return;
+        }
+        String mime = cr.getType(uri);
+        Intent i = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime != null ? mime : call.getString("mime", "*/*"))
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            getContext().startActivity(i);
+            call.resolve();
+        } catch (ActivityNotFoundException e) {
+            call.reject("no app");
+        }
     }
 
     private void drop(Save sv) {

@@ -5,7 +5,7 @@ import { handleIncomingLink } from "../openTarget.ts";
 import { matrixToLink, parseMatrixLink, viaServers } from "../uri.ts";
 import { EventStatus, EventType, M_POLL_START, RelationType, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { avatarUrl, client, isSavedGif, loadEvent, mediaUrl, pinnedIds, seenBy, toggleGif, togglePin } from "../matrix.ts";
-import { abortSave, openSave, writeSave, type SaveTarget } from "../native.ts";
+import { abortSave, openSave, openSaved, rememberSave, writeSave, type SaveTarget } from "../native.ts";
 import { usePromise } from "../hooks.ts";
 import { LINK_SRC, clock, fmtDuration, isGif, linkHref, num, osmUrl, parseGeoUri, stamp, textDir, type Gif } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
@@ -451,13 +451,16 @@ export function FileRow({ c }: { c: Content }) {
   const download = async () => {
     if (busy.current) { busy.current.abort(); return; } // tapping the ring cancels
     const ac = busy.current = new AbortController();
+    const key = c.file?.url ?? c.url;
     let t: SaveTarget | null = null;
     try {
+      if (key && await openSaved(key, c.info?.mimetype ?? "")) return; // saved before: open that copy
       t = await openSave(c.filename ?? c.body ?? "file", c.info?.mimetype ?? "");
       if (!t || ac.signal.aborted) return;
       setProg({ loaded: 0, total: c.info?.size ?? 0 });
       const url = await mediaUrl(c, undefined, (loaded, total) => setProg({ loaded, total }), ac.signal)!;
       await writeSave(t, url, ac.signal);
+      if (key) rememberSave(key, t, url);
       savedToast(t);
     } catch (e) {
       abortSave(t);
