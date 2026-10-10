@@ -104,11 +104,12 @@ export function Sidebar({ loading, selected, onSelect, onSettings, banner }: Pro
       if (next) pick(next.id);
     },
   };
-  // Android back, last resort: leave the archive, then return to the first folder
-  const backState = useRef({ archive, calls, active, pick });
-  backState.current = { archive, calls, active, pick };
+  // Android back, last resort (an open chat closes first): leave the search, the archive, then return to the first folder
+  const backState = useRef({ query, archive, calls, active, pick });
+  backState.current = { query, archive, calls, active, pick };
   useEffect(() => pushBack(() => {
     const b = backState.current;
+    if (b.query) { setQuery(""); (document.activeElement as HTMLElement | null)?.blur(); return true; }
     if (b.calls) { setCalls(false); return true; }
     if (b.archive) { setArchive(false); return true; }
     if (b.active !== BASE_FOLDERS[0].id) { b.pick(BASE_FOLDERS[0].id); return true; }
@@ -130,6 +131,7 @@ export function Sidebar({ loading, selected, onSelect, onSettings, banner }: Pro
           <Icon name="search" size={16} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={inArchiveView ? "جستجو در همه" : "جستجو"} aria-label="جستجوی گفتگوها"
             onKeyDown={(e) => { if (e.key === "Enter" && shown[0]) { onSelect(shown[0].id); setQuery(""); } if (e.key === "Escape") setQuery(""); }} />
+          {query && <button className="icon-btn" onClick={(e) => { setQuery(""); e.currentTarget.blur(); }} title="بستن جستجو" aria-label="بستن جستجو"><Icon name="close" size={16} /></button>}
         </label>
         {!inCalls && !inArchiveView && <button className="icon-btn" onClick={() => setCalls(true)} title="تماس‌ها" aria-label="تماس‌ها"><Icon name="phone" /></button>}
       </header>

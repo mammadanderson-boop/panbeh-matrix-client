@@ -45,11 +45,13 @@ The apps aren't code-signed yet, so the first launch shows a warning:
 The app checks for a new version at start and every 6 hours, against GitHub releases made from `v*` tags
 (the rolling `latest` builds are for manual download and never auto-update anyone).
 
-- **Windows, Linux AppImage/deb**: the update downloads in the background and installs when you restart
-  Panbeh (it asks; if you say later, it installs the next time Panbeh quits).
+- **Windows, Linux AppImage/deb**: the update downloads in the background (a banner above the chat list shows
+  the progress) and installs when you restart Panbeh from that banner, or the next time Panbeh quits.
+  With **Settings → برنامه → به‌روزرسانی خودکار** off, the banner only says a new version is out and downloads
+  it when you confirm. The same section shows the version and checks on demand.
 - **macOS**: macOS refuses to auto-install updates of unsigned apps, so Panbeh only says a new version is out
-  and opens the download page. Once the app is signed (below), set `autoDownload` in
-  `desktop/main.cjs` to `true` on macOS too.
+  and opens the download page. Once the app is signed (below), drop the `!isMac` from `autoDownload` and
+  `downloadUpdate()` in `desktop/main.cjs`.
 
 To release: bump nothing, just push a tag, e.g. `git tag v1.0.0 && git push origin v1.0.0`. The version
 comes from the tag.
