@@ -738,6 +738,7 @@ div.msg-text blockquote { color: color-mix(in srgb, currentColor 85%, transparen
 
 /* devices */
 .user-row > .device-box, .user-row > .badge { flex: none; }
+.user-row b.wrap-id { white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .user-row > button.join-btn { flex: none; width: auto; height: 32px; padding: 0 14px; font-size: 13px; }
 .user-row > span.reacted-key { flex: none; display: block; font-size: 22px; }
 .reacted-tabs { margin-bottom: 8px; overflow-x: auto; }

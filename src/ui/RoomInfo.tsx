@@ -11,7 +11,7 @@ import { UserProfile } from "./Profile.tsx";
 import { ChatForm, joinOrKnock, UserPicker } from "./NewChat.tsx";
 import { isMuted, setMuted } from "../notify.ts";
 import { PhotoViewer, SharedMedia } from "./Media.tsx";
-import { BannedList, canManage, GroupSettings, KnockRequests, MemberRow } from "./Admin.tsx";
+import { BannedList, canManage, GroupSettings, KnockRequests, MemberRow, RoomDetails } from "./Admin.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { LinkSheet } from "./LinkSheet.tsx";
 
@@ -23,7 +23,7 @@ const JOIN_HINTS: Record<string, string> = {
   knock_restricted: "اعضای فضای مربوط با این پیوند می‌پیوندند؛ بقیه درخواست عضویت می‌دهند.",
 };
 
-type View = "main" | "invite" | "add" | "new-group" | "settings";
+type View = "main" | "invite" | "add" | "new-group" | "settings" | "details";
 
 /** Chat/space info: profile, members, invite, space contents, leave. */
 export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void }) {
@@ -72,6 +72,11 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
       {profile && <UserProfile userId={profile} room={room} onClose={() => setProfile(null)} onOpened={onClose} />}
     </Sheet>
   );
+  if (view === "details") return (
+    <Sheet title="اطلاعات فنی" onClose={() => setView("main")}>
+      <RoomDetails room={room} onLeave={onClose} />
+    </Sheet>
+  );
   if (view === "new-group") return (
     <Sheet title="گروه جدید" onClose={() => setView("main")}>
       <ChatForm kind="group" space={room.roomId} onDone={(id) => { onClose(); location.hash = id; }} />
@@ -79,8 +84,8 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
   );
   if (view === "add") {
     const inSpace = new Set(children);
-    // a space that contains this one can't go inside it: that would be a loop
-    const candidates = client.getRooms().filter((r) => r.getMyMembership() === "join" && r.roomId !== room.roomId && !inSpace.has(r.roomId)
+    // visible = minus rooms replaced by an upgrade; a space that contains this one can't go inside it: that would be a loop
+    const candidates = client.getVisibleRooms().filter((r) => r.getMyMembership() === "join" && r.roomId !== room.roomId && !inSpace.has(r.roomId)
       && !(r.isSpaceRoom() && spaceRooms(r.roomId, spaceChildren).has(room.roomId)));
     return (
       <Sheet title="افزودن گفتگو به فضا" onClose={() => setView("main")}>
@@ -95,7 +100,7 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
   }
 
   return (
-    <Sheet title={title} onClose={onClose}>
+    <Sheet key="main" title={title} onClose={onClose}>{/* key: a sub-view's Sheet sits in this same slot; reusing it would keep its "closing" state and leave the info stuck invisible */}
       <div className="info-head">
         {photo ? (
           <button className="avatar-view" onClick={() => setViewing(true)} title="نمایش عکس" aria-label="نمایش عکس"><RoomAvatar room={room} size={96} /></button>
@@ -176,6 +181,9 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
         <MemberRow key={m.userId} room={room} m={m} onUser={setProfile} sub={<><small dir="ltr">{m.userId}</small><LastSeen userId={m.userId} /></>} />
       ))}
       <BannedList room={room} onUser={setProfile} />
+      <button className="user-row" onClick={() => setView("details")}>
+        <span className="device-box"><Icon name="info" /></span><span><b>اطلاعات فنی</b><small>شناسه، نسخه و سازنده</small></span>
+      </button>
 
       <button className="danger" disabled={busy}
         onClick={() => confirmDialog(space ? "از این فضا خارج می‌شوید؟" : "از این گفتگو خارج می‌شوید؟", { danger: true }).then((y) => y && act(() => client.leave(room.roomId), () => {

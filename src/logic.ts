@@ -348,6 +348,14 @@ export const supportsKnock = (version: string | undefined) => versionAtLeast(ver
 export const supportsRestricted = (version: string | undefined) => versionAtLeast(version, 8);
 export const supportsKnockRestricted = (version: string | undefined) => versionAtLeast(version, 10);
 
+/** The server's default room version when the room should move to it: an older number, or a version the server marks
+ *  unstable or doesn't know. Null when it's fine (or the server didn't say). */
+export function upgradeTarget(version: string, rv?: { default: string; available: Record<string, string> }): string | null {
+  if (!rv?.default || version === rv.default) return null;
+  if (versionAtLeast(version, 0) && versionAtLeast(rv.default, 0)) return Number(version) < Number(rv.default) ? rv.default : null;
+  return rv.available[version] !== "stable" ? rv.default : null;
+}
+
 export const JOIN_RULES: Record<string, string> = {
   public: "عمومی؛ هر کسی می‌تواند بپیوندد", invite: "خصوصی؛ فقط با دعوت", knock: "با درخواست عضویت",
   restricted: "اعضای فضا", knock_restricted: "اعضای فضا، یا با درخواست عضویت",
