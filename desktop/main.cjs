@@ -1,5 +1,5 @@
 // Panbeh desktop: the web app (dist/) in Electron's Chromium, plus a tray, badge, autostart and updates.
-const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, net, powerMonitor, protocol, screen, shell } = require("electron");
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, net, powerMonitor, protocol, screen, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -192,26 +192,56 @@ app.on("open-url", (e, url) => {
 
 // ---------- updates ----------
 
+// The page shows the state (a banner, Settings); with auto-update off it only reports a new version until asked to download.
+const updatesFile = () => path.join(app.getPath("userData"), "updates.json");
+const autoUpdate = () => { try { return JSON.parse(fs.readFileSync(updatesFile(), "utf8")).auto !== false; } catch { return true; } };
+/** @type {{ status: "idle" | "checking" | "none" | "available" | "downloading" | "ready" | "error", version?: string, percent?: number }} */
+let update = { status: "idle" };
+const setUpdate = (u) => { update = u; win?.webContents.send("update", update); };
+/** @type {import("electron-updater").AppUpdater | null} */ let updater = null;
+
 function startUpdater() {
   if (!app.isPackaged) return;
   const { autoUpdater } = require("electron-updater");
+  updater = autoUpdater;
   autoUpdater.allowPrerelease = false; // only v* releases: rolling main builds are for manual download
-  // Squirrel.Mac refuses unsigned updates: there, just point to the download until the app is signed
-  autoUpdater.autoDownload = !isMac;
-  autoUpdater.on("update-available", async (info) => {
-    if (!isMac) return;
-    const r = await dialog.showMessageBox({ type: "info", buttons: ["دریافت", "بعداً"], defaultId: 0, cancelId: 1, title: "پنبه", message: `نسخه‌ی تازه‌ی پنبه (${info.version}) آماده است.` });
-    if (r.response === 0) shell.openExternal(RELEASES);
+  // Squirrel.Mac refuses unsigned updates: there, "download" points to the release page until the app is signed
+  autoUpdater.autoDownload = autoUpdate() && !isMac;
+  // a version already found stays on show while checking again
+  autoUpdater.on("checking-for-update", () => { if (!update.version) setUpdate({ status: "checking" }); });
+  autoUpdater.on("update-not-available", () => setUpdate({ status: "none" }));
+  autoUpdater.on("update-available", (info) => setUpdate({ status: autoUpdater.autoDownload ? "downloading" : "available", version: info.version, percent: 0 }));
+  autoUpdater.on("download-progress", (p) => setUpdate({ ...update, status: "downloading", percent: Math.floor(p.percent) }));
+  autoUpdater.on("update-downloaded", (info) => setUpdate({ status: "ready", version: info.version }));
+  autoUpdater.on("error", (e) => {
+    console.error("update failed", e?.message ?? e);
+    // a failed download can be tried again; a failed check keeps a version already found
+    setUpdate(update.status === "downloading" ? { ...update, status: "available" } : update.version ? update : { status: "error" });
   });
-  autoUpdater.on("update-downloaded", async (info) => {
-    const r = await dialog.showMessageBox({ type: "info", buttons: ["راه‌اندازی دوباره", "بعداً"], defaultId: 0, cancelId: 1, title: "پنبه", message: `نسخه‌ی ${info.version} دریافت شد.`, detail: "با بستن پنبه هم نصب می‌شود." });
-    if (r.response === 0) { quitting = true; autoUpdater.quitAndInstall(); }
-  });
-  autoUpdater.on("error", (e) => console.error("update check failed", e?.message ?? e));
-  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  const check = () => { if (update.status !== "downloading" && update.status !== "ready") autoUpdater.checkForUpdates().catch(() => {}); };
   check();
   setInterval(check, 6 * 60 * 60 * 1000);
 }
+
+function downloadUpdate() {
+  if (isMac) return shell.openExternal(RELEASES);
+  if (update.status !== "available") return;
+  setUpdate({ ...update, status: "downloading", percent: 0 });
+  updater?.downloadUpdate().catch(() => {}); // failures arrive as "error"
+}
+
+ipcMain.handle("update-state", () => update);
+ipcMain.handle("update-auto", (_e, on) => {
+  if (typeof on === "boolean") {
+    try { fs.writeFileSync(updatesFile(), JSON.stringify({ auto: on })); } catch { /* stays as it was */ }
+    if (updater) updater.autoDownload = on && !isMac;
+    if (on && !isMac) downloadUpdate();
+  }
+  return autoUpdate();
+});
+ipcMain.handle("update-check", () => { if (updater && update.status !== "downloading" && update.status !== "ready") updater.checkForUpdates().catch(() => {}); });
+ipcMain.handle("update-download", () => downloadUpdate());
+ipcMain.handle("update-install", () => { if (update.status === "ready") { quitting = true; updater?.quitAndInstall(); } });
 
 // ---------- app ----------
 

@@ -1,5 +1,5 @@
 // A local index of decrypted messages, so encrypted chats can be searched beyond what's loaded (the server can't
-// search them). Off by default: it keeps message text in plain form on the device. Fed as messages decrypt — while
+// search them). On by default (Settings can turn it off): it keeps message text in plain form on the device. Fed as messages decrypt — while
 // scrolling, from background sync on Android, and by backfill() paging a chat's history.
 import { EventType, MatrixEvent, MatrixEventEvent, RoomEvent, type Room } from "matrix-js-sdk";
 import { client, historyPage } from "./matrix.ts";
@@ -11,7 +11,15 @@ type Meta = { roomId: string; token: string | null; done: boolean }; // where ba
 
 export const indexName = (userId: string) => `panbeh-search:${userId}`;
 // Settings writes the pref; read here directly (Settings imports this module)
-export const indexOn = () => { try { return !!JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}").searchIndex; } catch { return false; } };
+export const indexOn = () => { try { return JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}").searchIndex !== false; } catch { return false; } };
+
+// it used to be off by default, and Settings saves every pref, so a stored false mostly means "never looked": turn it on
+// once; turning it off after this sticks
+function onByDefaultOnce() {
+  if (localStorage.getItem("panbeh.searchIndexDefault")) return;
+  try { localStorage.setItem("panbeh.prefs", JSON.stringify({ ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}"), searchIndex: true })); } catch { /* bad prefs: leave them */ }
+  localStorage.setItem("panbeh.searchIndexDefault", "1");
+}
 
 let db: Promise<IDBDatabase> | null = null;
 function open() {
@@ -84,6 +92,7 @@ function add(ev: MatrixEvent) {
 
 /** Indexes messages as they decrypt (only events that were encrypted decrypt, so only encrypted chats). Returns an unsubscribe. */
 export function startSearchIndex() {
+  onByDefaultOnce();
   const onDecrypted = (ev: MatrixEvent) => add(ev);
   const onRedaction = (ev: MatrixEvent) => { const id = ev.getAssociatedId(); if (id && indexOn()) { dels.add(id); schedule(); } };
   client.on(MatrixEventEvent.Decrypted, onDecrypted);

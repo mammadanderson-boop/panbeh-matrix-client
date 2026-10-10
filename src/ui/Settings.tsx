@@ -14,7 +14,7 @@ import { useSlider } from "./useSlider.ts";
 import { num, stamp } from "../logic.ts";
 import { decryptKeyFile, encryptKeyFile } from "../keyfile.ts";
 import { showVerification } from "./Verify.tsx";
-import { getAutostart, isDesktop, setAutostart } from "../desktop.ts";
+import { appVersion, canUpdate, checkUpdate, downloadUpdate, getAutostart, getAutoUpdate, installUpdate, isDesktop, setAutostart, setAutoUpdate, useUpdate, type Update } from "../desktop.ts";
 import { isNative, nativeCancelAll, nativeStatus, requestBatteryExemption, requestFullScreen, requestNotifyPermission, saveFile, setBackgroundInterval, setBackgroundService } from "../native.ts";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { LinkSheet } from "./LinkSheet.tsx";
@@ -34,7 +34,7 @@ const CACHE_MB: [number, string][] = [[250, "۲۵۰ مگابایت"], [500, "۵�
 const LOW_DATA: [Prefs["lowData"], string][] = [["off", "خاموش"], ["auto", "خودکار، با اتصال ضعیف"], ["on", "همیشه"]];
 
 // the Android app defaults to notifying: it asks for permission on first start. The desktop app needs no permission.
-export const loadPrefs = (): Prefs => ({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, previews: true, shareLastSeen: true, searchIndex: false, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
+export const loadPrefs = (): Prefs => ({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
 
 /** Enter (or Ctrl/⌘+Enter when Enter is set to a new line) sends. */
 export const isSendKey = (e: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; nativeEvent: { isComposing: boolean } }) =>
@@ -292,7 +292,7 @@ function Storage({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) => voi
   );
 }
 
-/** The desktop app: start with the system (into the tray). */
+/** The desktop app: start with the system (into the tray), updates. */
 function DesktopApp() {
   const [autostart, setOn] = useState<boolean>();
   useEffect(() => { getAutostart().then(setOn, () => {}); }, []);
@@ -303,7 +303,63 @@ function DesktopApp() {
         <label className="switch-row"><span>اجرا هنگام ورود به سیستم<small>پنبه در سینی سیستم باز می‌شود تا اعلان‌ها برسند</small></span>
           <input type="checkbox" role="switch" checked={autostart} onChange={(e) => setAutostart(e.target.checked).then(setOn, (err) => alertDialog(errText(err)))} /></label>
       )}
+      {canUpdate && <Updates />}
     </>
+  );
+}
+
+/** "0.2.0" in Persian digits. */
+const ver = (v = "") => v.replace(/\d+/g, (d) => num(+d));
+
+/** What clicking an update offer does: download, or restart into the new version, each asked first. False if declined. */
+async function actOnUpdate(u: Update) {
+  const yes = u.status === "available" ? await confirmDialog(`نسخه‌ی تازه‌ی پنبه (${ver(u.version)}) آمده است. دریافت شود؟`, { ok: "دریافت" })
+    : await confirmDialog(`برای نصب نسخه‌ی ${ver(u.version)}، پنبه دوباره راه‌اندازی شود؟ با بستن پنبه هم نصب می‌شود.`, { ok: "راه‌اندازی دوباره" });
+  if (yes) (u.status === "available" ? downloadUpdate : installUpdate)();
+  return yes;
+}
+
+function Updates() {
+  const u = useUpdate();
+  const [auto, setAuto] = useState<boolean>();
+  const [version, setVersion] = useState("");
+  useEffect(() => { getAutoUpdate().then(setAuto, () => {}); appVersion().then(setVersion); }, []);
+  const status: Record<Update["status"], string> = {
+    idle: "بررسی به‌روزرسانی", checking: "در حال بررسی…", none: "پنبه به‌روز است؛ دوباره بررسی شود",
+    available: `نسخه‌ی ${ver(u.version)} آمده است؛ دریافت`, downloading: `در حال دریافت نسخه‌ی ${ver(u.version)}… ${num(u.percent ?? 0)}٪`,
+    ready: `نسخه‌ی ${ver(u.version)} آماده است؛ راه‌اندازی دوباره`, error: "بررسی نشد؛ دوباره تلاش کنید",
+  };
+  const click = () => (u.status === "available" || u.status === "ready" ? void actOnUpdate(u) : checkUpdate());
+  return (
+    <>
+      {auto !== undefined && (
+        <label className="switch-row"><span>به‌روزرسانی خودکار<small>خاموش: فقط خبر می‌دهد که نسخه‌ی تازه آمده است</small></span>
+          <input type="checkbox" role="switch" checked={auto} onChange={(e) => setAutoUpdate(e.target.checked).then(setAuto, (err) => alertDialog(errText(err)))} /></label>
+      )}
+      <button className="user-row" disabled={u.status === "checking" || u.status === "downloading"} onClick={click}>
+        <span className="device-box"><Icon name="download" /></span>
+        <span><b>پنبه {ver(version)}</b><small>{status[u.status]}</small></span>
+      </button>
+    </>
+  );
+}
+
+/** Above the chat list: a new version found (auto-update off) or downloading or ready to install. */
+export function UpdateBanner() {
+  const u = useUpdate();
+  const [later, setLater] = useState<string>(); // "not now" for this version, until restart
+  if (u.status === "downloading") return (
+    <div className="banner update" role="status">
+      <Icon name="download" size={16} /> در حال دریافت نسخه‌ی {ver(u.version)}… {num(u.percent ?? 0)}٪
+      <i style={{ width: (u.percent ?? 0) + "%" }} />
+    </div>
+  );
+  if ((u.status !== "available" && u.status !== "ready") || later === u.status + u.version) return null;
+  const go = async () => { if (!await actOnUpdate(u) && u.status === "available") setLater(u.status + u.version); };
+  return (
+    <button className="banner" onClick={() => void go()}>
+      <Icon name="download" size={16} /> {u.status === "ready" ? `نسخه‌ی ${ver(u.version)} آماده‌ی نصب است` : `نسخه‌ی تازه‌ی پنبه (${ver(u.version)}) آمده است`}
+    </button>
   );
 }
 

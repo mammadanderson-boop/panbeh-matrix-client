@@ -25,6 +25,19 @@ contextBridge.exposeInMainWorld("panbehDesktop", {
     ipcRenderer.on("pick-source", h);
     return () => ipcRenderer.off("pick-source", h);
   },
+  /** App updates: the current state, then every change through onState; auto(on?) like autostart. */
+  update: {
+    state: () => ipcRenderer.invoke("update-state"),
+    onState: (cb) => {
+      const h = (_e, u) => cb(u);
+      ipcRenderer.on("update", h);
+      return () => ipcRenderer.off("update", h);
+    },
+    auto: (on) => ipcRenderer.invoke("update-auto", on),
+    check: () => ipcRenderer.invoke("update-check"),
+    download: () => ipcRenderer.invoke("update-download"),
+    install: () => ipcRenderer.invoke("update-install"),
+  },
   onVisibility: (cb) => {
     const h = (_e, visible) => cb(visible);
     ipcRenderer.on("visibility", h);

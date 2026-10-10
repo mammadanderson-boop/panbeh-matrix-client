@@ -18,7 +18,7 @@ import { Room } from "./ui/Room.tsx";
 import { ShareSheet } from "./ui/Forward.tsx";
 import { shareInto } from "./ui/Composer.tsx";
 import { NowPlaying } from "./ui/Voice.tsx";
-import { Settings, applyPrefs, loadPrefs } from "./ui/Settings.tsx";
+import { Settings, UpdateBanner, applyPrefs, loadPrefs } from "./ui/Settings.tsx";
 import { VerificationListener } from "./ui/Verify.tsx";
 import { CallBar, CallLayer } from "./ui/Call.tsx";
 import { alertDialog } from "./ui/dialog.tsx";
@@ -133,6 +133,7 @@ function Shell() {
       <Sidebar loading={!synced} selected={roomId} onSelect={open} onSettings={() => setSettings(true)}
         banner={<>
           {(sync === SyncState.Error || sync === SyncState.Reconnecting) && <div className="banner warn">در حال اتصال…</div>}
+          <UpdateBanner />
           {security !== "ok" && (
             <button className="banner" onClick={() => setSettings(true)}>
               <Icon name="lock" size={16} /> {security === "unlock" ? "برای خواندن پیام‌های رمزنگاری‌شده‌ی قبلی، این دستگاه را تأیید کنید" : "بازیابی رمزنگاری را راه‌اندازی کنید"}
