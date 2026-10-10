@@ -8,6 +8,7 @@ import { getCallNotificationExpiry, type IRTCNotificationContent } from "matrix-
 import { errorText, fmtDuration, HISTORY, isGif, isVideoOffer, JOIN_RULES, legacyOutcome, levelChanges, num, roleLabel, rtcOutcome, type CallEv, type CallOutcome } from "../logic.ts";
 import { Icon } from "../icons.tsx";
 import { useDismiss } from "./useDismiss.ts";
+import { useBackdropHold } from "./useBackdropHold.ts";
 
 const COLORS = ["#e17076", "#faa774", "#a695e7", "#7bc862", "#6ec9cb", "#65aadd", "#ee7aae"];
 export const colorFor = (id: string) => COLORS[([...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0) >>> 0) % COLORS.length];
@@ -248,6 +249,27 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         {children}
       </div>
     </div>
+  );
+}
+
+/** Right-click / long-press menu at (x, y), kept on screen. Holding another `target` underneath switches the menu to it. */
+export function ContextMenu({ x, y, target, onClose, children }: { x: number; y: number; target: string; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [closing, close] = useDismiss(onClose, 160);
+  const [pos, setPos] = useState({ left: x, top: y });
+  useEffect(() => { // keep it on screen
+    const r = ref.current!.getBoundingClientRect();
+    setPos({ left: Math.max(8, Math.min(x - r.width, innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, innerHeight - r.height - 8)) });
+    ref.current!.querySelector("button")?.focus();
+  }, [x, y]);
+  const backdrop = useBackdropHold(onClose, target, close);
+  // portaled, and Esc stops here: a sheet underneath would otherwise close too
+  return createPortal(
+    <div className={"chat-menu-backdrop" + (closing ? " closing" : "")} {...backdrop}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } }}>
+      <div className="chat-menu" role="menu" ref={ref} style={pos} onClick={(e) => e.stopPropagation()}>{children}</div>
+    </div>,
+    document.body,
   );
 }
 

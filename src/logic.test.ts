@@ -167,7 +167,22 @@ test("unread divider goes after the last read message and splits its burst", () 
   assert.ok(!buildRows(msgs, T).some((r) => r.type === "unread"));
 });
 
-import { errorText, levelChanges, roleLabel, supportsKnock } from "./logic.ts";
+import { errorText, levelAt, levelChanges, levelOptions, roleLabel, supportsKnock, withLevel } from "./logic.ts";
+
+test("power level settings", () => {
+  const pl = { kick: 100, events: { "m.room.name": 100, "m.room.message": 50 }, state_default: 75, users: { "@a": 100 } };
+  assert.deepEqual(["kick", "ban", "invite", "redact", "notifications.room", "events.m.room.name", "events.m.room.topic", "events_default"].map((k) => levelAt(pl, k)),
+    [100, 50, 0, 50, 50, 100, 75, 50]);
+  assert.equal(levelAt({}, "events.m.room.topic"), 50);
+  assert.deepEqual(withLevel(pl, "events.m.room.topic", 0).events, { "m.room.name": 100, "m.room.message": 50, "m.room.topic": 0 });
+  assert.deepEqual(withLevel(pl, "notifications.room", 100).notifications, { room: 100 });
+  const send = withLevel(pl, "events_default", 100); // drops the message override so the new level applies
+  assert.deepEqual([send.events_default, send.events, send.users, send.kick], [100, { "m.room.name": 100 }, { "@a": 100 }, 100]);
+  const roles: [number, string][] = [[0, "عضو"], [50, "ناظر"], [100, "مدیر"]];
+  assert.deepEqual(levelOptions(roles, 50, 0), [[0, "عضو"], [50, "ناظر"]]);
+  assert.deepEqual(levelOptions(roles, 100, 75).map(([l, t]) => `${l}:${t}`), ["0:عضو", "50:ناظر", "75:سطح ۷۵", "100:مدیر"]);
+  assert.deepEqual(levelOptions(roles, 50, 100).map(([l]) => l), [0, 50, 100]); // current above mine stays shown
+});
 
 test("matrix error codes", () => {
   assert.equal(errorText("M_LIMIT_EXCEEDED", { retry_after_ms: 2500 }), "درخواست‌ها زیاد بود؛ ۳ ثانیه‌ی دیگر دوباره امتحان کنید.");
@@ -177,7 +192,7 @@ test("matrix error codes", () => {
 });
 
 test("room admin helpers", () => {
-  assert.deepEqual([100, 75, 50, 25, 0].map(roleLabel), ["مدیر", "ناظر", "ناظر", "سطح ۲۵", null]);
+  assert.deepEqual([Infinity, 100, 75, 50, 25, 0].map(roleLabel), ["مالک", "مدیر", "ناظر", "ناظر", "سطح ۲۵", null]);
   assert.deepEqual(["6", "7", "10", "org.example.v1", "", undefined].map(supportsKnock), [false, true, true, false, false, false]);
   assert.deepEqual(levelChanges({ users: { "@a": 100, "@b": 50 } }, { users: { "@a": 100, "@c": 50 }, users_default: 0 }),
     [{ id: "@b", from: 50, to: 0 }, { id: "@c", from: 0, to: 50 }]);
