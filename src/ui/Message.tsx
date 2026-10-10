@@ -5,11 +5,11 @@ import { handleIncomingLink } from "../openTarget.ts";
 import { matrixToLink, parseMatrixLink, viaServers } from "../uri.ts";
 import { EventStatus, EventType, M_POLL_START, RelationType, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { avatarUrl, client, isSavedGif, loadEvent, mediaUrl, pinnedIds, seenBy, toggleGif, togglePin } from "../matrix.ts";
-import { abortSave, openSave, writeSave, type SaveTarget } from "../native.ts";
+import { abortSave, openSave, openSaved, rememberSave, writeSave, type SaveTarget } from "../native.ts";
 import { usePromise } from "../hooks.ts";
 import { LINK_SRC, clock, fmtDuration, isGif, linkHref, num, osmUrl, parseGeoUri, stamp, textDir, type Gif } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
-import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, previewText, senderMember, senderName, stripReplyFallback, toast, useChange } from "./common.tsx";
+import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, previewText, senderMember, senderName, stripReplyFallback, toast, useChange } from "./common.tsx";
 import { AudioPlayer, trackFor } from "./Voice.tsx";
 import { PollBody } from "./Poll.tsx";
 import { EmojiPanel, GifView } from "./Emoji.tsx";
@@ -267,8 +267,7 @@ function MsgMenu({ x, y, items, onReact, onMore, onClose }: { x: number; y: numb
   const [closing, close] = useDismiss(onClose, 160);
   const [pos, setPos] = useState<{ left: number; top: number }>();
   useEffect(() => { // keep it on screen
-    const r = ref.current!.getBoundingClientRect();
-    setPos({ left: Math.max(8, Math.min(x - r.width / 2, innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, innerHeight - r.height - 8)) });
+    setPos(menuPos(x, y, ref.current!));
     ref.current!.focus({ preventScroll: true });
   }, [x, y]);
   useEffect(() => {
@@ -452,13 +451,16 @@ export function FileRow({ c }: { c: Content }) {
   const download = async () => {
     if (busy.current) { busy.current.abort(); return; } // tapping the ring cancels
     const ac = busy.current = new AbortController();
+    const key = c.file?.url ?? c.url;
     let t: SaveTarget | null = null;
     try {
+      if (key && await openSaved(key, c.info?.mimetype ?? "")) return; // saved before: open that copy
       t = await openSave(c.filename ?? c.body ?? "file", c.info?.mimetype ?? "");
       if (!t || ac.signal.aborted) return;
       setProg({ loaded: 0, total: c.info?.size ?? 0 });
       const url = await mediaUrl(c, undefined, (loaded, total) => setProg({ loaded, total }), ac.signal)!;
       await writeSave(t, url, ac.signal);
+      if (key) rememberSave(key, t, url);
       savedToast(t);
     } catch (e) {
       abortSave(t);

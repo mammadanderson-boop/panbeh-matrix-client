@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
+import { downloadPath, openDownload } from "./desktop.ts";
 import { loadPrefs } from "./ui/Settings.tsx";
 
 /** The Android app: our own WebView (Capacitor plugin) or the background service's headless one (JS interface). */
@@ -39,7 +40,8 @@ interface PanbehPlugin {
   takeLaunchCall(): Promise<Partial<CallAction>>;
   saveOpen(p: { name: string; mime: string; ask: boolean }): Promise<{ id: string | null; picked?: boolean }>;
   saveChunk(p: { id: string; data: string }): Promise<void>;
-  saveClose(p: { id: string }): Promise<void>;
+  saveClose(p: { id: string }): Promise<{ uri?: string }>; // older app builds resolve nothing
+  openFile(p: { uri: string; mime: string }): Promise<void>;
   saveAbort(p: { id: string }): Promise<void>;
   takeLaunchShare(): Promise<Partial<Shared>>;
   biometricAvailable(): Promise<{ available: boolean }>;
@@ -180,7 +182,7 @@ const blobToDataUrl = (b: Blob) => new Promise<string>((res, rej) => {
 export const toDataUrl = async (url: string) => blobToDataUrl(await (await fetch(url)).blob());
 
 /** Where a file is being saved: the browser's download, the phone's Downloads folder, or a place picked in Android's "Save as". */
-export type SaveTarget = { name: string; id?: string; where: "browser" | "downloads" | "picked" };
+export type SaveTarget = { name: string; id?: string; where: "browser" | "downloads" | "picked"; uri?: string };
 const CHUNK = 512 * 1024; // per bridge call, so a big file never crosses as one giant base64 string
 
 /** Opens a file to save into, before downloading, so "Save as" (if the user wants it asked) comes first. null = they backed out. */
@@ -203,7 +205,7 @@ export async function writeSave(t: SaveTarget, url: string, signal?: AbortSignal
       const d = await blobToDataUrl(b.slice(i, i + CHUNK));
       await plugin.saveChunk({ id: t.id, data: d.slice(d.indexOf(",") + 1) });
     }
-    await plugin.saveClose({ id: t.id });
+    t.uri = (await plugin.saveClose({ id: t.id })).uri;
   } catch (e) {
     abortSave(t);
     throw e;
@@ -213,6 +215,37 @@ export async function writeSave(t: SaveTarget, url: string, signal?: AbortSignal
 /** Drops a half-written file (cancelled or failed). Safe to call twice. */
 export function abortSave(t: SaveTarget | null) {
   if (t?.id) plugin.saveAbort({ id: t.id }).catch(() => {});
+}
+
+// where files were saved (Android: a content URI; desktop: a path), by mxc URL, so tapping one again opens that copy
+// ponytail: never pruned; one short entry per saved file
+const SAVED = "panbeh.saved";
+const savedMap = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(SAVED) ?? "{}"); } catch { return {}; } };
+function setSaved(key: string, loc?: string) {
+  const m = savedMap();
+  if (loc) m[key] = loc; else delete m[key];
+  try { localStorage.setItem(SAVED, JSON.stringify(m)); } catch { /* full: it just downloads again */ }
+}
+
+/** After writeSave: remembers the copy (desktop: once the download finishes; a browser can't open its downloads). */
+export function rememberSave(key: string, t: SaveTarget, url: string) {
+  if (t.uri) setSaved(key, t.uri);
+  else if (t.where === "browser") void downloadPath(url).then((p) => p && setSaved(key, p), () => {});
+}
+
+/** Opens the saved copy of `key`. false: not saved here, or deleted/moved since (then forgotten, so it downloads again). */
+export async function openSaved(key: string, mime: string): Promise<boolean> {
+  const loc = savedMap()[key];
+  if (!loc) return false;
+  try {
+    if (isNative) { await plugin.openFile({ uri: loc, mime }); return true; }
+    if (await openDownload(loc)) return true;
+  } catch (e) {
+    if ((e as Error).message === "no app") throw new Error("برنامه‌ای برای باز کردن این فایل پیدا نشد.");
+    if ((e as Error).message !== "gone") throw e;
+  }
+  setSaved(key);
+  return false;
 }
 
 /** Saves something already downloaded (a blob/object URL). null = "Save as" was backed out of. */

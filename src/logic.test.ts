@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats } from "./logic.ts";
-import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, type Msg } from "./logic.ts";
+import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
 const m = (id: string, sender: string, min: number, kind: Msg["kind"] = "msg"): Msg => ({ id, sender, ts: T + min * 60_000, kind });
@@ -371,4 +371,11 @@ test("lockDelay: free tries, then doubling up to an hour", () => {
   assert.equal(lockDelay(5), 30_000);
   assert.equal(lockDelay(6), 60_000);
   assert.equal(lockDelay(30), 3_600_000);
+});
+
+test("fitMenu: after the click, flipped before it near the edge, kept on screen", () => {
+  assert.equal(fitMenu(100, 200, 1000), 100);
+  assert.equal(fitMenu(900, 200, 1000), 700); // last message: opens upward
+  assert.equal(fitMenu(150, 200, 300), 8); // fits neither way: clamped
+  assert.equal(fitMenu(5, 200, 1000), 8);
 });

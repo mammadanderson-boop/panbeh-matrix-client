@@ -237,6 +237,35 @@ ipcMain.on("open-external", (_e, url) => openExternal(String(url)));
 ipcMain.handle("autostart", (_e, on) => { if (typeof on === "boolean") setAutostart(on); return getAutostart(); });
 ipcMain.handle("info", () => ({ version: app.getVersion(), platform: process.platform, visible: windowSeen() }));
 
+// files saved from chats: the page asks where its blob: download landed, so the next click opens that copy instead
+const downloadsFile = () => path.join(app.getPath("userData"), "downloads.json");
+/** @type {Set<string> | null} */ let savedPaths = null; // only paths saved here can be opened from the page
+const saved = () => savedPaths ??= new Set((() => { try { return JSON.parse(fs.readFileSync(downloadsFile(), "utf8")); } catch { return []; } })());
+const finished = new Map(), waiting = new Map(); // blob URL → its path (null: cancelled) / the page waiting for it
+const onDownload = (_e, item) => {
+  const url = item.getURL();
+  item.once("done", (_e, state) => {
+    const p = state === "completed" ? item.getSavePath() : null;
+    // ponytail: never pruned; one path per saved file
+    if (p) { saved().add(p); fs.writeFile(downloadsFile(), JSON.stringify([...saved()]), () => {}); }
+    const w = waiting.get(url);
+    if (w) { waiting.delete(url); w(p); } else finished.set(url, p);
+  });
+};
+ipcMain.handle("download-path", (_e, url) => {
+  if (!finished.has(url)) return new Promise((res) => waiting.set(url, res));
+  const p = finished.get(url);
+  finished.delete(url);
+  return p;
+});
+// ponytail: an extension list; programs and scripts show in their folder rather than run on a click
+const RISKY = /\.(exe|msi|bat|cmd|com|scr|pif|ps1|vbs|jse?|wsf|hta|lnk|jar|sh|run|bin|appimage|desktop|deb|rpm|dmg|pkg|app|command)$/i;
+ipcMain.handle("open-download", async (_e, p) => {
+  if (!saved().has(p) || !fs.existsSync(p)) return false;
+  if (RISKY.test(p) || await shell.openPath(p)) shell.showItemInFolder(p); // openPath resolves to an error message, "" when it worked
+  return true;
+});
+
 // the page can't tell (no throttling = always "visible"): it marks messages read only while the window can be seen
 let screenLocked = false;
 const windowSeen = () => !!win && win.isVisible() && !win.isMinimized() && !screenLocked;
@@ -262,6 +291,7 @@ app.whenReady().then(() => {
   const { session, desktopCapturer } = require("electron");
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(allowed.has(perm) && ours(wc.getURL())));
   session.defaultSession.setPermissionCheckHandler((wc, perm) => allowed.has(perm) && ours(wc?.getURL()));
+  session.defaultSession.on("will-download", onDownload);
   // getDisplayMedia: macOS 15+ shows the system's picker (useSystemPicker) and Wayland's portal picks inside getSources;
   // elsewhere (Windows, X11, older macOS) the page shows our own picker of screens and windows
   const wayland = process.platform === "linux" && process.env.XDG_SESSION_TYPE === "wayland";

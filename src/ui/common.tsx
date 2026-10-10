@@ -5,7 +5,7 @@ import { PollStartEvent } from "matrix-js-sdk/lib/extensible_events_v1/PollStart
 import { avatarUrl, client, isDirect } from "../matrix.ts";
 import { usePromise } from "../hooks.ts";
 import { getCallNotificationExpiry, type IRTCNotificationContent } from "matrix-js-sdk/lib/matrixrtc/index.js";
-import { errorText, fmtDuration, HISTORY, isGif, isVideoOffer, JOIN_RULES, legacyOutcome, levelChanges, num, roleLabel, rtcOutcome, type CallEv, type CallOutcome } from "../logic.ts";
+import { errorText, fitMenu, fmtDuration, HISTORY, isGif, isVideoOffer, JOIN_RULES, legacyOutcome, levelChanges, num, roleLabel, rtcOutcome, type CallEv, type CallOutcome } from "../logic.ts";
 import { Icon } from "../icons.tsx";
 import { useDismiss } from "./useDismiss.ts";
 import { useBackdropHold } from "./useBackdropHold.ts";
@@ -252,14 +252,19 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   );
 }
 
+/** Where a menu opened at (x, y) goes: right of and below it, flipped to the other side where it doesn't fit, kept on screen. */
+export function menuPos(x: number, y: number, el: HTMLElement) {
+  const { offsetWidth: w, offsetHeight: h } = el; // not the rect: the pop-in animation starts scaled down
+  return { left: fitMenu(x, w, innerWidth), top: fitMenu(y, h, innerHeight) };
+}
+
 /** Right-click / long-press menu at (x, y), kept on screen. Holding another `target` underneath switches the menu to it. */
 export function ContextMenu({ x, y, target, onClose, children }: { x: number; y: number; target: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [closing, close] = useDismiss(onClose, 160);
   const [pos, setPos] = useState({ left: x, top: y });
   useEffect(() => { // keep it on screen
-    const r = ref.current!.getBoundingClientRect();
-    setPos({ left: Math.max(8, Math.min(x - r.width, innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, innerHeight - r.height - 8)) });
+    setPos(menuPos(x, y, ref.current!));
     ref.current!.querySelector("button")?.focus();
   }, [x, y]);
   const backdrop = useBackdropHold(onClose, target, close);

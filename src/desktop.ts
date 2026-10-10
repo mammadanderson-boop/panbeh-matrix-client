@@ -10,6 +10,8 @@ type Bridge = {
   info(): Promise<{ version: string; platform: string; visible: boolean }>;
   onVisibility(cb: (visible: boolean) => void): () => void;
   onLink(cb: (link: string) => void): () => void;
+  downloadPath?(url: string): Promise<string | null>; // older desktop builds lack these two
+  openDownload?(path: string): Promise<boolean>;
   onPickSource?(cb: (sources: ShareSource[]) => Promise<string | null>): () => void; // older desktop builds lack it
 };
 /** A screen ("screen:…") or window to share, with a thumbnail data URL. */
@@ -24,6 +26,10 @@ export const setBadge = (n: number) => bridge?.setBadge(n);
 /** Brings the window back, even from the tray (window.focus() can't). */
 export const showWindow = () => bridge ? bridge.focus() : focus();
 export const openExternal = (url: string) => bridge?.openExternal(url);
+/** Where a blob: download was saved, once it finishes (null: cancelled, or not the desktop app). */
+export const downloadPath = (url: string) => bridge?.downloadPath?.(url) ?? Promise.resolve(null);
+/** Opens a file downloadPath reported; false if it's gone. */
+export const openDownload = (path: string) => bridge?.openDownload?.(path) ?? Promise.resolve(false);
 export const getAutostart = () => bridge?.autostart() ?? Promise.resolve(false);
 export const setAutostart = (on: boolean) => bridge?.autostart(on) ?? Promise.resolve(false);
 

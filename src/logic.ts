@@ -512,3 +512,6 @@ export async function hashPin(pin: string, salt: string, iterations: number) {
 
 /** Wait before the next PIN try after `fails` wrong ones: none for the first 5, then 30s doubling, at most an hour. */
 export const lockDelay = (fails: number) => (fails < 5 ? 0 : Math.min(3_600_000, 30_000 * 2 ** (fails - 5)));
+
+/** One axis of a menu opened at `v`: after it, or before it when it would cross `max`; 8px from the edges. */
+export const fitMenu = (v: number, size: number, max: number) => Math.max(8, Math.min(v + size > max - 8 ? v - size : v, max - size - 8));
