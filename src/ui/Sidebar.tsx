@@ -1,5 +1,4 @@
-import { useBackdropHold } from "./useBackdropHold.ts";
-import { useDismiss } from "./useDismiss.ts";
+import { useLongPress } from "./useLongPress.ts";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { NotificationCountType, UserEvent, type Room } from "matrix-js-sdk";
@@ -12,7 +11,7 @@ import { useSortableTabs } from "./useSortableTabs.ts";
 import { pushBack } from "../back.ts";
 import { setBadge } from "../desktop.ts";
 import { Icon } from "../icons.tsx";
-import { bdi, Dots, errText, useChange, me, noticeText, previewText, RoomAvatar, senderName } from "./common.tsx";
+import { bdi, ContextMenu, Dots, errText, useChange, me, noticeText, previewText, RoomAvatar, senderName } from "./common.tsx";
 import { NewChat } from "./NewChat.tsx";
 import { RoomInfo } from "./RoomInfo.tsx";
 import { MessageResults, requestJump } from "./Search.tsx";
@@ -191,8 +190,6 @@ function busyEsc(e: KeyboardEvent) {
   return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA") && t.value !== "";
 }
 
-const LONG_PRESS = 500;
-
 /** The chat actions in the context menu. */
 function chatOps(row: RoomRow) {
   const { room } = row, unread = isUnread(row);
@@ -213,7 +210,7 @@ function OnlineDot({ room }: { room: Room }) {
 
 function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: boolean; onClick: () => void; onMenu: (x: number, y: number) => void }) {
   const { room, last } = row;
-  const press = useRef<{ timer: number; fired: boolean } | null>(null);
+  const { click, handlers } = useLongPress(row.invite ? undefined : onMenu);
   let preview = row.invite ? "دعوت‌نامه" : "";
   if (last && !row.invite && isCallStart(last)) preview = "📞 " + noticeText(last); // names the caller itself
   else if (last && !row.invite) {
@@ -227,18 +224,8 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
   const bumped = useChange(row.unread);
   const previewChanged = useChange(preview, 350);
   const mentioned = row.unread > 0 && room.getUnreadNotificationCount(NotificationCountType.Highlight) > 0;
-  const cancel = () => { if (press.current) clearTimeout(press.current.timer); };
   return (
-    <button className={"room-item" + (active ? " active" : "")}
-      onClick={() => { if (press.current?.fired) press.current = null; else onClick(); }}
-      onContextMenu={row.invite ? undefined : (e) => { e.preventDefault(); cancel(); onMenu(e.clientX, e.clientY); }}
-      // iOS Safari fires no contextmenu on long-press
-      onTouchStart={row.invite ? undefined : (e) => {
-        const { clientX: x, clientY: y } = e.touches[0];
-        cancel();
-        press.current = { fired: false, timer: window.setTimeout(() => { press.current!.fired = true; onMenu(x, y); }, LONG_PRESS) };
-      }}
-      onTouchMove={cancel} onTouchEnd={cancel}>
+    <button className={"room-item" + (active ? " active" : "")} onClick={click(onClick)} {...handlers}>
       <span className="avatar-wrap"><RoomAvatar room={room} size={50} />{row.isDM && !row.invite && <OnlineDot room={room} />}</span>
       <div className="room-item-body">
         <div className="room-item-top">
@@ -260,25 +247,10 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
 
 function ChatMenu({ row, x, y, onClose }: Menu & { onClose: () => void }) {
   const { room } = row;
-  const ref = useRef<HTMLDivElement>(null);
-  const [closing, close] = useDismiss(onClose, 160);
-  const [pos, setPos] = useState({ left: x, top: y });
-  useEffect(() => { // keep it on screen
-    const r = ref.current!.getBoundingClientRect();
-    setPos({ left: Math.max(8, Math.min(x - r.width, innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, innerHeight - r.height - 8)) });
-    ref.current!.querySelector("button")?.focus();
-  }, [x, y]);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
-    addEventListener("keydown", onKey);
-    return () => removeEventListener("keydown", onKey);
-  }, [close]);
   const run = (fn: () => Promise<unknown>) => { onClose(); fn().catch((e) => alertDialog(errText(e))); };
   const ops = chatOps(row), unread = ops.unread;
-  const backdrop = useBackdropHold(onClose, ".room-item", close); // holding another chat switches the menu to it
   return (
-    <div className={"chat-menu-backdrop" + (closing ? " closing" : "")} {...backdrop}>
-      <div className="chat-menu" role="menu" ref={ref} style={pos} onClick={(e) => e.stopPropagation()}>
+    <ContextMenu x={x} y={y} target=".room-item" onClose={onClose}>
         <button role="menuitem" onClick={() => run(ops.pin)}>
           <Icon name="pin" /> {row.pinned ? "برداشتن سنجاق" : "سنجاق"}</button>
         <button role="menuitem" onClick={() => run(ops.archive)}>
@@ -290,7 +262,6 @@ function ChatMenu({ row, x, y, onClose }: Menu & { onClose: () => void }) {
         <button role="menuitem" className="danger-item"
           onClick={() => confirmDialog(`از «${room.name}» خارج می‌شوید و از فهرست حذف می‌شود؟`, { danger: true }).then((y) => y && run(() => leaveAndForget(room)))}>
           <Icon name="trash" /> حذف و خروج</button>
-      </div>
-    </div>
+    </ContextMenu>
   );
 }

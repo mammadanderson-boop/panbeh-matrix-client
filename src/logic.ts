@@ -306,7 +306,41 @@ export const hasGif = (list: Gif[], g: Gif) => list.some((x) => gifKey(x) === gi
 // ---------- room admin ----------
 
 /** "مدیر" / "ناظر" / "سطح ۲۵"; null for plain members. */
-export const roleLabel = (level: number) => (level >= 100 ? "مدیر" : level >= 50 ? "ناظر" : level > 0 ? `سطح ${num(level)}` : null);
+// Infinity = a room v12 creator, who outranks everyone
+export const roleLabel = (level: number) => (level === Infinity ? "مالک" : level >= 100 ? "مدیر" : level >= 50 ? "ناظر" : level > 0 ? `سطح ${num(level)}` : null);
+
+export type PowerLevels = {
+  users?: Record<string, number>; users_default?: number; events?: Record<string, number>; events_default?: number; state_default?: number;
+  invite?: number; kick?: number; ban?: number; redact?: number; notifications?: Record<string, number>;
+};
+const PL_DEFAULTS: Record<string, number> = { invite: 0, kick: 50, ban: 50, redact: 50, events_default: 0, state_default: 50 };
+
+/** A power-level setting by key, with the spec's defaults: "kick", "notifications.room", "events.<state type>" (falls back
+ *  to state_default). "events_default" means sending messages, so an m.room.message override wins over it. */
+export function levelAt(pl: PowerLevels, key: string): number {
+  if (key.startsWith("events.")) return pl.events?.[key.slice(7)] ?? pl.state_default ?? 50;
+  if (key.startsWith("notifications.")) return pl.notifications?.[key.slice(14)] ?? 50;
+  if (key === "events_default") return pl.events?.["m.room.message"] ?? pl.events_default ?? 0;
+  return (pl as Record<string, number | undefined>)[key] ?? PL_DEFAULTS[key] ?? 50;
+}
+
+/** New m.room.power_levels content with one setting changed (keys as in levelAt). */
+export function withLevel(pl: PowerLevels, key: string, level: number): PowerLevels {
+  if (key.startsWith("events.")) return { ...pl, events: { ...pl.events, [key.slice(7)]: level } };
+  if (key.startsWith("notifications.")) return { ...pl, notifications: { ...pl.notifications, [key.slice(14)]: level } };
+  if (key === "events_default") {
+    const { ["m.room.message"]: _, ...events } = pl.events ?? {};
+    return { ...pl, events_default: level, events };
+  }
+  return { ...pl, [key]: level };
+}
+
+/** Select options for a level: the presets I may grant, plus the current value if it's a custom one. */
+export function levelOptions(presets: [number, string][], mine: number, current: number): [number, string][] {
+  const o = presets.filter(([l]) => l <= mine || l === current);
+  if (!o.some(([l]) => l === current)) o.push([current, current === Infinity ? "مالک" : current > 0 ? `سطح ${num(current)}` : "عضو"]);
+  return o.sort((a, b) => a[0] - b[0]);
+}
 
 /** Knocking needs room version 7+; unknown or non-numeric (experimental) versions count as unsupported. */
 export const supportsKnock = (version: string | undefined) => /^\d+$/.test(version ?? "") && Number(version) >= 7;

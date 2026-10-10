@@ -3,7 +3,7 @@ import { ClientEvent, EventType, RelationType, RoomEvent, RoomStateEvent, type M
 import { addToSpace, client, isDirect, removeFromSpace, seenBy, setRoomAvatar } from "../matrix.ts";
 import { matrixToLink, viaServers } from "../uri.ts";
 import { usePresence, useTick } from "../hooks.ts";
-import { JOIN_RULES, normalize, num, roleLabel, stamp } from "../logic.ts";
+import { JOIN_RULES, normalize, num, stamp } from "../logic.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, errText, me, RoomAvatar, roomAvatarMxc, Sheet } from "./common.tsx";
 import { useSlider } from "./useSlider.ts";
@@ -11,7 +11,7 @@ import { UserProfile } from "./Profile.tsx";
 import { ChatForm, UserPicker } from "./NewChat.tsx";
 import { isMuted, setMuted } from "../notify.ts";
 import { PhotoViewer, SharedMedia } from "./Media.tsx";
-import { BannedList, canManage, GroupSettings, KnockRequests } from "./Admin.tsx";
+import { BannedList, canManage, GroupSettings, KnockRequests, MemberRow } from "./Admin.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { LinkSheet } from "./LinkSheet.tsx";
 
@@ -59,7 +59,8 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
   );
   if (view === "settings") return (
     <Sheet title={space ? "تنظیمات فضا" : "تنظیمات گروه"} onClose={() => setView("main")}>
-      <GroupSettings room={room} />
+      <GroupSettings room={room} onUser={setProfile} />
+      {profile && <UserProfile userId={profile} room={room} onClose={() => setProfile(null)} onOpened={onClose} />}
     </Sheet>
   );
   if (view === "new-group") return (
@@ -155,11 +156,7 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی اعضا" aria-label="جستجوی اعضا" />
       </label>
       {members.filter((m) => normalize(m.name + " " + m.userId).includes(normalize(q.trim()))).map((m) => (
-        <button key={m.userId} className="user-row" onClick={() => setProfile(m.userId)}>
-          <Avatar mxc={m.getMxcAvatarUrl()} name={m.name} id={m.userId} size={42} />
-          <span><b>{m.name}</b><small dir="ltr">{m.userId}</small><LastSeen userId={m.userId} /></span>
-          {m.membership === "invite" ? <em className="muted">دعوت‌شده</em> : roleLabel(m.powerLevel) && <em>{roleLabel(m.powerLevel)}</em>}
-        </button>
+        <MemberRow key={m.userId} room={room} m={m} onUser={setProfile} sub={<><small dir="ltr">{m.userId}</small><LastSeen userId={m.userId} /></>} />
       ))}
       <BannedList room={room} onUser={setProfile} />
 

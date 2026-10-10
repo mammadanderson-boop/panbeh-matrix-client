@@ -827,6 +827,7 @@ div.msg-text blockquote { color: color-mix(in srgb, currentColor 85%, transparen
 .chat-menu button:hover, .chat-menu button:focus-visible { background: var(--hover); outline: none; }
 .chat-menu svg { color: var(--muted); }
 .chat-menu .danger-item, .chat-menu .danger-item svg { color: #e53935; }
+.chat-menu .menu-check { display: inline-flex; width: 20px; height: 20px; flex: none; }
 .quick-list { display: grid; gap: 2px; margin-top: 6px; }
 .quick-list .user-row.on { background: var(--hover); }
 .kbd-hint { color: var(--muted); font-size: 12px; text-align: center; margin: 10px 0 0; }

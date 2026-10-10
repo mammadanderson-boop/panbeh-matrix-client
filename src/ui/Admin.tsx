@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { EventTimeline, EventType, RoomEvent, RoomStateEvent, Visibility, type Room } from "matrix-js-sdk";
+import { EventTimeline, EventType, RoomEvent, RoomStateEvent, Visibility, type Room, type RoomMember } from "matrix-js-sdk";
 import { client } from "../matrix.ts";
 import { useTick } from "../hooks.ts";
-import { aliasLocalpart, HISTORY, JOIN_RULES, num, roleLabel, supportsKnock } from "../logic.ts";
+import { aliasLocalpart, HISTORY, JOIN_RULES, levelAt, levelOptions, normalize, num, roleLabel, supportsKnock, withLevel, type PowerLevels } from "../logic.ts";
 import { Icon } from "../icons.tsx";
-import { Avatar, errText, me, Select } from "./common.tsx";
+import { Avatar, ContextMenu, errText, me, Select, Sheet } from "./common.tsx";
+import { useLongPress } from "./useLongPress.ts";
 import { alertDialog, confirmDialog, promptDialog } from "./dialog.tsx";
 
 const STATE = [RoomStateEvent.Events, RoomStateEvent.Members];
@@ -19,8 +20,7 @@ function useAct() {
   return [busy, act] as const;
 }
 
-type Levels = { users?: Record<string, number>; users_default?: number; kick?: number; ban?: number; events?: Record<string, number>; events_default?: number };
-const levels = (room: Room): Levels => room.currentState.getStateEvents(EventType.RoomPowerLevels, "")?.getContent() ?? {};
+const levels = (room: Room): PowerLevels => room.currentState.getStateEvents(EventType.RoomPowerLevels, "")?.getContent() ?? {};
 /** The member's level as the SDK computes it: from room v12 on, creators aren't in `users` and outrank everyone (Infinity). */
 const levelOf = (room: Room, id: string) => {
   const pl = levels(room);
@@ -30,53 +30,102 @@ const levelOf = (room: Room, id: string) => {
 /** null on cancel, undefined for an empty reason */
 const askReason = (q: string) => promptDialog(q, { danger: true, placeholder: "دلیل (اختیاری)" }).then((r) => (r === null ? null : r || undefined));
 
+const ROLES: [number, string][] = [[0, "عضو"], [50, "ناظر"], [100, "مدیر"]];
+const WHO: [number, string][] = [[0, "همه‌ی اعضا"], [50, "ناظران و مدیران"], [100, "فقط مدیران"]];
+
 // ---------- one member: role, kick, ban ----------
 
-/** Admin actions on someone I outrank; nothing otherwise. */
-export function MemberAdmin({ room, userId }: { room: Room; userId: string }) {
-  useTick(client, STATE);
-  const [busy, act] = useAct();
+/** What I may do to someone I outrank; null if nothing (or it's me, or they're my rank or above). */
+export function memberOps(room: Room, userId: string) {
   if (userId === me() || room.getMyMembership() !== "join") return null;
   const pl = levels(room), mine = levelOf(room, me()), theirs = levelOf(room, userId);
   if (theirs >= mine) return null;
   const membership = room.getMember(userId)?.membership;
-  const mayKick = mine >= (pl.kick ?? 50) && (membership === "join" || membership === "invite");
-  const mayBan = mine >= (pl.ban ?? 50);
+  const mayKick = mine >= levelAt(pl, "kick") && (membership === "join" || membership === "invite");
+  const mayBan = mine >= levelAt(pl, "ban");
   const mayRole = membership !== "ban" && room.currentState.maySendStateEvent(EventType.RoomPowerLevels, me());
   if (!mayKick && !mayBan && !mayRole) return null;
+  return {
+    membership, theirs, mayKick, mayBan, mayRole,
+    roles: levelOptions(ROLES, mine, theirs),
+    setRole: async (l: number) => {
+      // same level as mine can't be undone by me
+      if (l >= mine && !(await confirmDialog("هم‌سطح شما می‌شود و دیگر نمی‌توانید نقشش را تغییر دهید یا بیرونش کنید. ادامه می‌دهید؟", { danger: true }))) return;
+      await client.setPowerLevel(room.roomId, userId, l);
+    },
+    kick: async () => {
+      const r = await askReason(membership === "invite" ? "دعوت لغو شود؟" : "از گفتگو بیرون شود؟");
+      if (r !== null) await client.kick(room.roomId, userId, r);
+    },
+    ban: async () => {
+      const r = await askReason("مسدود شود؟ دیگر نمی‌تواند بپیوندد.");
+      if (r !== null) await client.ban(room.roomId, userId, r);
+    },
+    unban: () => client.unban(room.roomId, userId),
+  };
+}
 
-  const roles: [number, string][] = ([[0, "عضو"], [50, "ناظر"], [100, "مدیر"]] as [number, string][]).filter(([l]) => l <= mine);
-  if (!roles.some(([l]) => l === theirs)) roles.push([theirs, roleLabel(theirs) ?? num(theirs)]);
-  roles.sort((a, b) => a[0] - b[0]);
-  const setRole = async (l: number) => {
-    // same level as mine can't be undone by me
-    if (l >= mine && !(await confirmDialog("هم‌سطح شما می‌شود و دیگر نمی‌توانید نقشش را تغییر دهید یا بیرونش کنید. ادامه می‌دهید؟", { danger: true }))) return;
-    act(() => client.setPowerLevel(room.roomId, userId, l));
-  };
-  const kick = async () => {
-    const r = await askReason(membership === "invite" ? "دعوت لغو شود؟" : "از گفتگو بیرون شود؟");
-    if (r !== null) act(() => client.kick(room.roomId, userId, r));
-  };
-  const ban = async () => {
-    const r = await askReason("مسدود شود؟ دیگر نمی‌تواند بپیوندد.");
-    if (r !== null) act(() => client.ban(room.roomId, userId, r));
-  };
-
+/** Admin actions on someone I outrank, in their profile; nothing otherwise. */
+export function MemberAdmin({ room, userId }: { room: Room; userId: string }) {
+  useTick(client, STATE);
+  const [busy, act] = useAct();
+  const ops = memberOps(room, userId);
+  if (!ops) return null;
   return (
     <div className="admin">
       <h3>مدیریت در این گفتگو</h3>
-      {mayRole && (
+      {ops.mayRole && (
         <label className="select-row">نقش
-          <Select value={theirs} disabled={busy} options={roles} onChange={setRole} />
+          <Select value={ops.theirs} disabled={busy} options={ops.roles} onChange={(l) => act(() => ops.setRole(l))} />
         </label>
       )}
       <div className="row-actions">
-        {mayKick && <button className="warn" disabled={busy} onClick={kick}>{membership === "invite" ? "لغو دعوت" : "بیرون کردن"}</button>}
-        {mayBan && (membership === "ban"
-          ? <button disabled={busy} onClick={() => act(() => client.unban(room.roomId, userId))}>رفع مسدودیت در گروه</button>
-          : <button className="warn" disabled={busy} onClick={ban}>مسدود در این گروه</button>)}
+        {ops.mayKick && <button className="warn" disabled={busy} onClick={() => act(ops.kick)}>{ops.membership === "invite" ? "لغو دعوت" : "بیرون کردن"}</button>}
+        {ops.mayBan && (ops.membership === "ban"
+          ? <button disabled={busy} onClick={() => act(ops.unban)}>رفع مسدودیت در گروه</button>
+          : <button className="warn" disabled={busy} onClick={() => act(ops.ban)}>مسدود در این گروه</button>)}
       </div>
     </div>
+  );
+}
+
+/** The same actions as a long-press / right-click menu. */
+function MemberMenu({ room, userId, x, y, onClose, onProfile }: { room: Room; userId: string; x: number; y: number; onClose: () => void; onProfile: () => void }) {
+  const ops = memberOps(room, userId);
+  const run = (fn: () => Promise<unknown>) => { onClose(); fn().catch((e) => alertDialog(errText(e))); };
+  return (
+    <ContextMenu x={x} y={y} target=".member-row" onClose={onClose}>
+      {ops?.mayRole && ops.roles.map(([l, label]) => (
+        <button key={l} role="menuitemradio" aria-checked={l === ops.theirs} onClick={() => (l === ops.theirs ? onClose() : run(() => ops.setRole(l)))}>
+          <span className="menu-check">{l === ops.theirs && <Icon name="check" />}</span> {label}</button>
+      ))}
+      {ops?.mayKick && (
+        <button role="menuitem" className="danger-item" onClick={() => run(ops.kick)}><Icon name="close" /> {ops.membership === "invite" ? "لغو دعوت" : "بیرون کردن"}</button>
+      )}
+      {ops?.mayBan && (ops.membership === "ban"
+        ? <button role="menuitem" onClick={() => run(ops.unban)}><Icon name="check" /> رفع مسدودیت</button>
+        : <button role="menuitem" className="danger-item" onClick={() => run(ops.ban)}><Icon name="flag" /> مسدود کردن</button>)}
+      <button role="menuitem" onClick={() => { onClose(); onProfile(); }}><Icon name="info" /> اطلاعات کاربر</button>
+    </ContextMenu>
+  );
+}
+
+/** A member in a list: tap = profile (or the menu, with `tapMenu`), long-press / right-click = admin menu when I have any. */
+export function MemberRow({ room, m, sub, onUser, tapMenu }: { room: Room; m: RoomMember; sub?: ReactNode; onUser: (id: string) => void; tapMenu?: boolean }) {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const ops = memberOps(room, m.userId);
+  const { click, handlers } = useLongPress(ops ? (x, y) => setMenu({ x, y }) : undefined);
+  const role = roleLabel(m.powerLevel);
+  return (
+    <>
+      <button className="user-row member-row" {...handlers}
+        onClick={tapMenu && ops ? (e) => setMenu({ x: e.clientX, y: e.clientY }) : click(() => onUser(m.userId))}>
+        <Avatar mxc={m.getMxcAvatarUrl()} name={m.name} id={m.userId} size={42} />
+        <span><b>{m.name}</b>{sub}</span>
+        {m.membership === "invite" ? <em className="muted">دعوت‌شده</em> : role && <em>{role}</em>}
+      </button>
+      {menu && <MemberMenu room={room} userId={m.userId} {...menu} onClose={() => setMenu(null)} onProfile={() => onUser(m.userId)} />}
+    </>
   );
 }
 
@@ -87,7 +136,7 @@ export function KnockRequests({ room, onUser }: { room: Room; onUser: (id: strin
   const [busy, act] = useAct();
   const knocks = room.getMembersWithMembership("knock");
   if (!knocks.length || !room.canInvite(me())) return null;
-  const mayDeny = levelOf(room, me()) >= (levels(room).kick ?? 50);
+  const mayDeny = levelOf(room, me()) >= levelAt(levels(room), "kick");
   return (
     <>
       <h3>درخواست‌های عضویت ({num(knocks.length)})</h3>
@@ -110,12 +159,9 @@ export function BannedList({ room, onUser }: { room: Room; onUser: (id: string) 
   return (
     <>
       <h3>مسدودشده‌ها ({num(banned.length)})</h3>
-      {/* unban lives in the profile's MemberAdmin, next to the reason */}
       {banned.map((m) => (
-        <button key={m.userId} className="user-row" onClick={() => onUser(m.userId)}>
-          <Avatar mxc={m.getMxcAvatarUrl()} name={m.name} id={m.userId} size={42} />
-          <span><b>{m.name}</b><small>{m.events.member?.getContent().reason || <bdi dir="ltr">{m.userId}</bdi>}</small></span>
-        </button>
+        <MemberRow key={m.userId} room={room} m={m} onUser={onUser}
+          sub={<small>{m.events.member?.getContent().reason || <bdi dir="ltr">{m.userId}</bdi>}</small>} />
       ))}
     </>
   );
@@ -126,13 +172,21 @@ export function BannedList({ room, onUser }: { room: Room; onUser: (id: string) 
 /** Anything in GroupSettings I'm allowed to change. */
 export function canManage(room: Room) {
   const can = (t: string) => room.currentState.maySendStateEvent(t, me());
-  return can(EventType.RoomJoinRules) || can(EventType.RoomCanonicalAlias)
-    || (!room.isSpaceRoom() && (can(EventType.RoomPowerLevels) || can(EventType.RoomHistoryVisibility) || (can(EventType.RoomEncryption) && !room.hasEncryptionStateEvent())));
+  return can(EventType.RoomJoinRules) || can(EventType.RoomCanonicalAlias) || can(EventType.RoomPowerLevels)
+    || (!room.isSpaceRoom() && (can(EventType.RoomHistoryVisibility) || (can(EventType.RoomEncryption) && !room.hasEncryptionStateEvent())));
 }
 
-export function GroupSettings({ room }: { room: Room }) {
+/** Members above the default level, highest first. */
+const adminsOf = (room: Room) => {
+  const base = levels(room).users_default ?? 0;
+  return room.getMembers().filter((m) => m.membership === "join" && m.powerLevel > base)
+    .sort((a, b) => b.powerLevel - a.powerLevel || a.name.localeCompare(b.name));
+};
+
+export function GroupSettings({ room, onUser }: { room: Room; onUser: (id: string) => void }) {
   useTick(client, STATE);
   const [busy, act] = useAct();
+  const [page, setPage] = useState<"admins" | "permissions" | null>(null);
   const can = (t: string) => room.currentState.maySendStateEvent(t, me());
   const send = (type: string, content: object) => act(() => client.sendStateEvent(room.roomId, type as never, content as never, ""));
   const space = room.isSpaceRoom();
@@ -140,22 +194,21 @@ export function GroupSettings({ room }: { room: Room }) {
   const rules = ["public", "invite", ...(supportsKnock(room.getVersion()) ? ["knock"] : [])];
   if (!rules.includes(rule)) rules.push(rule);
   const history = room.getHistoryVisibility();
-  const pl = levels(room), mine = levelOf(room, me());
-  const sendLevel = pl.events?.[EventType.RoomMessage] ?? pl.events_default ?? 0;
-  const sendRoles: [number, string][] = ([[0, "همه‌ی اعضا"], [50, "ناظران و مدیران"], [100, "فقط مدیران"]] as [number, string][]).filter(([l]) => l <= mine || l === sendLevel);
-  if (!sendRoles.some(([l]) => l === sendLevel)) sendRoles.push([sendLevel, roleLabel(sendLevel) ?? num(sendLevel)]);
-  const setSendLevel = (l: number) => {
-    const { [EventType.RoomMessage]: _, ...events } = pl.events ?? {};
-    send(EventType.RoomPowerLevels, { ...pl, events_default: l, events });
-  };
 
   return (
     <div className="form">
-      {!space && can(EventType.RoomPowerLevels) && (
-        <label className="select-row">چه کسی می‌تواند پیام بفرستد
-          <Select value={sendLevel} disabled={busy} options={sendRoles} onChange={setSendLevel} />
-        </label>
+      {can(EventType.RoomPowerLevels) && (
+        <>
+          <button type="button" className="user-row" onClick={() => setPage("admins")}>
+            <span className="device-box"><Icon name="user" /></span><span><b>مدیران</b><small>{num(adminsOf(room).length)} نفر</small></span>
+          </button>
+          <button type="button" className="user-row" onClick={() => setPage("permissions")}>
+            <span className="device-box"><Icon name="lock" /></span><span><b>دسترسی‌ها</b><small>چه کسی چه کاری می‌تواند بکند</small></span>
+          </button>
+        </>
       )}
+      {page === "admins" && <Sheet title="مدیران" onClose={() => setPage(null)}><Admins room={room} onUser={onUser} /></Sheet>}
+      {page === "permissions" && <Sheet title="دسترسی‌ها" onClose={() => setPage(null)}><Permissions room={room} /></Sheet>}
       {can(EventType.RoomJoinRules) && (
         <label className="select-row">پیوستن
           <Select value={rule} disabled={busy} options={rules.map((r) => [r, JOIN_RULES[r] ?? r])}
@@ -179,6 +232,74 @@ export function GroupSettings({ room }: { room: Room }) {
           </div>
         ))}
       {can(EventType.RoomCanonicalAlias) && <Address room={room} />}
+    </div>
+  );
+}
+
+/** Admins and moderators; tapping one opens the role menu. "Add" lists the other members the same way. */
+function Admins({ room, onUser }: { room: Room; onUser: (id: string) => void }) {
+  useTick(client, STATE);
+  const [adding, setAdding] = useState(false);
+  const [q, setQ] = useState("");
+  const admins = adminsOf(room);
+  const others = room.getMembers().filter((m) => m.membership === "join" && !admins.includes(m) && m.userId !== me()
+    && normalize(m.name + " " + m.userId).includes(normalize(q.trim())));
+  return (
+    <>
+      {admins.map((m) => <MemberRow key={m.userId} room={room} m={m} onUser={onUser} tapMenu sub={<small dir="ltr">{m.userId}</small>} />)}
+      <div className="row-actions"><button onClick={() => setAdding(true)}><Icon name="plus" /> افزودن مدیر</button></div>
+      {adding && (
+        <Sheet title="افزودن مدیر" onClose={() => setAdding(false)}>
+          <label className="search">
+            <Icon name="search" size={16} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی اعضا" aria-label="جستجوی اعضا" autoFocus />
+          </label>
+          {others.length === 0 && <p className="muted">عضو دیگری نیست</p>}
+          {others.map((m) => <MemberRow key={m.userId} room={room} m={m} onUser={onUser} tapMenu sub={<small dir="ltr">{m.userId}</small>} />)}
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+/** Who may do what: one role select per action. Keys are levelAt's; several keys move together. */
+const PERMS: [string, string[]][] = [
+  ["ارسال پیام", ["events_default"]],
+  ["دعوت اعضا", ["invite"]],
+  ["بیرون کردن", ["kick"]],
+  ["مسدود کردن", ["ban"]],
+  ["حذف پیام دیگران", ["redact"]],
+  ["تغییر نام، عکس و توضیحات", ["events.m.room.name", "events.m.room.avatar", "events.m.room.topic"]],
+  ["سنجاق پیام", ["events.m.room.pinned_events"]],
+  ["نام بردن از همه (‎@room)", ["notifications.room"]],
+  ["تماس گروهی", [`events.${EventType.GroupCallMemberPrefix}`]],
+];
+const SPACE_PERMS: [string, string[]][] = [
+  ["افزودن گفتگو به فضا", ["events.m.space.child"]],
+  ["دعوت اعضا", ["invite"]],
+  ["بیرون کردن", ["kick"]],
+  ["مسدود کردن", ["ban"]],
+  ["تغییر نام، عکس و توضیحات", ["events.m.room.name", "events.m.room.avatar", "events.m.room.topic"]],
+];
+
+function Permissions({ room }: { room: Room }) {
+  useTick(client, STATE);
+  const [busy, act] = useAct();
+  const pl = levels(room), mine = levelOf(room, me());
+  const set = (keys: string[], l: number) =>
+    act(() => client.sendStateEvent(room.roomId, EventType.RoomPowerLevels, keys.reduce((c, k) => withLevel(c, k, l), levels(room)) as never, ""));
+  return (
+    <div className="form">
+      {(room.isSpaceRoom() ? SPACE_PERMS : PERMS).map(([label, keys]) => {
+        const cur = levelAt(pl, keys[0]);
+        // the server refuses changing a setting that's above my own level
+        const locked = keys.some((k) => levelAt(pl, k) > mine);
+        return (
+          <label key={label} className="select-row">{label}
+            <Select value={cur} disabled={busy || locked} options={levelOptions(WHO, mine, cur)} onChange={(l) => set(keys, l)} />
+          </label>
+        );
+      })}
     </div>
   );
 }
