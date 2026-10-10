@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
-import { ClientEvent, EventType, RelationType, RoomEvent, RoomStateEvent, type MatrixEvent, type Room } from "matrix-js-sdk";
-import { addToSpace, client, isDirect, removeFromSpace, seenBy, setRoomAvatar } from "../matrix.ts";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ClientEvent, EventType, RelationType, RoomEvent, RoomStateEvent, type HierarchyRoom, type MatrixEvent, type Room } from "matrix-js-sdk";
+import { addToSpace, client, isDirect, removeFromSpace, seenBy, setRoomAvatar, spaceChildren } from "../matrix.ts";
 import { matrixToLink, viaServers } from "../uri.ts";
-import { usePresence, useTick } from "../hooks.ts";
-import { JOIN_RULES, normalize, num, stamp } from "../logic.ts";
+import { usePresence, usePromise, useTick } from "../hooks.ts";
+import { JOIN_RULES, normalize, num, spaceRooms, stamp } from "../logic.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, errText, me, RoomAvatar, roomAvatarMxc, Sheet } from "./common.tsx";
 import { useSlider } from "./useSlider.ts";
 import { UserProfile } from "./Profile.tsx";
-import { ChatForm, UserPicker } from "./NewChat.tsx";
+import { ChatForm, joinOrKnock, UserPicker } from "./NewChat.tsx";
 import { isMuted, setMuted } from "../notify.ts";
 import { PhotoViewer, SharedMedia } from "./Media.tsx";
 import { BannedList, canManage, GroupSettings, KnockRequests, MemberRow } from "./Admin.tsx";
@@ -20,6 +20,7 @@ const JOIN_HINTS: Record<string, string> = {
   invite: "این گفتگو خصوصی است: با این پیوند فقط کسانی که دعوت شده‌اند می‌توانند بپیوندند.",
   knock: "با این پیوند می‌توان درخواست عضویت داد؛ مدیران آن را می‌پذیرند.",
   restricted: "فقط اعضای فضای مربوط می‌توانند با این پیوند بپیوندند.",
+  knock_restricted: "اعضای فضای مربوط با این پیوند می‌پیوندند؛ بقیه درخواست عضویت می‌دهند.",
 };
 
 type View = "main" | "invite" | "add" | "new-group" | "settings";
@@ -47,9 +48,17 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
   const topic: string = room.currentState.getStateEvents(EventType.RoomTopic, "")?.getContent().topic ?? "";
   const members = room.getMembers().filter((m) => m.membership === "join" || m.membership === "invite")
     .sort((a, b) => +(a.membership === "invite") - +(b.membership === "invite") || b.powerLevel - a.powerLevel || a.name.localeCompare(b.name));
-  const children = space
-    ? room.currentState.getStateEvents(EventType.SpaceChild).filter((e) => Array.isArray(e.getContent().via)).map((e) => e.getStateKey()!)
-    : [];
+  const children = space ? spaceChildren(room.roomId) : [];
+  // names, photos and sizes of the rooms I'm not in, from the server (only rooms it lets me preview are listed)
+  const hierarchy = usePromise(useMemo(() => (space ? client.getRoomHierarchy(room.roomId, 50, 1)
+    .then((r) => new Map(r.rooms.map((x) => [x.room_id, x])), () => new Map<string, HierarchyRoom>()) : null), [room.roomId, space, children.length]));
+  const join = (id: string) => {
+    const via: string[] | undefined = room.currentState.getStateEvents(EventType.SpaceChild, id)?.getContent().via;
+    act(async () => {
+      const r = await joinOrKnock(id, via);
+      if (r && !r.isSpaceRoom()) { onClose(); location.hash = r.roomId; }
+    });
+  };
   const title = space ? "اطلاعات فضا" : "اطلاعات گفتگو";
 
   if (view === "invite") return (
@@ -70,7 +79,9 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
   );
   if (view === "add") {
     const inSpace = new Set(children);
-    const candidates = client.getRooms().filter((r) => r.getMyMembership() === "join" && !r.isSpaceRoom() && !inSpace.has(r.roomId));
+    // a space that contains this one can't go inside it: that would be a loop
+    const candidates = client.getRooms().filter((r) => r.getMyMembership() === "join" && r.roomId !== room.roomId && !inSpace.has(r.roomId)
+      && !(r.isSpaceRoom() && spaceRooms(r.roomId, spaceChildren).has(room.roomId)));
     return (
       <Sheet title="افزودن گفتگو به فضا" onClose={() => setView("main")}>
         {candidates.length === 0 && <p className="muted">گفتگوی دیگری برای افزودن نیست</p>}
@@ -133,11 +144,17 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
             </div>
           )}
           {children.map((id) => {
-            const r = client.getRoom(id);
+            const r = client.getRoom(id), joined = r?.getMyMembership() === "join", h = hierarchy?.get(id);
+            const name = joined ? r.name : h?.name ?? h?.canonical_alias ?? r?.name ?? id;
+            const suggested = room.currentState.getStateEvents(EventType.SpaceChild, id)?.getContent().suggested;
             return (
               <div key={id} className="user-row">
-                {r ? <RoomAvatar room={r} size={42} /> : <Avatar name={id} id={id} size={42} />}
-                <span><b>{r?.name ?? id}</b>{!r && <small>عضو نیستید</small>}</span>
+                {joined ? <RoomAvatar room={r} size={42} /> : <Avatar mxc={h?.avatar_url} name={name} id={id} size={42} />}
+                <span>
+                  <b>{name}</b>
+                  <small>{[(r?.isSpaceRoom() || h?.room_type === "m.space") && "فضا", suggested && "پیشنهادی", !joined && (h ? `${num(h.num_joined_members)} عضو` : "عضو نیستید")].filter(Boolean).join(" · ")}</small>
+                </span>
+                {!joined && <button className="primary join-btn" disabled={busy} onClick={() => join(id)}>پیوستن</button>}
                 {can(EventType.SpaceChild) && (
                   <button className="icon-btn" disabled={busy} title="حذف از فضا" aria-label="حذف از فضا"
                     onClick={() => act(() => removeFromSpace(room.roomId, id))}><Icon name="close" size={18} /></button>

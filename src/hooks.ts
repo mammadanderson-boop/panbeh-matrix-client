@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ClientEvent, EventTimeline, EventType, M_POLL_START, RoomEvent, RoomMemberEvent, RoomStateEvent, UserEvent, type Room, type RoomMember, type MatrixEvent } from "matrix-js-sdk";
-import { client, getFolderOrder, getUploads, setFolderOrder, subscribeUploads } from "./matrix.ts";
+import { client, getFolderOrder, spaceChildren, getUploads, setFolderOrder, subscribeUploads } from "./matrix.ts";
 import { byListOrder, lastSeen, spaceRooms, type RoomInfo } from "./logic.ts";
 import { ARCHIVED, hasTag, isMarkedUnread, PINNED } from "./chats.ts";
 import { isMuted } from "./notify.ts";
@@ -114,14 +114,11 @@ export function useRooms() {
   const dmIds = new Set(Object.values(direct).flat());
 
   const spaces = all.filter((r) => r.isSpaceRoom() && r.getMyMembership() === "join");
-  const children = (id: string) =>
-    client.getRoom(id)?.currentState.getStateEvents(EventType.SpaceChild)
-      .filter((e) => Array.isArray(e.getContent().via)).map((e) => e.getStateKey()!) ?? [];
   const membership = new Map<string, string[]>();
   // top-level = not a child of another joined space
-  const nested = new Set(spaces.flatMap((s) => children(s.roomId)));
+  const nested = new Set(spaces.flatMap((s) => spaceChildren(s.roomId)));
   const topSpaces = spaces.filter((s) => !nested.has(s.roomId));
-  for (const s of topSpaces) for (const id of spaceRooms(s.roomId, children)) membership.set(id, [...(membership.get(id) ?? []), s.roomId]);
+  for (const s of topSpaces) for (const id of spaceRooms(s.roomId, spaceChildren)) membership.set(id, [...(membership.get(id) ?? []), s.roomId]);
 
   // space invites are listed like any invite; joined spaces become folders instead
   const rows: RoomRow[] = all.filter((r) => !r.isSpaceRoom() || r.getMyMembership() === "invite").map((room) => {

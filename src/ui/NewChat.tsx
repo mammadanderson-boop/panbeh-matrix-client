@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { EventType, type IPublicRoomsChunkRoom } from "matrix-js-sdk";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { EventType, type IPublicRoomsChunkRoom, type Room } from "matrix-js-sdk";
 import { addToSpace, client, createChat, openDM } from "../matrix.ts";
-import { aliasLocalpart, isUserId, num } from "../logic.ts";
+import { aliasLocalpart, isUserId, num, supportsRestricted } from "../logic.ts";
+import { usePromise } from "../hooks.ts";
 import { Icon, type IconName } from "../icons.tsx";
 import { Avatar, errText, me, Select, Sheet, toast } from "./common.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
@@ -118,6 +119,10 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
   const [alias, setAlias] = useState("");
   const [encrypted, setEncrypted] = useState(true);
   const [parent, setParent] = useState(space ?? "");
+  const [spaceJoin, setSpaceJoin] = useState(true);
+  // the room gets the server's default version, which must know the "restricted" join rule
+  const caps = usePromise(useMemo(() => client.getCapabilities().catch(() => undefined), []));
+  const canRestrict = !!parent && !isPublic && supportsRestricted(caps?.["m.room_versions"]?.default);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -138,7 +143,7 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
     try {
       const id = await createChat({
         kind, name: name.trim(), topic: topic.trim(), avatar, invite: invite.map((p) => p.userId),
-        encrypted, alias: isPublic ? alias.trim() : undefined,
+        encrypted, alias: isPublic ? alias.trim() : undefined, restrictTo: canRestrict && spaceJoin ? parent : undefined,
       });
       // the room exists now: a failure here mustn't look like the whole thing failed, or a retry makes a duplicate
       if (parent) await addToSpace(parent, id).catch(() => toast("ساخته شد، ولی به فضا افزوده نشد"));
@@ -178,6 +183,10 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
           <Select value={parent} options={[["", "هیچ‌کدام"], ...spaces.map((s): [string, string] => [s.roomId, s.name])]} onChange={setParent} />
         </label>
       )}
+      {canRestrict && (
+        <label className="switch-row"><span>اعضای فضا بدون دعوت بپیوندند<small>وگرنه فقط دعوت‌شده‌ها</small></span>
+          <input type="checkbox" role="switch" checked={spaceJoin} onChange={(e) => setSpaceJoin(e.target.checked)} /></label>
+      )}
 
       <h3>اعضا {invite.length > 0 && `(${num(invite.length)})`}</h3>
       {invite.length > 0 && (
@@ -210,6 +219,22 @@ function useObjectUrl(file: File | null) {
 
 // ---------- join by address / directory ----------
 
+/** Joins; a room that refuses (knock-only or invite-only) gets an offer to ask to be let in. Null = not joined, already told. */
+export async function joinOrKnock(idOrAlias: string, via?: string[]): Promise<Room | null> {
+  try {
+    return await client.joinRoom(idOrAlias, { viaServers: via });
+  } catch (e) {
+    if ((e as { errcode?: string })?.errcode !== "M_FORBIDDEN") alertDialog(errText(e));
+    else if (await confirmDialog("پیوستن به این گفتگو نیاز به تأیید مدیران دارد. درخواست عضویت فرستاده شود؟")) {
+      try {
+        await client.knockRoom(idOrAlias, { viaServers: via });
+        alertDialog("درخواست فرستاده شد. اگر پذیرفته شود، دعوت‌نامه برایتان می‌آید.");
+      } catch (e2) { alertDialog((e2 as { errcode?: string }).errcode === "M_FORBIDDEN" ? "این گفتگو درخواست عضویت نمی‌پذیرد" : errText(e2)); }
+    }
+    return null;
+  }
+}
+
 function JoinChat({ onDone }: { onDone: (roomId: string, space: boolean) => void }) {
   const [q, setQ] = useState("");
   const [rooms, setRooms] = useState<IPublicRoomsChunkRoom[] | null>(null);
@@ -227,16 +252,7 @@ function JoinChat({ onDone }: { onDone: (roomId: string, space: boolean) => void
 
   const join = (idOrAlias: string, space = false) => {
     setBusy(true);
-    client.joinRoom(idOrAlias).then((r) => onDone(r.roomId, space || r.isSpaceRoom()), async (e) => {
-      // knock-only (or invite-only) rooms refuse a join; asking to be let in is the only way
-      if (e?.errcode === "M_FORBIDDEN" && await confirmDialog("پیوستن به این گفتگو نیاز به تأیید مدیران دارد. درخواست عضویت فرستاده شود؟")) {
-        try {
-          await client.knockRoom(idOrAlias);
-          alertDialog("درخواست فرستاده شد. اگر پذیرفته شود، دعوت‌نامه برایتان می‌آید.");
-        } catch (e2) { alertDialog((e2 as { errcode?: string }).errcode === "M_FORBIDDEN" ? "این گفتگو درخواست عضویت نمی‌پذیرد" : errText(e2)); }
-      } else if (e?.errcode !== "M_FORBIDDEN") alertDialog(errText(e));
-      setBusy(false);
-    });
+    joinOrKnock(idOrAlias).then((r) => (r ? onDone(r.roomId, space || r.isSpaceRoom()) : setBusy(false)));
   };
   const joined = (id: string) => client.getRoom(id)?.getMyMembership() === "join";
   const address = /^[#!]\S+:\S+$/.test(q.trim());

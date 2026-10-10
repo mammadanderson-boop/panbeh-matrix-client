@@ -342,10 +342,16 @@ export function levelOptions(presets: [number, string][], mine: number, current:
   return o.sort((a, b) => a[0] - b[0]);
 }
 
-/** Knocking needs room version 7+; unknown or non-numeric (experimental) versions count as unsupported. */
-export const supportsKnock = (version: string | undefined) => /^\d+$/.test(version ?? "") && Number(version) >= 7;
+/** Room version features; unknown or non-numeric (experimental) versions count as unsupported. */
+const versionAtLeast = (version: string | undefined, n: number) => /^\d+$/.test(version ?? "") && Number(version) >= n;
+export const supportsKnock = (version: string | undefined) => versionAtLeast(version, 7);
+export const supportsRestricted = (version: string | undefined) => versionAtLeast(version, 8);
+export const supportsKnockRestricted = (version: string | undefined) => versionAtLeast(version, 10);
 
-export const JOIN_RULES: Record<string, string> = { public: "عمومی؛ هر کسی می‌تواند بپیوندد", invite: "خصوصی؛ فقط با دعوت", knock: "با درخواست عضویت", restricted: "اعضای فضا" };
+export const JOIN_RULES: Record<string, string> = {
+  public: "عمومی؛ هر کسی می‌تواند بپیوندد", invite: "خصوصی؛ فقط با دعوت", knock: "با درخواست عضویت",
+  restricted: "اعضای فضا", knock_restricted: "اعضای فضا، یا با درخواست عضویت",
+};
 export const HISTORY: Record<string, string> = { shared: "اعضا، از ابتدا", invited: "اعضا، از زمان دعوت", joined: "اعضا، از زمان پیوستن", world_readable: "همه، حتی بدون عضویت" };
 
 const ERRORS: Record<string, string> = {

@@ -559,12 +559,16 @@ export async function openDM(userId: string) {
 export type NewChat = {
   kind: "group" | "space"; name: string; topic?: string; avatar?: File | null;
   invite: string[]; encrypted: boolean; alias?: string;
+  /** a space whose members may join without an invite (join rule "restricted", room v8+) */
+  restrictTo?: string;
 };
 
 export async function createChat(o: NewChat) {
   const initial_state: ICreateRoomStateEvent[] = [];
   if (o.avatar) initial_state.push({ type: EventType.RoomAvatar, state_key: "", content: { url: await uploadAvatar(o.avatar) } });
   if (o.encrypted && o.kind === "group") initial_state.push(ENCRYPTION);
+  // initial_state wins over the preset's join rule
+  if (o.restrictTo) initial_state.push({ type: EventType.RoomJoinRules, state_key: "", content: { join_rule: "restricted", allow: [{ type: "m.room_membership", room_id: o.restrictTo }] } });
   const { room_id } = await client.createRoom({
     name: o.name,
     topic: o.topic || undefined,
@@ -597,11 +601,30 @@ export async function setMyAvatar(file: File) {
 export const setRoomAvatar = async (roomId: string, file: File) =>
   client.sendStateEvent(roomId, EventType.RoomAvatar, { url: await uploadAvatar(file) }, "");
 
-// a child without `via` counts as removed (see useRooms)
-export const addToSpace = (spaceId: string, roomId: string) =>
-  client.sendStateEvent(spaceId, EventType.SpaceChild, { via: [client.getDomain()!] }, roomId);
-export const removeFromSpace = (spaceId: string, roomId: string) =>
-  client.sendStateEvent(spaceId, EventType.SpaceChild, {}, roomId);
+/** A space's child room ids; a child without `via` counts as removed. */
+export const spaceChildren = (spaceId: string) =>
+  client.getRoom(spaceId)?.currentState.getStateEvents(EventType.SpaceChild)
+    .filter((e) => Array.isArray(e.getContent().via)).map((e) => e.getStateKey()!) ?? [];
+
+/** The room's own m.space.parent side of the link, best effort: lets other clients and "space members" join rules find
+ *  the space. An unknown room (just created, not synced yet) is tried anyway. */
+async function setParent(roomId: string, spaceId: string, content: object) {
+  const room = client.getRoom(roomId);
+  if (room && !room.currentState.maySendStateEvent(EventType.SpaceParent, client.getSafeUserId())) return;
+  await client.sendStateEvent(roomId, EventType.SpaceParent, content as never, spaceId).catch(() => {});
+}
+
+export async function addToSpace(spaceId: string, roomId: string) {
+  const via = [client.getDomain()!];
+  await client.sendStateEvent(spaceId, EventType.SpaceChild, { via }, roomId);
+  const others = client.getRoom(roomId)?.currentState.getStateEvents(EventType.SpaceParent).some((e) => e.getStateKey() !== spaceId && e.getContent().via);
+  await setParent(roomId, spaceId, { via, canonical: !others });
+}
+
+export async function removeFromSpace(spaceId: string, roomId: string) {
+  await client.sendStateEvent(spaceId, EventType.SpaceChild, {}, roomId);
+  if (client.getRoom(roomId)?.currentState.getStateEvents(EventType.SpaceParent, spaceId)?.getContent().via) await setParent(roomId, spaceId, {});
+}
 
 /** Who (besides me) has read up to `ev`, newest first.
  *  ponytail: ts is the user's *latest* receipt, which can be later than when they read this exact message;
