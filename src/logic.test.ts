@@ -167,7 +167,14 @@ test("unread divider goes after the last read message and splits its burst", () 
   assert.ok(!buildRows(msgs, T).some((r) => r.type === "unread"));
 });
 
-import { levelChanges, roleLabel, supportsKnock } from "./logic.ts";
+import { errorText, levelChanges, roleLabel, supportsKnock } from "./logic.ts";
+
+test("matrix error codes", () => {
+  assert.equal(errorText("M_LIMIT_EXCEEDED", { retry_after_ms: 2500 }), "درخواست‌ها زیاد بود؛ ۳ ثانیه‌ی دیگر دوباره امتحان کنید.");
+  assert.equal(errorText("M_FORBIDDEN"), "اجازه‌ی این کار را ندارید.");
+  assert.equal(errorText("M_SOMETHING_NEW"), undefined); // the server's own text is shown
+  assert.equal(errorText(undefined), undefined);
+});
 
 test("room admin helpers", () => {
   assert.deepEqual([100, 75, 50, 25, 0].map(roleLabel), ["مدیر", "ناظر", "ناظر", "سطح ۲۵", null]);
