@@ -167,7 +167,7 @@ test("unread divider goes after the last read message and splits its burst", () 
   assert.ok(!buildRows(msgs, T).some((r) => r.type === "unread"));
 });
 
-import { errorText, levelAt, levelChanges, levelOptions, roleLabel, supportsKnock, supportsKnockRestricted, supportsRestricted, withLevel } from "./logic.ts";
+import { errorText, levelAt, levelChanges, levelOptions, roleLabel, supportsKnock, supportsKnockRestricted, supportsRestricted, upgradeTarget, withLevel } from "./logic.ts";
 
 test("power level settings", () => {
   const pl = { kick: 100, events: { "m.room.name": 100, "m.room.message": 50 }, state_default: 75, users: { "@a": 100 } };
@@ -196,6 +196,9 @@ test("room admin helpers", () => {
   assert.deepEqual(["6", "7", "10", "org.example.v1", "", undefined].map(supportsKnock), [false, true, true, false, false, false]);
   assert.deepEqual(["7", "8", "9", "10", "12", "org.example.v1"].map(supportsRestricted), [false, true, true, true, true, false]);
   assert.deepEqual(["8", "9", "10", "11"].map(supportsKnockRestricted), [false, false, true, true]);
+  const rv = { default: "10", available: { "9": "stable", "10": "stable", "11": "stable", "org.example.x": "unstable" } };
+  assert.deepEqual(["9", "10", "11", "org.example.x", "org.gone"].map((v) => upgradeTarget(v, rv)), ["10", null, null, "10", "10"]);
+  assert.equal(upgradeTarget("1", undefined), null);
   assert.deepEqual(levelChanges({ users: { "@a": 100, "@b": 50 } }, { users: { "@a": 100, "@c": 50 }, users_default: 0 }),
     [{ id: "@b", from: 50, to: 0 }, { id: "@c", from: 0, to: 50 }]);
 });

@@ -1,10 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { EventTimeline, EventType, RoomEvent, RoomStateEvent, Visibility, type Room, type RoomMember } from "matrix-js-sdk";
-import { client, spaceChildren } from "../matrix.ts";
-import { useTick } from "../hooks.ts";
-import { aliasLocalpart, HISTORY, JOIN_RULES, levelAt, levelOptions, normalize, num, roleLabel, supportsKnock, supportsKnockRestricted, supportsRestricted, withLevel, type PowerLevels } from "../logic.ts";
+import { addToSpace, client, removeFromSpace, spaceChildren } from "../matrix.ts";
+import { usePromise, useTick } from "../hooks.ts";
+import { aliasLocalpart, HISTORY, JOIN_RULES, levelAt, levelOptions, normalize, num, roleLabel, stamp, supportsKnock, supportsKnockRestricted, supportsRestricted, upgradeTarget, withLevel, type PowerLevels } from "../logic.ts";
 import { Icon } from "../icons.tsx";
-import { Avatar, ContextMenu, errText, me, Select, Sheet } from "./common.tsx";
+import { Avatar, ContextMenu, copyText, errText, me, Select, Sheet, toast } from "./common.tsx";
 import { useLongPress } from "./useLongPress.ts";
 import { alertDialog, confirmDialog, promptDialog } from "./dialog.tsx";
 
@@ -363,6 +363,67 @@ function Address({ room }: { room: Room }) {
         <label className="switch-row"><span>در فهرست گفتگوهای عمومی<small>دیگران با جستجو پیدایش می‌کنند</small></span>
           <input type="checkbox" role="switch" checked={listed} disabled={busy}
             onChange={(e) => { const on = e.target.checked; act(() => client.setRoomDirectoryVisibility(room.roomId, on ? Visibility.Public : Visibility.Private), () => setListed(on)); }} /></label>
+      )}
+    </>
+  );
+}
+
+// ---------- technical details and room upgrades ----------
+
+/** Room ID, version, creator and creation date; an admin can upgrade an outdated version here. */
+export function RoomDetails({ room, onLeave }: { room: Room; onLeave: () => void }) {
+  useTick(client, STATE);
+  const [busy, act] = useAct();
+  const caps = usePromise(useMemo(() => client.getCapabilities().catch(() => undefined), []));
+  const rv = caps?.["m.room_versions"], v = room.getVersion();
+  const create = room.currentState.getStateEvents(EventType.RoomCreate, "");
+  const creators = [create?.getSender(), ...(create?.getContent().additional_creators ?? [])].filter(Boolean) as string[];
+  const enc = room.currentState.getStateEvents(EventType.RoomEncryption, "")?.getContent().algorithm;
+  const pred = room.findPredecessor(), old = pred && client.getRoom(pred.roomId)?.getMyMembership() === "join" ? pred.roomId : null;
+  const target = !room.isSpaceRoom() && !room.currentState.getStateEvents(EventType.RoomTombstone, "")
+    && room.currentState.maySendStateEvent(EventType.RoomTombstone, me()) ? upgradeTarget(v, rv) : null;
+
+  const upgrade = async () => {
+    if (!(await confirmDialog(`گروه به نسخه‌ی ${target} ارتقا می‌یابد: گروه تازه‌ای ساخته می‌شود و این یکی دیگر پیام نمی‌گیرد. اعضا با یک دکمه به گروه تازه می‌روند. ادامه می‌دهید؟`, { danger: true }))) return;
+    const { replacement_room: to } = await client.upgradeRoom(room.roomId, target!);
+    // best effort, one at a time so rate limits don't drop invites: a private room's members need one to follow
+    if (room.getJoinRule() !== "public") {
+      for (const m of room.getJoinedMembers()) if (m.userId !== me()) await client.invite(to, m.userId).catch(() => {});
+    }
+    // spaces I manage list the new room instead of the old one
+    for (const s of client.getRooms()) {
+      if (s.isSpaceRoom() && s.getMyMembership() === "join" && spaceChildren(s.roomId).includes(room.roomId) && s.currentState.maySendStateEvent(EventType.SpaceChild, me())) {
+        await addToSpace(s.roomId, to).then(() => removeFromSpace(s.roomId, room.roomId)).catch(() => {});
+      }
+    }
+    location.hash = to;
+    onLeave();
+  };
+
+  const name = (id: string) => room.getMember(id)?.name ?? id;
+  return (
+    <>
+      <div className="user-row">
+        <span><small>شناسه</small><b dir="ltr" className="wrap-id">{room.roomId}</b></span>
+        <button className="icon-btn" title="کپی" aria-label="کپی شناسه"
+          onClick={() => copyText(room.roomId).then(() => toast("کپی شد"), () => alertDialog("کپی نشد"))}><Icon name="copy" size={18} /></button>
+      </div>
+      <div className="user-row">
+        <span><small>نسخه</small><b dir="ltr">{v}{rv?.available[v] === "unstable" && <em> (ناپایدار)</em>}</b></span>
+      </div>
+      {creators.length > 0 && (
+        <div className="user-row"><span><small>سازنده</small><b>{creators.map(name).join("، ")}</b></span></div>
+      )}
+      {create && <div className="user-row"><span><small>تاریخ ساخت</small><b>{stamp(create.getTs())}</b></span></div>}
+      {!room.isSpaceRoom() && (
+        <div className="user-row"><span><small>رمزنگاری سرتاسری</small><b dir={enc ? "ltr" : undefined}>{enc ?? "خاموش"}</b></span></div>
+      )}
+      {old && <div className="row-actions"><button onClick={() => { location.hash = old; onLeave(); }}><Icon name="back" /> رفتن به گروه قبلی</button></div>}
+      {target && (
+        <>
+          <p className="muted">نسخه‌ی این گروه قدیمی یا آزمایشی است؛ نسخه‌ی پیش‌فرض سرور <bdi dir="ltr">{target}</bdi> است.</p>
+          <div className="row-actions"><button className="warn" disabled={busy} onClick={() => act(upgrade)}>ارتقای نسخه‌ی گروه</button></div>
+        </>
       )}
     </>
   );
