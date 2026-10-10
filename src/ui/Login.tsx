@@ -4,6 +4,9 @@ import { normalizeServer } from "../logic.ts";
 import { errText } from "./common.tsx";
 import { isDesktop } from "../desktop.ts";
 
+// only here does M_FORBIDDEN mean bad credentials; elsewhere it's a missing permission
+const loginErr = (e: unknown) => ((e as { errcode?: string })?.errcode === "M_FORBIDDEN" ? "نام کاربری یا رمز عبور اشتباه است." : errText(e));
+
 export function Login({ onDone, initialError, onCancel }: { onDone: () => void; initialError?: unknown; onCancel?: () => void }) {
   const [server, setServer] = useState(localStorage.getItem("panbeh.lastServer") ?? "");
   const [user, setUser] = useState("");
@@ -49,7 +52,7 @@ export function Login({ onDone, initialError, onCancel }: { onDone: () => void; 
       await login(server, user, password);
       onDone();
     } catch (err) {
-      setError(errText(err));
+      setError(loginErr(err));
       setBusy(false);
     }
   }

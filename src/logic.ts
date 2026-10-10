@@ -314,6 +314,28 @@ export const supportsKnock = (version: string | undefined) => /^\d+$/.test(versi
 export const JOIN_RULES: Record<string, string> = { public: "عمومی؛ هر کسی می‌تواند بپیوندد", invite: "خصوصی؛ فقط با دعوت", knock: "با درخواست عضویت", restricted: "اعضای فضا" };
 export const HISTORY: Record<string, string> = { shared: "اعضا، از ابتدا", invited: "اعضا، از زمان دعوت", joined: "اعضا، از زمان پیوستن", world_readable: "همه، حتی بدون عضویت" };
 
+const ERRORS: Record<string, string> = {
+  M_FORBIDDEN: "اجازه‌ی این کار را ندارید.",
+  M_ROOM_IN_USE: "این نشانی قبلاً گرفته شده است.",
+  M_EXCLUSIVE: "این نشانی برای سرویس دیگری (مثل پل ارتباطی) رزرو شده است.",
+  M_UNSUPPORTED_ROOM_VERSION: "سرور از این نسخه‌ی گفتگو پشتیبانی نمی‌کند.",
+  M_TOO_LARGE: "حجم آن برای سرور زیاد است.",
+  M_RESOURCE_LIMIT_EXCEEDED: "سرور به سقف منابع خود رسیده است؛ با مدیر سرور تماس بگیرید.",
+  M_NOT_FOUND: "پیدا نشد.",
+  M_UNKNOWN_TOKEN: "نشست شما منقضی شده است؛ دوباره وارد شوید.",
+  M_CANNOT_LEAVE_SERVER_NOTICE_ROOM: "نمی‌توان از گفتگوی اطلاعیه‌های سرور خارج شد.",
+  M_GUEST_ACCESS_FORBIDDEN: "مهمان‌ها به این گفتگو دسترسی ندارند.",
+};
+
+/** Persian text for a Matrix error code; undefined = show the server's own message. */
+export function errorText(errcode: string | undefined, data?: { retry_after_ms?: number }): string | undefined {
+  if (errcode === "M_LIMIT_EXCEEDED") {
+    const s = Math.ceil((data?.retry_after_ms ?? 0) / 1000);
+    return "درخواست‌ها زیاد بود" + (s > 0 ? `؛ ${num(s)} ثانیه‌ی دیگر دوباره امتحان کنید.` : "؛ کمی بعد دوباره امتحان کنید.");
+  }
+  return errcode ? ERRORS[errcode] : undefined;
+}
+
 type Levels = { users?: Record<string, number>; users_default?: number };
 /** Users whose power level differs between two m.room.power_levels contents (missing = users_default). */
 export function levelChanges(prev: Levels, next: Levels) {

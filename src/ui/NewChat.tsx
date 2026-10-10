@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { EventType, type IPublicRoomsChunkRoom } from "matrix-js-sdk";
-import { client, createChat, openDM } from "../matrix.ts";
+import { addToSpace, client, createChat, openDM } from "../matrix.ts";
 import { aliasLocalpart, isUserId, num } from "../logic.ts";
 import { Icon, type IconName } from "../icons.tsx";
-import { Avatar, errText, me, Select, Sheet } from "./common.tsx";
+import { Avatar, errText, me, Select, Sheet, toast } from "./common.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { useExit } from "./useDismiss.ts";
 
@@ -136,12 +136,15 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
     setBusy(true);
     setError("");
     try {
-      onDone(await createChat({
+      const id = await createChat({
         kind, name: name.trim(), topic: topic.trim(), avatar, invite: invite.map((p) => p.userId),
-        encrypted, alias: isPublic ? alias.trim() : undefined, parentSpace: parent || undefined,
-      }));
+        encrypted, alias: isPublic ? alias.trim() : undefined,
+      });
+      // the room exists now: a failure here mustn't look like the whole thing failed, or a retry makes a duplicate
+      if (parent) await addToSpace(parent, id).catch(() => toast("ساخته شد، ولی به فضا افزوده نشد"));
+      onDone(id);
     } catch (err) {
-      setError((err as { errcode?: string }).errcode === "M_ROOM_IN_USE" ? "این نشانی قبلاً گرفته شده است" : errText(err));
+      setError(errText(err));
       setBusy(false);
     }
   }

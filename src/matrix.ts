@@ -558,7 +558,7 @@ export async function openDM(userId: string) {
 
 export type NewChat = {
   kind: "group" | "space"; name: string; topic?: string; avatar?: File | null;
-  invite: string[]; encrypted: boolean; alias?: string; parentSpace?: string;
+  invite: string[]; encrypted: boolean; alias?: string;
 };
 
 export async function createChat(o: NewChat) {
@@ -576,7 +576,6 @@ export async function createChat(o: NewChat) {
     initial_state,
   });
   if (o.kind === "group") await allowCalls(room_id).catch(() => {});
-  if (o.parentSpace) await addToSpace(o.parentSpace, room_id);
   return room_id;
 }
 

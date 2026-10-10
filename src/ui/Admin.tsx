@@ -199,12 +199,7 @@ function Address({ room }: { room: Room }) {
   };
   const add = async () => {
     const a = `#${lp}:${client.getDomain()}`;
-    try {
-      await client.createAlias(a, room.roomId);
-    } catch (e) {
-      if ((e as { errcode?: string }).errcode === "M_ROOM_IN_USE") throw new Error("این نشانی قبلاً گرفته شده است");
-      throw e;
-    }
+    await client.createAlias(a, room.roomId);
     await setCanonical(a);
   };
   const remove = async () => {

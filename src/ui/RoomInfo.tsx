@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ClientEvent, EventType, RelationType, RoomEvent, RoomStateEvent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { addToSpace, client, isDirect, removeFromSpace, seenBy, setRoomAvatar } from "../matrix.ts";
 import { matrixToLink, viaServers } from "../uri.ts";
@@ -27,6 +27,7 @@ type View = "main" | "invite" | "add" | "new-group" | "settings";
 /** Chat/space info: profile, members, invite, space contents, leave. */
 export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void }) {
   useTick(client, [RoomStateEvent.Events, RoomStateEvent.Members, RoomEvent.Name, ClientEvent.Room, ClientEvent.AccountData]);
+  useEffect(() => { room.loadMembersIfNeeded().catch(() => {}); }, [room]); // spaces open here without Room.tsx loading them
   const [view, setView] = useState<View>("main");
   const [busy, setBusy] = useState(false);
   const [profile, setProfile] = useState<string | null>(null);

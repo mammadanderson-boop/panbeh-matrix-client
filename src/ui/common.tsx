@@ -5,7 +5,7 @@ import { PollStartEvent } from "matrix-js-sdk/lib/extensible_events_v1/PollStart
 import { avatarUrl, client, isDirect } from "../matrix.ts";
 import { usePromise } from "../hooks.ts";
 import { getCallNotificationExpiry, type IRTCNotificationContent } from "matrix-js-sdk/lib/matrixrtc/index.js";
-import { fmtDuration, HISTORY, isGif, isVideoOffer, JOIN_RULES, legacyOutcome, levelChanges, num, roleLabel, rtcOutcome, type CallEv, type CallOutcome } from "../logic.ts";
+import { errorText, fmtDuration, HISTORY, isGif, isVideoOffer, JOIN_RULES, legacyOutcome, levelChanges, num, roleLabel, rtcOutcome, type CallEv, type CallOutcome } from "../logic.ts";
 import { Icon } from "../icons.tsx";
 import { useDismiss } from "./useDismiss.ts";
 
@@ -81,8 +81,9 @@ export const bdi = (s: string) => "\u2068" + s + "\u2069";
 
 /** Farsi message for an SDK/fetch error. */
 export function errText(e: unknown): string {
-  const err = e as { errcode?: string; message?: string; name?: string };
-  if (err?.errcode === "M_FORBIDDEN") return "نام کاربری یا رمز عبور اشتباه است.";
+  const err = e as { errcode?: string; message?: string; name?: string; data?: { retry_after_ms?: number } };
+  const known = errorText(err?.errcode, err?.data);
+  if (known) return known;
   // getUserMedia (calls, voice messages)
   if (err?.name === "NotAllowedError") return "اجازه‌ی دسترسی به میکروفون یا دوربین داده نشد. آن را از تنظیمات مرورگر یا دستگاه باز کنید.";
   if (err?.name === "NotFoundError") return "میکروفون یا دوربینی پیدا نشد.";
@@ -133,9 +134,20 @@ export function noticeText(ev: MatrixEvent): string | null {
   const c = ev.getContent(), prev = ev.getPrevContent();
   switch (ev.getType()) {
     case EventType.RoomMessage: return c.msgtype === VERIFY_REQUEST ? `${who} درخواست تأیید هویت فرستاد` : null;
-    case EventType.RoomCreate: return `${who} گفتگو را ایجاد کرد`;
+    case EventType.RoomCreate:
+      return c.predecessor?.room_id ? "ادامه‌ی گروه قبلی؛ این گروه ارتقا یافته است" : `${who} ${c.type === "m.space" ? "فضا" : "گفتگو"} را ایجاد کرد`;
     case EventType.RoomName: return c.name ? `${who} نام گفتگو را به «${bdi(c.name)}» تغییر داد` : `${who} نام گفتگو را حذف کرد`;
-    case EventType.RoomTopic: return `${who} موضوع را تغییر داد`;
+    case EventType.RoomTopic: {
+      const t: string = c.topic ?? "";
+      return t ? `${who} توضیحات را به «${bdi(t.length > 80 ? t.slice(0, 80) + "…" : t)}» تغییر داد` : `${who} توضیحات را حذف کرد`;
+    }
+    case EventType.RoomAvatar: return c.url ? `${who} عکس گفتگو را تغییر داد` : `${who} عکس گفتگو را حذف کرد`;
+    case EventType.RoomCanonicalAlias:
+      if (c.alias === prev.alias) return null; // alt_aliases only
+      return c.alias ? `${who} نشانی را به ${bdi(c.alias)} تغییر داد` : `${who} نشانی ${bdi(prev.alias)} را حذف کرد`;
+    case EventType.RoomServerAcl: return `${who} دسترسی سرورها به این گفتگو را تغییر داد`;
+    case EventType.RoomGuestAccess:
+      return prev.guest_access && c.guest_access !== prev.guest_access ? (c.guest_access === "can_join" ? `${who} پیوستن مهمان‌ها را آزاد کرد` : `${who} پیوستن مهمان‌ها را بست`) : null;
     case EventType.RoomEncryption: return "پیام‌ها رمزنگاری سرتاسری شده‌اند";
     case EventType.RoomPinnedEvents: {
       const n = c.pinned?.length ?? 0, was = prev.pinned?.length ?? 0;
@@ -145,17 +157,20 @@ export function noticeText(ev: MatrixEvent): string | null {
       const target = bdi(c.displayname ?? ev.getStateKey() ?? "");
       const prevName = bdi(prev.displayname ?? c.displayname ?? ev.getStateKey() ?? "");
       if (c.membership === prev.membership) return null; // profile changes are noise
+      const reason = c.reason ? ` (دلیل: ${bdi(c.reason)})` : "";
       switch (c.membership) {
         case "join": return `${target} پیوست`;
         case "invite": return `${who} ${target} را دعوت کرد`;
         case "knock": return `${target} درخواست عضویت داد`;
         case "leave":
-          if (ev.getSender() === ev.getStateKey()) return prev.membership === "knock" ? `${prevName} درخواست عضویتش را پس گرفت` : `${prevName} خارج شد`;
+          if (ev.getSender() === ev.getStateKey()) {
+            return prev.membership === "knock" ? `${prevName} درخواست عضویتش را پس گرفت` : prev.membership === "invite" ? `${prevName} دعوت را نپذیرفت` : `${prevName} خارج شد`;
+          }
           return prev.membership === "ban" ? `${who} مسدودیت ${prevName} را برداشت`
             : prev.membership === "knock" ? `${who} درخواست عضویت ${prevName} را رد کرد`
             : prev.membership === "invite" ? `${who} دعوت ${prevName} را لغو کرد`
-            : `${who} ${prevName} را بیرون کرد`;
-        case "ban": return `${who} ${prevName} را مسدود کرد`;
+            : `${who} ${prevName} را بیرون کرد${reason}`;
+        case "ban": return `${who} ${prevName} را مسدود کرد${reason}`;
       }
       return null;
     }
@@ -163,7 +178,8 @@ export function noticeText(ev: MatrixEvent): string | null {
     case EventType.RoomPowerLevels: {
       if (!Object.keys(prev).length) return null; // room creation; v12 rooms start without `users` (creators are implicit)
       const [c1, ...more] = levelChanges(prev as never, c as never);
-      if (!c1) return null;
+      // servers send canonical (sorted-key) JSON, so equal content stringifies equally
+      if (!c1) return JSON.stringify(prev) === JSON.stringify(c) ? null : `${who} دسترسی‌های گروه را تغییر داد`;
       const name = bdi(client.getRoom(ev.getRoomId())?.getMember(c1.id)?.name ?? c1.id);
       return `${who} نقش ${name} را به «${roleLabel(c1.to) ?? "عضو"}» تغییر داد` + (more.length ? ` (و ${num(more.length)} نفر دیگر)` : "");
     }
