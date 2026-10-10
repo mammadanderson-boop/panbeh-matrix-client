@@ -79,8 +79,8 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
   );
   if (view === "add") {
     const inSpace = new Set(children);
-    // a space that contains this one can't go inside it: that would be a loop
-    const candidates = client.getRooms().filter((r) => r.getMyMembership() === "join" && r.roomId !== room.roomId && !inSpace.has(r.roomId)
+    // visible = minus rooms replaced by an upgrade; a space that contains this one can't go inside it: that would be a loop
+    const candidates = client.getVisibleRooms().filter((r) => r.getMyMembership() === "join" && r.roomId !== room.roomId && !inSpace.has(r.roomId)
       && !(r.isSpaceRoom() && spaceRooms(r.roomId, spaceChildren).has(room.roomId)));
     return (
       <Sheet title="افزودن گفتگو به فضا" onClose={() => setView("main")}>
@@ -95,7 +95,7 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
   }
 
   return (
-    <Sheet title={title} onClose={onClose}>
+    <Sheet key="main" title={title} onClose={onClose}>{/* key: a sub-view's Sheet sits in this same slot; reusing it would keep its "closing" state and leave the info stuck invisible */}
       <div className="info-head">
         {photo ? (
           <button className="avatar-view" onClick={() => setViewing(true)} title="نمایش عکس" aria-label="نمایش عکس"><RoomAvatar room={room} size={96} /></button>

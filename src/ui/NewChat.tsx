@@ -118,7 +118,10 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
   const [isPublic, setPublic] = useState(false);
   const [alias, setAlias] = useState("");
   const [encrypted, setEncrypted] = useState(true);
-  const [parent, setParent] = useState(space ?? "");
+  const spaces = client.getRooms().filter((r) => r.isSpaceRoom() && r.getMyMembership() === "join" &&
+    r.currentState.maySendStateEvent(EventType.SpaceChild, me()));
+  // the open folder only if I may add rooms to it: otherwise the picker hides it, yet it would still be used
+  const [parent, setParent] = useState(() => (spaces.some((s) => s.roomId === space) ? space! : ""));
   const [spaceJoin, setSpaceJoin] = useState(true);
   // the room gets the server's default version, which must know the "restricted" join rule
   const caps = usePromise(useMemo(() => client.getCapabilities().catch(() => undefined), []));
@@ -127,8 +130,6 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
   const [error, setError] = useState("");
 
   const preview = useObjectUrl(avatar);
-  const spaces = client.getRooms().filter((r) => r.isSpaceRoom() && r.getMyMembership() === "join" &&
-    r.currentState.maySendStateEvent(EventType.SpaceChild, me()));
 
   function togglePublic(on: boolean) {
     setPublic(on);
