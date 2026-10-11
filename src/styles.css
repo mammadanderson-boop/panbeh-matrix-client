@@ -390,11 +390,12 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
 .msg:hover .msg-actions, .msg-actions:focus-within { opacity: 1; pointer-events: auto; }
 .msg-actions > button { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; color: var(--muted); }
 .msg-actions > button:hover { background: var(--hover); color: var(--text); }
-.msg.failed .msg-actions { opacity: 1; pointer-events: auto; }
-@media (hover: none) {
-  .msg-actions { display: none; }
-  .msg.failed .msg-actions { display: flex; opacity: 1; pointer-events: auto; }
-}
+/* the bar takes room beside the bubble even while invisible: in a narrow chat it would squeeze photos and round videos.
+   There the right-click menu has the same actions. */
+.timeline { container-type: inline-size; }
+@media (hover: none) { .msg-actions { display: none; } }
+@container (max-width: 660px) { .msg-actions { display: none; } }
+.msg.failed .msg-actions { display: flex; opacity: 1; pointer-events: auto; }
 .tick.failed { color: #e53935; font-weight: 700; }
 .thread-link .badge { margin-inline-start: 4px; }
 .quick-react {
