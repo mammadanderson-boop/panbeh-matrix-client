@@ -657,12 +657,25 @@ public class PanbehPlugin extends Plugin {
     public void showNotification(PluginCall call) {
         String roomId = call.getString("roomId");
         if (roomId == null) { call.reject("roomId required"); return; }
-        if (!(MainActivity.visible && roomId.equals(call.getString("openRoom")))) {
-            String title = call.getString("title", ""), body = call.getString("body", "");
-            Long ts = call.getLong("ts");
-            Notifier.show(getContext(), roomId, title, call.getString("sender", ""), call.getString("text", body),
-                ts == null ? System.currentTimeMillis() : ts, call.getBoolean("group", false), call.getString("icon"), call.getBoolean("sound", true));
-        }
+        if (!(MainActivity.visible && roomId.equals(call.getString("openRoom")))) Notifier.show(getContext(), call.getData());
+        call.resolve();
+    }
+
+    /** A message was deleted: out of its chat's notification. */
+    @PluginMethod
+    public void unnotify(PluginCall call) {
+        String roomId = call.getString("roomId"), eventId = call.getString("eventId");
+        if (roomId != null && eventId != null) Notifier.remove(getContext(), roomId, eventId);
+        call.resolve();
+    }
+
+    /** Android's notification settings for the app: each channel's sound, vibration and lock-screen behaviour. */
+    @PluginMethod
+    public void openNotifySettings(PluginCall call) {
+        Intent i = Build.VERSION.SDK_INT >= 26
+            ? new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName())
+            : new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getContext().getPackageName()));
+        getActivity().startActivity(i);
         call.resolve();
     }
 

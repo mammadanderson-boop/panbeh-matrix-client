@@ -3,10 +3,12 @@ import { downloadPath, openDownload } from "./desktop.ts";
 import { loadPrefs } from "./ui/Settings.tsx";
 
 /** The Android app: our own WebView (Capacitor plugin) or the background service's headless one (JS interface). */
-/** body: the one-line form (older app builds); sender (in groups), text and ts make the conversation-style notification. */
-type Payload = { roomId: string; title: string; body: string; sender: string; text: string; ts: number; group: boolean; icon?: string; sound: boolean; openRoom?: string };
-/** Reply / mark-as-read pressed on a message notification. */
-export type NotifyAction = { action: "reply" | "read"; roomId: string; text?: string };
+/** body: the one-line form (older app builds); sender (in groups), text and ts make the conversation-style notification.
+ *  mention: to the mentions channel; hidden: mustn't name the chat (no conversation shortcut). */
+type Payload = { roomId: string; eventId?: string; title: string; body: string; sender: string; text: string; ts: number; group: boolean; icon?: string; senderIcon?: string;
+  sound: boolean; mention?: boolean; hidden?: boolean; openRoom?: string };
+/** Reply / mark-as-read / mute pressed on a message notification. */
+export type NotifyAction = { action: "reply" | "read" | "mute"; roomId: string; text?: string };
 /** interval: minutes between background checks, 0 = real-time. */
 type Status = { permission: "granted" | "denied" | "default"; service: boolean; batteryOptimized: boolean; fullScreen: boolean; interval: number };
 type CallPayload = { roomId: string; eventId: string; caller: string; video: boolean; timeout: number; icon?: string };
@@ -18,6 +20,8 @@ export type CallAction = { action: "answer" | "decline" | "open" | "hangup" | "h
 interface PanbehPlugin {
   showNotification(p: Payload): Promise<void>;
   cancel(p: { roomId: string }): Promise<void>;
+  unnotify(p: { roomId: string; eventId: string }): Promise<void>;
+  openNotifySettings(): Promise<void>;
   cancelAll(): Promise<void>;
   startService(p?: { interval?: number }): Promise<void>;
   syncState(p: { state: string }): Promise<void>;
@@ -53,7 +57,7 @@ interface PanbehPlugin {
   addListener(e: "share", f: (d: Shared) => void): Promise<PluginListenerHandle>;
   addListener(e: "audioRoutes", f: (d: Routes) => void): Promise<PluginListenerHandle>;
 }
-type Headless = { showNotification(json: string): void; cancel(roomId: string): void; stopService(): void; showCall(json: string): void; cancelCall(roomId: string): void; syncState(state: string): void };
+type Headless = { showNotification(json: string): void; cancel(roomId: string): void; unnotify?(roomId: string, eventId: string): void; stopService(): void; showCall(json: string): void; cancelCall(roomId: string): void; syncState(state: string): void };
 
 const headless = (window as unknown as { PanbehAndroid?: Headless }).PanbehAndroid;
 const plugin = registerPlugin<PanbehPlugin>("Panbeh");
@@ -71,6 +75,13 @@ export function nativeCancel(roomId: string) {
   if (headless) headless.cancel(roomId);
   else plugin.cancel({ roomId }).catch(() => {});
 }
+/** A deleted message: out of its chat's notification. */
+export function nativeUnnotify(roomId: string, eventId: string) {
+  if (headless) headless.unnotify?.(roomId, eventId); // optional: an older service build doesn't have it
+  else plugin.unnotify({ roomId, eventId }).catch(() => {});
+}
+/** Android's notification settings for the app (each channel's sound and vibration). */
+export const openNotifySettings = () => plugin.openNotifySettings();
 export const nativeCancelAll = () => { if (!headless) plugin.cancelAll().catch(() => {}); };
 export const nativeStatus = () => plugin.status();
 export const requestNotifyPermission = () => plugin.requestNotifyPermission().then((r) => r.permission);
