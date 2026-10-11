@@ -1,11 +1,11 @@
 import { ClientEvent, createClient, Direction, EventTimeline, EventType, Filter, SearchOrderBy, HttpApiEvent, IndexedDBStore, MatrixEvent, Method, OAuth2, Preset, SetPresence, SyncState, Visibility, type ICreateRoomStateEvent, type MatrixClient, type MatrixError, type Room } from "matrix-js-sdk";
 import { decodeRecoveryKey, deriveRecoveryKeyFromPassphrase } from "matrix-js-sdk/lib/crypto-api/index.js";
 import { decryptAttachment, encryptAttachment, type IEncryptedFile } from "matrix-encrypt-attachment";
-import { endpointOf, fitSize, hasGif, isGif, normalizeServer, roomName, withGif, withoutGif, type Gif } from "./logic.ts";
+import { blurhashEncode, endpointOf, fitSize, hasGif, isGif, normalizeServer, roomName, withGif, withoutGif, type Gif } from "./logic.ts";
 import { isHeadless, isNative, nativeCancelAll, nativeLog, nativeSyncState, onKick, setBackgroundService } from "./native.ts";
 import { isDesktop, isWindowVisible, onWindowVisibility, openExternal } from "./desktop.ts";
 import { confirmDialog } from "./ui/dialog.tsx";
-import { cacheClear, cacheGet, cachePut } from "./mediaCache.ts";
+import { CACHE_MAX_FILE, cacheClear, cacheGet, cacheHas, cachePut } from "./mediaCache.ts";
 
 type Session = { baseUrl: string; userId: string; deviceId: string; accessToken: string; refreshToken?: string; oauthClientId?: string; legacy?: boolean };
 // several accounts, one running client at a time; switching reloads the page so every cache starts clean
@@ -356,20 +356,11 @@ async function fetchProgress(url: URL, onProgress: (loaded: number, total: numbe
 /** Blob URL for an mxc (authenticated media, decrypting if needed). Cached for the session.
  *  `onProgress` reports bytes for the download this call starts (not for one already cached or running); `signal` cancels it. */
 export function mediaUrl(c: FileContent, thumb?: { w: number; h: number }, onProgress?: (loaded: number, total: number) => void, signal?: AbortSignal): Promise<string> | null {
-  const mxc = c.file?.url ?? c.url;
-  if (!mxc) return null;
-  const cacheKey = mxc + (thumb && !c.file ? `@${thumb.w}` : "");
+  const cacheKey = mediaKey(c, thumb);
+  if (!cacheKey) return null;
   let p = mediaCache.get(cacheKey);
   if (!p) {
-    // encrypted media can't be thumbnailed server-side; any resize arg switches the SDK to /thumbnail
-    const t = thumb && !c.file ? thumb : undefined;
-    const http = new URL(client.mxcUrlToHttp(mxc, t?.w, t?.h, t && "scale", false, true, true)!);
-    // through the SDK, not fetch: OAuth access tokens expire every few minutes and it refreshes them
-    const viaSdk = () => client.http.authedRequest<Blob>(Method.Get, http.pathname, Object.fromEntries(http.searchParams), undefined,
-      { baseUrl: http.origin, prefix: "", rawResponseBody: true }).then((b) => b.arrayBuffer());
-    const download = () => (onProgress ? fetchProgress(http, onProgress, (c.info as { size?: number } | undefined)?.size, signal).then((b) => b ?? viaSdk()) : viaSdk())
-      .then((buf) => { cachePut(cacheKey, buf); return buf; });
-    p = cacheGet(cacheKey).then((hit) => hit ?? download())
+    p = mediaBytes(c, thumb, onProgress, signal)
       // typed so <audio>/<video> don't have to sniff; thumbnails may be another image type, so leave those untyped
       .then(async (buf) => URL.createObjectURL(new Blob([c.file ? await decryptAttachment(buf, c.file) : buf],
         { type: thumb ? "" : c.info?.mimetype ?? c.file?.mimetype ?? "" })));
@@ -377,6 +368,47 @@ export function mediaUrl(c: FileContent, thumb?: { w: number; h: number }, onPro
     mediaCache.set(cacheKey, p);
   }
   return p;
+}
+
+/** Downloads running now, by cache key: a prefetch and an open of the same file share one. */
+const fetching = new Map<string, Promise<ArrayBuffer>>();
+
+/** An mxc's bytes as stored (still encrypted): from the media cache, else downloaded and kept there. */
+function mediaBytes(c: FileContent, thumb?: { w: number; h: number }, onProgress?: (loaded: number, total: number) => void, signal?: AbortSignal) {
+  const key = mediaKey(c, thumb)!;
+  let p = fetching.get(key);
+  if (!p) {
+    const mxc = (c.file?.url ?? c.url)!;
+    // encrypted media can't be thumbnailed server-side; any resize arg switches the SDK to /thumbnail
+    const t = thumb && !c.file ? thumb : undefined;
+    const http = new URL(client.mxcUrlToHttp(mxc, t?.w, t?.h, t && "scale", false, true, true)!);
+    // through the SDK, not fetch: OAuth access tokens expire every few minutes and it refreshes them
+    const viaSdk = () => client.http.authedRequest<Blob>(Method.Get, http.pathname, Object.fromEntries(http.searchParams), undefined,
+      { baseUrl: http.origin, prefix: "", rawResponseBody: true }).then((b) => b.arrayBuffer());
+    const download = () => (onProgress ? fetchProgress(http, onProgress, (c.info as { size?: number } | undefined)?.size, signal).then((b) => b ?? viaSdk()) : viaSdk())
+      .then((buf) => { cachePut(key, buf); return buf; });
+    p = cacheGet(key).then((hit) => hit ?? download()).finally(() => fetching.delete(key));
+    fetching.set(key, p);
+  }
+  return p;
+}
+
+/** Auto-download of videos, files and voice: into the media cache only (no blob kept in memory), so opening needs no network. */
+export function prefetch(c: FileContent) {
+  const key = mediaKey(c), size = (c.info as { size?: number } | undefined)?.size ?? 0;
+  if (!key || size > CACHE_MAX_FILE || mediaCache.has(key) || fetching.has(key)) return;
+  void cacheHas(key).then((y) => { if (!y) return mediaBytes(c); }).catch(() => {});
+}
+
+const mediaKey = (c: FileContent, thumb?: { w: number; h: number }) => {
+  const mxc = c.file?.url ?? c.url;
+  return mxc && mxc + (thumb && !c.file ? `@${thumb.w}` : "");
+};
+
+/** Whether mediaUrl() with these arguments would need no download: loaded this session or kept in the media cache. */
+export async function isCached(c: FileContent, thumb?: { w: number; h: number }) {
+  const k = mediaKey(c, thumb);
+  return !!k && (mediaCache.has(k) || await cacheHas(k));
 }
 
 type SendOpts = { onProgress?: (loaded: number, total: number) => void; abort?: AbortController; caption?: string; onUploaded?: () => void; asFile?: boolean };
@@ -389,7 +421,7 @@ export async function sendFile(room: Room, file: File, threadId: string | null, 
   if (!asFile && !extra) file = await compressImage(file);
   const info: Record<string, unknown> = { mimetype: file.type, size: file.size };
   const msgtype = asFile ? "m.file" : file.type.startsWith("image/") ? "m.image" : file.type.startsWith("video/") ? "m.video" : "m.file";
-  if (msgtype === "m.image") Object.assign(info, await imageSize(file));
+  if (msgtype === "m.image") Object.assign(info, await imageInfo(file));
   // encrypted rooms: the file goes up encrypted and the event carries its key (`file`); otherwise a plain `url`
   const put = async (data: Blob, type: string, o: typeof up) => {
     if (!encrypted) return { url: (await client.uploadContent(data, { type, ...o })).content_uri };
@@ -485,7 +517,7 @@ async function compressImage(file: File): Promise<File> {
 }
 
 /** Size, duration (ms) and a first-frame JPEG of a video; whatever the browser could decode, possibly nothing. */
-function videoInfo(file: File): Promise<{ w?: number; h?: number; duration?: number; thumb?: { blob: Blob; w: number; h: number } }> {
+function videoInfo(file: File): Promise<{ w?: number; h?: number; duration?: number; [BLURHASH]?: string; thumb?: { blob: Blob; w: number; h: number } }> {
   const url = URL.createObjectURL(file);
   const v = Object.assign(document.createElement("video"), { muted: true, playsInline: true, preload: "auto", src: url });
   return new Promise((resolve) => {
@@ -495,20 +527,30 @@ function videoInfo(file: File): Promise<{ w?: number; h?: number; duration?: num
     v.onerror = done;
     v.onloadedmetadata = () => {
       if (!v.videoWidth) return done(); // audio only
-      r = { w: v.videoWidth, h: v.videoHeight, ...(Number.isFinite(v.duration) && { duration: Math.round(v.duration * 1000) }) };
+      r = { w: v.videoWidth, h: v.videoHeight, ...(Number.isFinite(v.duration) && { duration: Math.round(v.duration * 1000) }) } as typeof r;
       v.currentTime = Number.isFinite(v.duration) ? Math.min(0.1, v.duration / 2) : 0.1; // frame 0 is often black
     };
     v.onseeked = () => {
       const { w, h } = fitSize(v.videoWidth, v.videoHeight, 800);
       const canvas = Object.assign(document.createElement("canvas"), { width: w, height: h });
       canvas.getContext("2d")!.drawImage(v, 0, 0, w, h);
+      r[BLURHASH] = blurhashOf(canvas, w, h);
       canvas.toBlob((blob) => { if (blob) r.thumb = { blob, w, h }; done(); }, "image/jpeg", 0.8);
     };
   });
 }
 
-const imageSize = (file: File) =>
-  createImageBitmap(file).then((b) => ({ w: b.width, h: b.height }), () => ({}));
+/** MSC2448: a blurred stand-in other clients (Element) and ours show before the media is downloaded. */
+export const BLURHASH = "xyz.amorgan.blurhash";
+function blurhashOf(src: CanvasImageSource, w: number, h: number) {
+  const s = fitSize(w, h, 32), c = Object.assign(document.createElement("canvas"), { width: s.w, height: s.h });
+  const ctx = c.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(src, 0, 0, s.w, s.h);
+  return blurhashEncode(ctx.getImageData(0, 0, s.w, s.h).data, s.w, s.h);
+}
+
+const imageInfo = (file: File) =>
+  createImageBitmap(file).then((b) => ({ w: b.width, h: b.height, [BLURHASH]: blurhashOf(b, b.width, b.height) }), () => ({}));
 
 export const avatarUrl = (mxc: string | null | undefined, size = 96) =>
   mxc ? mediaUrl({ url: mxc }, { w: size, h: size }) : null;

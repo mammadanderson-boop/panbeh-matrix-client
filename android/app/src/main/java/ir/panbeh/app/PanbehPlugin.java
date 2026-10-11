@@ -13,6 +13,7 @@ import android.database.Cursor;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
+import android.net.ConnectivityManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -201,6 +202,13 @@ public class PanbehPlugin extends Plugin {
     @PluginMethod
     public void biometricAvailable(PluginCall call) {
         call.resolve(new JSObject().put("available", BiometricManager.from(getContext()).canAuthenticate(BIO) == BiometricManager.BIOMETRIC_SUCCESS));
+    }
+
+    /** Mobile data or a metered Wi‑Fi: the page's media auto-download rules for that network apply. */
+    @PluginMethod
+    public void metered(PluginCall call) {
+        ConnectivityManager cm = getContext().getSystemService(ConnectivityManager.class);
+        call.resolve(new JSObject().put("metered", cm != null && cm.isActiveNetworkMetered()));
     }
 
     /** Shows the system prompt; resolves { ok } — false when cancelled, failed out, or "use PIN" was pressed. */

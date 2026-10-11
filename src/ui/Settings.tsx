@@ -11,7 +11,7 @@ import { dropIndex, indexLoaded } from "../searchIndex.ts";
 import { LockSettings } from "./Lock.tsx";
 import { lockConf } from "../lock.ts";
 import { useSlider } from "./useSlider.ts";
-import { num, stamp } from "../logic.ts";
+import { mergeAutoDl, num, stamp, type AutoDl, type DlKind } from "../logic.ts";
 import { decryptKeyFile, encryptKeyFile } from "../keyfile.ts";
 import { showVerification } from "./Verify.tsx";
 import { appVersion, canUpdate, checkUpdate, downloadUpdate, getAutostart, getAutoUpdate, installUpdate, isDesktop, setAutostart, setAutoUpdate, useUpdate, type Update } from "../desktop.ts";
@@ -23,7 +23,7 @@ import { matrixToLink } from "../uri.ts";
 type Prefs = { theme: "system" | "light" | "dark"; accent: string; wallpaper: string; notify: boolean; notifyDMs: boolean; notifyGroups: boolean; notifyPreview: "all" | "name" | "none"; previews: boolean; shareLastSeen: boolean; searchIndex: boolean; dev: boolean; legacyCalls: boolean; enterSends: boolean; askSave: boolean;
   camQuality: "360" | "540" | "720" | "1080"; screenQuality: "720" | "1080" | "1080hi"; audioQuality: "low" | "normal" | "high";
   lowData: "off" | "auto" | "on";
-  cacheMB: number }; // media kept on the device (mediaCache.ts reads it from localStorage too) // calls: everyone's video at its lowest layer (auto = while our connection is poor)
+  cacheMB: number; autoDl: AutoDl }; // media kept on the device (mediaCache.ts reads it from localStorage too) // calls: everyone's video at its lowest layer (auto = while our connection is poor)
 const ACCENTS = ["#3390ec", "#8774e1", "#40a7a0", "#e5864a", "#e0578b", "#4fae4e"];
 const WALLPAPERS = { doodle: "طرح‌دار", gradient: "گرادیان", plain: "ساده" };
 const THEMES = { system: "سیستم", light: "روشن", dark: "تیره" };
@@ -34,7 +34,8 @@ const CACHE_MB: [number, string][] = [[250, "۲۵۰ مگابایت"], [500, "۵�
 const LOW_DATA: [Prefs["lowData"], string][] = [["off", "خاموش"], ["auto", "خودکار، با اتصال ضعیف"], ["on", "همیشه"]];
 
 // the Android app defaults to notifying: it asks for permission on first start. The desktop app needs no permission.
-export const loadPrefs = (): Prefs => ({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, notifyPreview: "all", previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
+export const loadPrefs = (): Prefs => withAutoDl({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, notifyPreview: "all", previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
+const withAutoDl = (p: Prefs): Prefs => ({ ...p, autoDl: mergeAutoDl(p.autoDl) }); // nested: kinds added later get their defaults
 
 /** Enter (or Ctrl/⌘+Enter when Enter is set to a new line) sends. */
 export const isSendKey = (e: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; nativeEvent: { isComposing: boolean } }) =>
@@ -58,7 +59,7 @@ export function applyPrefs(p = loadPrefs()) {
   if (isNative) SystemBars.setStyle({ style: { system: SystemBarsStyle.Default, light: SystemBarsStyle.Light, dark: SystemBarsStyle.Dark }[p.theme] }).catch(() => {});
 }
 
-type View = "main" | "devices" | "password" | "keys" | "blocked" | "deactivate" | "link" | "lock";
+type View = "main" | "devices" | "password" | "keys" | "blocked" | "deactivate" | "link" | "lock" | "autodl";
 const ACCOUNT: [View, IconName, string, string][] = [
   ["link", "link", "پیوند و کد QR من", "تا دیگران با یک اسکن به شما پیام بدهند"],
   ["password", "lock", "تغییر رمز عبور", ""],
@@ -81,6 +82,7 @@ export function Settings({ onClose, onSecurityChange }: { onClose: () => void; o
   const back = () => setView("main");
   if (view === "lock") return <LockSettings onClose={back} />;
   if (view === "link") return <LinkSheet title="پیوند من" link={matrixToLink(me())} onClose={back} />;
+  if (view === "autodl") return <Sheet title="دانلود خودکار رسانه" onClose={back}><AutoDownload prefs={prefs} set={set} /></Sheet>;
   if (view === "devices") return <Sheet title="دستگاه‌ها" onClose={back}><Devices /></Sheet>;
   if (view === "password") return <Sheet title="تغییر رمز عبور" onClose={back}>{isOAuth() ? <AccountPage action="org.matrix.profile" /> : <ChangePassword />}</Sheet>;
   if (view === "keys") return <Sheet title="کلیدهای رمزنگاری" onClose={back}><Keys /></Sheet>;
@@ -152,6 +154,9 @@ export function Settings({ onClose, onSecurityChange }: { onClose: () => void; o
       <p className="muted">کیفیت بالاتر اینترنت بیشتری مصرف می‌کند. تغییر از تماس یا ضبط بعدی اعمال می‌شود. تصویر کم‌مصرف، ویدیوی همه را با کمترین کیفیت می‌گیرد و می‌فرستد.</p>
 
       <h3>حافظه</h3>
+      <button className="user-row" onClick={() => setView("autodl")}>
+        <span className="device-box"><Icon name="download" /></span><span><b>دانلود خودکار رسانه</b><small>جدا برای داده‌ی همراه و وای‌فای</small></span>
+      </button>
       <Storage prefs={prefs} set={set} />
 
       {isDesktop && <DesktopApp />}
@@ -298,6 +303,39 @@ function Storage({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) => voi
         <span><b>پاک کردن حافظه</b><small>{used === undefined ? "…" : `${formatSize(used)} استفاده شده`}</small></span>
       </button>
       <p className="muted">عکس‌ها، ویدیوها و فایل‌هایی که باز کرده‌اید روی دستگاه می‌مانند تا دوباره دانلود نشوند. وقتی پر شود، قدیمی‌ترین‌ها پاک می‌شوند.</p>
+    </>
+  );
+}
+
+const DL_KINDS: [DlKind, string][] = [["photos", "عکس‌ها"], ["videos", "ویدیوها"], ["files", "فایل‌ها"], ["gifs", "گیف‌ها"], ["voice", "پیام‌های صوتی و ویدیویی"]];
+const DL_MB: [number, string][] = [[1, "تا ۱ مگابایت"], [5, "تا ۵ مگابایت"], [10, "تا ۱۰ مگابایت"], [50, "تا ۵۰ مگابایت"], [100, "تا ۱۰۰ مگابایت"], [0, "بدون محدودیت"]];
+const DL_NETS: [keyof AutoDl, string][] = [["mobile", "با داده‌ی همراه"], ["wifi", "با وای‌فای"]];
+
+/** What downloads by itself, per network, kind of media and kind of chat; the rest waits for a tap. */
+function AutoDownload({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) => void }) {
+  const put = (net: keyof AutoDl, kind: DlKind, patch: object) =>
+    set({ autoDl: { ...prefs.autoDl, [net]: { ...prefs.autoDl[net], [kind]: { ...prefs.autoDl[net][kind], ...patch } } } });
+  return (
+    <>
+      {DL_NETS.map(([net, title]) => (
+        <section key={net}>
+          <h3>{title}</h3>
+          {DL_KINDS.map(([kind, label]) => {
+            const r = prefs.autoDl[net][kind];
+            return (
+              <div key={kind} className="dl-row">
+                <b>{label}</b>
+                {"maxMB" in r && (r.dm || r.group) && <Select value={r.maxMB} options={DL_MB} onChange={(v) => put(net, kind, { maxMB: v })} />}
+                <div className="dl-chips">
+                  <button className={r.dm ? "on" : ""} aria-pressed={r.dm} onClick={() => put(net, kind, { dm: !r.dm })}>گفتگوهای شخصی</button>
+                  <button className={r.group ? "on" : ""} aria-pressed={r.group} onClick={() => put(net, kind, { group: !r.group })}>گروه‌ها</button>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      ))}
+      <p className="muted">بقیه با یک ضربه دانلود می‌شوند. {isNative ? "وای‌فای‌هایی که اندروید پرمصرف می‌داند، مثل اینترنت گوشی، داده‌ی همراه حساب می‌شوند." : "روی رایانه، اتصال وای‌فای حساب می‌شود."}</p>
     </>
   );
 }
