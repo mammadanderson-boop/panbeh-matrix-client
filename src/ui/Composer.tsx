@@ -1,16 +1,18 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ContentHelpers, LocationAssetType, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
-import { client, GIF_INFO, startUpload } from "../matrix.ts";
+import { client, GIF_INFO, scheduleMessage, startUpload } from "../matrix.ts";
 import { Icon } from "../icons.tsx";
-import { Avatar, bdi, errText, formatSize, me, previewText, senderName, stripReplyFallback } from "./common.tsx";
-import { escRe, formatMessage, normalize, num, osmUrl, type Gif } from "../logic.ts";
+import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
+import { escRe, formatMessage, normalize, num, osmUrl, scheduleLabel, type Gif } from "../logic.ts";
 import { isMessage } from "../hooks.ts";
-import { VoiceRecorder } from "./Voice.tsx";
+import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
 import { EmojiPanel } from "./Emoji.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
-import { isSendKey } from "./Settings.tsx";
+import { isSendKey, loadPrefs } from "./Settings.tsx";
 import { reducedMotion, useExit } from "./useDismiss.ts";
+import { useLongPress } from "./useLongPress.ts";
+import { SchedulePicker, ScheduledList, useScheduled } from "./Scheduled.tsx";
 
 export type Mode = { kind: "reply" | "edit"; ev: MatrixEvent } | null;
 const MEDIA = ["m.image", "m.video", "m.file"];
@@ -43,6 +45,8 @@ export function takeShared(roomId: string) {
   return f;
 }
 
+const LOCK_AT = 60, CANCEL_AT = 100; // px the held finger slides up to lock, sideways to cancel
+
 type Props = { room: Room; threadId: string | null; mode: Mode; setMode: (m: Mode) => void; files: File[]; setFiles: (f: (x: File[]) => File[]) => void };
 type Mention = { name: string; id: string };
 type Suggestion = Mention & { mxc?: string | null };
@@ -54,13 +58,23 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const [menu, setMenu] = useState(false);
   const [menuShown, menuClosing] = useExit(menu);
   const [pollForm, setPollForm] = useState(false);
-  const [recording, setRecording] = useState(false);
+  // recording a voice or video message: held while the finger is down (slide up locks, slide toward the text cancels)
+  const [rec, setRec] = useState<{ kind: "voice" | "video"; locked: boolean; dx: number } | null>(null);
+  const recording = !!rec;
+  const recControl = useRef<RecControl | null>(null);
+  const [recordMode, setRecordMode] = useState(() => loadPrefs().recordMode);
   const [locating, setLocating] = useState(false);
   const [emoji, setEmoji] = useState(false);
   const [emojiShown, emojiClosing] = useExit(emoji && !recording);
   const [caret, setCaret] = useState(0);
   const [sel, setSel] = useState(0);
   const [closedAt, setClosedAt] = useState(-1); // Esc hides the mention list for this "@"
+  const sched = useScheduled(room);
+  const canSched = sched.ok && !threadId; // a thread reply needs the thread's latest event, unknown until it goes out
+  const [sendMenu, setSendMenu] = useState<{ x: number; y: number } | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [schedList, setSchedList] = useState(false);
+  const sendPress = useLongPress(canSched ? (x, y) => { if (text.trim() && mode?.kind !== "edit") setSendMenu({ x, y }); } : undefined);
   const ta = useRef<HTMLTextAreaElement>(null);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { // the composer floats over the timeline; tell it how much room to leave at the bottom
@@ -178,21 +192,51 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
           "m.relates_to": { rel_type: "m.replace", event_id: mode.ev.getId()! },
         } as never);
       }
-    } else {
-      const content: Record<string, unknown> = { msgtype: MsgType.Text, ...compose(body) };
-      if (mode?.kind === "reply") content["m.relates_to"] = { "m.in_reply_to": { event_id: mode.ev.getId() } };
-      client.sendMessage(room.roomId, threadId, content as never);
-    }
+    } else client.sendMessage(room.roomId, threadId, newContent(body) as never);
     mentions.current = [];
     setMode(null);
   }
 
-  function sendFiles(list: File[], caption: string, asFile: boolean, asGif: boolean) {
+  /** A new text message (not an edit): mentions, formatting, the reply. */
+  function newContent(body: string) {
+    const content: Record<string, unknown> = { msgtype: MsgType.Text, ...compose(body) };
+    if (mode?.kind === "reply") content["m.relates_to"] = { "m.in_reply_to": { event_id: mode.ev.getId() } };
+    return content;
+  }
+
+  /** The text, held by the server until `sendAt` (main timeline only: a thread reply needs the thread's latest event). */
+  function schedule(sendAt: number) {
+    const body = text.trim();
+    if (!body) return;
+    const content = newContent(body);
+    setText("");
+    typing(false);
+    mentions.current = [];
+    setMode(null);
+    scheduleMessage(room, content, sendAt).then(() => toast(`برای ${scheduleLabel(sendAt)} زمان‌بندی شد`), (e) => {
+      alertDialog(errText(e));
+      setText((t) => t || body); // not lost, unless they've started another
+    });
+  }
+
+  function sendFiles(list: File[], caption: string, asFile: boolean, asGif: boolean, sendAt?: number) {
     const replyTo = mode?.kind === "reply" ? mode.ev : undefined;
     setMode(null);
     setFiles(() => []);
-    const extra = (f: File) => (asGif && !asFile && f.type.startsWith("video/") ? { info: GIF_INFO } : undefined);
-    list.forEach((f, i) => startUpload(room, f, threadId, i ? undefined : replyTo, extra(f), i ? undefined : caption, asFile));
+    const gif = (f: File) => asGif && !asFile && f.type.startsWith("video/");
+    const media = list.filter((f) => !asFile && /^(image|video)\//.test(f.type) && f.type !== "image/gif" && !gif(f));
+    // photos and videos go as albums of up to 10 (Telegram's limit), each tagged so Panbeh shows them as one grid.
+    // The reply goes on the first, the caption on the last of the first album: other clients show it after the photos.
+    const albums = media.length > 1 ? Array.from({ length: Math.ceil(media.length / 10) }, (_, k) => media.slice(k * 10, k * 10 + 10)) : [];
+    const firstAlbum = albums[0];
+    for (const a of albums) {
+      const id = crypto.randomUUID();
+      a.forEach((f, i) => startUpload(room, f, threadId, a === firstAlbum && !i ? replyTo : undefined,
+        { "app.panbeh.album": { id, n: a.length, i } }, a === firstAlbum && i === a.length - 1 ? caption : undefined, false, sendAt));
+    }
+    const rest = list.filter((f) => !albums.flat().includes(f));
+    rest.forEach((f, i) => startUpload(room, f, threadId, albums.length || i ? undefined : replyTo, gif(f) ? { info: GIF_INFO } : undefined,
+      albums.length || i ? undefined : caption, asFile, sendAt));
   }
 
   function shareLocation() {
@@ -254,6 +298,44 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     if (f.length) { e.preventDefault(); setFiles((x) => [...x, ...f]); }
   };
 
+  function recorded(v?: Voice) {
+    recControl.current = null;
+    setRec(null);
+    if (!v) return;
+    startUpload(room, v.file, threadId, mode?.kind === "reply" ? mode.ev : undefined, v.extra);
+    setMode(null);
+  }
+
+  /** Telegram's mic button: a tap switches voice ↔ video; holding records, up to lock, sideways (toward the text) to cancel. */
+  function holdRecord(e: ReactPointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault(); // no focus change, no text selection, no long-press menu
+    const id = e.pointerId, x0 = e.clientX, y0 = e.clientY, kind = recordMode;
+    let started = false, over = false;
+    const timer = window.setTimeout(() => { started = true; navigator.vibrate?.(20); setRec({ kind, locked: false, dx: 0 }); }, 200);
+    const done = () => { over = true; clearTimeout(timer); removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); };
+    function move(ev: PointerEvent) {
+      if (ev.pointerId !== id || !started || over) return;
+      const dx = Math.min(0, ev.clientX - x0), dy = ev.clientY - y0;
+      if (dy < -LOCK_AT) { done(); navigator.vibrate?.(15); setRec((r) => r && { ...r, locked: true, dx: 0 }); }
+      else if (dx < -CANCEL_AT) { done(); recControl.current?.finish(false); }
+      else setRec((r) => r && { ...r, dx });
+    }
+    function up(ev: PointerEvent) {
+      if (ev.pointerId !== id || over) return;
+      done();
+      if (!started) { // a tap: switch what the button records
+        const next = kind === "voice" ? "video" : "voice";
+        setRecordMode(next);
+        localStorage.setItem("panbeh.prefs", JSON.stringify({ ...loadPrefs(), recordMode: next }));
+        toast(next === "video" ? "برای ضبط پیام ویدیویی نگه دارید" : "برای ضبط پیام صوتی نگه دارید");
+      } else recControl.current?.finish(ev.type === "pointerup");
+    }
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+    addEventListener("pointercancel", up);
+  }
+
   const canRecord = !text.trim() && mode?.kind !== "edit" && "MediaRecorder" in window;
   const attachAway = !!text.trim() || mode?.kind === "edit";
 
@@ -287,15 +369,17 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
         </div>
       )}
       {recording && bar}
-      {recording ? (
-        <VoiceRecorder onDone={(v) => { setRecording(false); if (v) { startUpload(room, v.file, threadId, mode?.kind === "reply" ? mode.ev : undefined, v.extra); setMode(null); } }} />
-      ) : (
+      {rec ? (rec.kind === "video" ? <VideoNoteRecorder {...rec} control={recControl} onDone={recorded} /> : <VoiceRecorder {...rec} control={recControl} onDone={recorded} />) : (
         <div className="composer-row">
           {/* RTL: first child sits on the right — send/mic there, the pill on the left */}
           {canRecord ? (
-            <button className="send-btn" onClick={() => setRecording(true)} title="پیام صوتی" aria-label="ضبط پیام صوتی"><Icon key="mic" name="mic" /></button>
+            <button className="send-btn rec-btn" onPointerDown={holdRecord} onContextMenu={(e) => e.preventDefault()}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRec({ kind: recordMode, locked: true, dx: 0 }); } }}
+              title={recordMode === "video" ? "پیام ویدیویی: نگه دارید" : "پیام صوتی: نگه دارید"} aria-label={recordMode === "video" ? "ضبط پیام ویدیویی" : "ضبط پیام صوتی"}>
+              <Icon key={recordMode} name={recordMode === "video" ? "camera" : "mic"} />
+            </button>
           ) : (
-            <button className={"send-btn" + (text.trim() || mediaEdit ? " ready" : "")} onClick={send} aria-label="ارسال"
+            <button className={"send-btn" + (text.trim() || mediaEdit ? " ready" : "")} onClick={sendPress.click(send)} {...sendPress.handlers} aria-label="ارسال"
               onMouseDown={(e) => e.preventDefault()} /* keeps focus (and the phone's keyboard) in the textarea */ disabled={!text.trim() && !mediaEdit}>
               <Icon key={mode?.kind === "edit" ? "check" : "send"} name={mode?.kind === "edit" ? "check" : "send"} />
             </button>
@@ -322,18 +406,32 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
               onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart); setSel(0); typing(!!e.target.value); }}
               onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
               onKeyDown={onKey} onPaste={onPaste} onBlur={() => typingAt.current && typing(false)} />
+            {canSched && sched.list.length > 0 && (
+              <button className="icon-btn" title="پیام‌های زمان‌بندی‌شده" aria-label="پیام‌های زمان‌بندی‌شده" onClick={() => setSchedList(true)}><Icon name="clock" /></button>
+            )}
             <button className="icon-btn emoji-toggle" title="اموجی و استیکر" aria-label="اموجی و استیکر" aria-expanded={emoji} onClick={() => setEmoji((x) => !x)}><Icon name="smile" /></button>
           </div>
         </div>
       )}
       {emojiShown && <EmojiPanel closing={emojiClosing} onEmoji={insert} onClose={() => setEmoji(false)} gifs={mode?.kind === "edit" ? undefined : { onPick: sendGif }} />}
-      {files.length > 0 && <SendFiles files={files} setFiles={setFiles} onSend={sendFiles} />}
+      {files.length > 0 && <SendFiles files={files} setFiles={setFiles} onSend={sendFiles} canSchedule={canSched} />}
+      {sendMenu && (
+        <ContextMenu {...sendMenu} target=".send-btn" onClose={() => setSendMenu(null)}>
+          <button role="menuitem" onClick={() => { setSendMenu(null); setPicking(true); }}><Icon name="clock" /> ارسال زمان‌بندی‌شده</button>
+        </ContextMenu>
+      )}
+      {picking && <SchedulePicker onPick={(ts) => { setPicking(false); schedule(ts); }} onClose={() => setPicking(false)} />}
+      {schedList && <ScheduledList room={room} list={sched.list} onClose={() => setSchedList(false)} />}
       {pollForm && <PollForm room={room} threadId={threadId} onClose={() => setPollForm(false)} />}
     </div>
   );
 }
 
-function SendFiles({ files, setFiles, onSend }: { files: File[]; setFiles: Props["setFiles"]; onSend: (files: File[], caption: string, asFile: boolean, asGif: boolean) => void }) {
+function SendFiles({ files, setFiles, onSend, canSchedule }: { files: File[]; setFiles: Props["setFiles"]; canSchedule: boolean;
+  onSend: (files: File[], caption: string, asFile: boolean, asGif: boolean, sendAt?: number) => void }) {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [picking, setPicking] = useState(false);
+  const press = useLongPress(canSchedule ? (x, y) => setMenu({ x, y }) : undefined);
   const [caption, setCaption] = useState("");
   const [asFile, setAsFile] = useState(false);
   const [asGif, setAsGif] = useState(false);
@@ -348,7 +446,8 @@ function SendFiles({ files, setFiles, onSend }: { files: File[]; setFiles: Props
   const remove = (i: number) => setFiles((x) => x.filter((_, j) => j !== i));
   const imgs = files.map((f, i) => i).filter((i) => urls[i]);
   const others = files.map((f, i) => i).filter((i) => !urls[i]);
-  const title = files.length === 1 && files[0].type.startsWith("image/") ? "ارسال عکس" : `ارسال ${num(files.length)} فایل`;
+  const photos = files.every((f) => f.type.startsWith("image/"));
+  const title = files.length === 1 && photos ? "ارسال عکس" : `ارسال ${num(files.length)} ${photos && !asFile ? "عکس" : "فایل"}`;
   const x = (i: number) => <button className="icon-btn send-x" aria-label="حذف" onClick={() => remove(i)}><Icon name="close" size={14} /></button>;
   return (
     <div className="modal-backdrop" onClick={close}>
@@ -381,8 +480,17 @@ function SendFiles({ files, setFiles, onSend }: { files: File[]; setFiles: Props
         )}
         <div className="modal-actions">
           <button onClick={close}>لغو</button>
-          <button className="primary" onClick={send}>ارسال</button>
+          <button className="primary" onClick={press.click(send)} {...press.handlers}>ارسال</button>
         </div>
+      </div>
+      {/* clicks in these must not reach the backdrop, which closes the dialog */}
+      <div onClick={(e) => e.stopPropagation()}>
+        {menu && (
+          <ContextMenu {...menu} target=".modal .primary" onClose={() => setMenu(null)}>
+            <button role="menuitem" onClick={() => { setMenu(null); setPicking(true); }}><Icon name="clock" /> ارسال زمان‌بندی‌شده</button>
+          </ContextMenu>
+        )}
+        {picking && <SchedulePicker onPick={(ts) => { setPicking(false); onSend(files, caption.trim(), asFile, asGif, ts); }} onClose={() => setPicking(false)} />}
       </div>
     </div>
   );

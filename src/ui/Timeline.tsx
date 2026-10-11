@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { ClientEvent, EventTimeline, RoomEvent, RoomStateEvent, ThreadEvent, type MatrixEvent, type Room, type Thread } from "matrix-js-sdk";
+import { ClientEvent, EventStatus, EventTimeline, RoomEvent, RoomStateEvent, ThreadEvent, type MatrixEvent, type Room, type Thread } from "matrix-js-sdk";
 import { cancelUpload, client, type Upload } from "../matrix.ts";
 import { chainOf, isMessage, useTick, useUploads } from "../hooks.ts";
 import { Icon } from "../icons.tsx";
-import { buildRows, dayLabel, num, type Msg, type Row } from "../logic.ts";
+import { buildRows, dayLabel, isGif, num, type Msg, type Row } from "../logic.ts";
 import { Message, ProgressRing, type Actions } from "./Message.tsx";
 import { audioDuration, bdi, formatSize, isVoice, me, noticeText } from "./common.tsx";
 import { AudioPlayer } from "./Voice.tsx";
+import { captionOf } from "./Composer.tsx";
 import { useAttentive } from "../desktop.ts";
 
 const EVENTS = [
@@ -21,6 +22,18 @@ const START = 1_000_000_000;
 
 const shown = (ev: MatrixEvent) => isMessage(ev) || !!noticeText(ev);
 const rowId = (ev: MatrixEvent) => ev.getTxnId() ?? ev.getId()!; // stable across local echo → remote echo, so rows don't remount
+
+/** Album grouping (see buildRows): Panbeh's tag, else uncaptioned photos/videos (not GIFs) that may group by time. */
+function albumOf(ev: MatrixEvent): string | undefined {
+  const c = ev.getContent();
+  if ((c.msgtype !== "m.image" && c.msgtype !== "m.video") || isGif(c) || c["app.panbeh.video_note"] || ev.status === EventStatus.NOT_SENT) return;
+  const tag = c["app.panbeh.album"]?.id;
+  if (typeof tag === "string") return "t:" + tag;
+  return captionOf(c) || ev.replyEventId ? undefined : "h";
+}
+/** The event an album row speaks for: its captioned item (caption, edits, reply target), else the last. */
+export const albumMain = (evs: MatrixEvent[]) => evs.findLast((e) => captionOf(e.getContent())) ?? evs.at(-1)!;
+const rowEvents = (r: Row) => (r.type === "album" ? r.ids : r.type === "msg" ? [r.id] : []);
 
 const readPoint = (room: Room) => ({ marker: room.getAccountData("m.fully_read")?.getContent().event_id as string | undefined, receipt: room.getEventReadUpTo(me()) });
 const unreadAfterRead = (events: MatrixEvent[], read: number) => events.slice(read + 1).some((e) => isMessage(e) && e.getSender() !== me());
@@ -126,7 +139,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     if (!shown(ev)) continue;
     const id = rowId(ev);
     byId.set(id, ev);
-    msgs.push({ id, sender: ev.getSender()!, ts: ev.getTs(), kind: isMessage(ev) ? "msg" : "notice" });
+    msgs.push({ id, sender: ev.getSender()!, ts: ev.getTs(), kind: isMessage(ev) ? "msg" : "notice", album: isMessage(ev) ? albumOf(ev) : undefined });
   }
   const rows = buildRows(msgs, undefined, unreadAfter);
 
@@ -253,7 +266,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
   };
   const latest = useRef({ rows, byId });
   latest.current = { rows, byId };
-  const indexOf = (id: string) => latest.current.rows.findIndex((r) => r.type === "msg" && latest.current.byId.get(r.id)?.getId() === id);
+  const indexOf = (id: string) => latest.current.rows.findIndex((r) => rowEvents(r).some((x) => latest.current.byId.get(x)?.getId() === id));
   useEffect(() => {
     if (!target || indexOf(target) < 0) return; // not rendered yet
     stuck.current = false;
@@ -311,7 +324,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     </div>
   );
   const divider = rows.findIndex((r) => r.type === "unread"); // read only on mount: open at the divider
-  const opensAt = view.at ? rows.findIndex((r) => r.type === "msg" && byId.get(r.id)?.getId() === view.at) : -1;
+  const opensAt = view.at ? rows.findIndex((r) => rowEvents(r).some((x) => byId.get(x)?.getId() === view.at)) : -1;
 
   return (
     <div className="timeline-wrap">
@@ -355,6 +368,10 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
         r.type === "day" ? <div className="pill day">{r.label}</div>
         : r.type === "notice" ? <div className="pill">{noticeText(byId.get(r.id)!)}</div>
         : r.type === "unread" ? <div className="unread-divider">پیام‌های خوانده‌نشده</div>
+        : r.type === "album" ? (() => {
+          const evs = r.ids.map((id) => byId.get(id)!);
+          return <Message ev={albumMain(evs)} album={evs} room={room} first={r.first} last={r.last} actions={actions} flash={evs.some((e) => flash === e.getId())} enter={enterKey === r.key} />;
+        })()
         : <Message ev={byId.get(r.id)!} room={room} first={r.first} last={r.last} actions={actions} flash={flash === byId.get(r.id)!.getId()} enter={enterKey === r.key} />}</div>}
     />
     </div>
@@ -388,7 +405,7 @@ function PendingUpload({ u }: { u: Upload }) {
             waveform: (u.extra!["org.matrix.msc1767.audio"] as { waveform?: number[] } | undefined)?.waveform }}
             lead={u.error ? <span className="file-icon"><Icon name="mic" /></span> : <Ring u={u} />} />
         ) : u.previewUrl ? (
-          <div className="media-box up-box">
+          <div className={"media-box up-box" + (u.extra?.["app.panbeh.video_note"] ? " note" : "")}>
             {u.file.type.startsWith("video/") ? <video src={u.previewUrl} preload="metadata" muted /> : <img src={u.previewUrl} alt="" />}
             {!u.error && <Ring u={u} />}
             {u.error && <span className="up-state">{state}</span>}

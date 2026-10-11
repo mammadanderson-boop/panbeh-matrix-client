@@ -36,7 +36,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   const [profile, setProfile] = useState<string | null>(null);
   const [forwarding, setForwarding] = useState<MatrixEvent[] | null>(null);
   const [sel, setSel] = useState<ReadonlySet<string> | null>(null); // multi-select: event ids of the main timeline
-  const forward1 = useCallback((ev: MatrixEvent) => setForwarding([ev]), []);
+  const forward1 = useCallback((ev: MatrixEvent | MatrixEvent[]) => setForwarding([ev].flat()), []);
   const [search, setSearch] = useState(false);
 
   const jumper = useRef<Jumper>(null);
@@ -188,7 +188,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   );
 }
 
-type ThreadProps = { room: SdkRoom; threadId: string; view: (ev: MatrixEvent) => void; info: (ev: MatrixEvent) => void; reactions: (ev: MatrixEvent) => void; profile: (id: string) => void; forward: (ev: MatrixEvent) => void };
+type ThreadProps = { room: SdkRoom; threadId: string; view: (ev: MatrixEvent) => void; info: (ev: MatrixEvent) => void; reactions: (ev: MatrixEvent) => void; profile: (id: string) => void; forward: (ev: MatrixEvent | MatrixEvent[]) => void };
 function ThreadView({ room, threadId, view, info, reactions, profile, forward }: ThreadProps) {
   const [mode, setMode] = useState<Mode>(null);
   const [files, setFiles] = useState<File[]>([]);

@@ -1,7 +1,7 @@
-import { ClientEvent, createClient, Direction, EventTimeline, EventType, Filter, SearchOrderBy, HttpApiEvent, IndexedDBStore, MatrixEvent, Method, OAuth2, Preset, SetPresence, SyncState, Visibility, type ICreateRoomStateEvent, type MatrixClient, type MatrixError, type Room } from "matrix-js-sdk";
+import { ClientEvent, createClient, UNSTABLE_MSC4140_DELAYED_EVENTS, Direction, EventTimeline, EventType, Filter, SearchOrderBy, HttpApiEvent, IndexedDBStore, MatrixEvent, Method, OAuth2, Preset, SetPresence, SyncState, Visibility, type ICreateRoomStateEvent, type MatrixClient, type MatrixError, type Room } from "matrix-js-sdk";
 import { decodeRecoveryKey, deriveRecoveryKeyFromPassphrase } from "matrix-js-sdk/lib/crypto-api/index.js";
 import { decryptAttachment, encryptAttachment, type IEncryptedFile } from "matrix-encrypt-attachment";
-import { blurhashEncode, endpointOf, fitSize, hasGif, isGif, normalizeServer, roomName, withGif, withoutGif, type Gif } from "./logic.ts";
+import { blurhashEncode, endpointOf, fitSize, fmtSpan, hasGif, isGif, normalizeServer, roomName, withGif, withoutGif, type Gif } from "./logic.ts";
 import { isHeadless, isNative, nativeCancelAll, nativeLog, nativeSyncState, onKick, setBackgroundService } from "./native.ts";
 import { isDesktop, isWindowVisible, onWindowVisibility, openExternal } from "./desktop.ts";
 import { confirmDialog } from "./ui/dialog.tsx";
@@ -124,7 +124,7 @@ export async function start(s: Session) {
     timelineSupport: true,
     // legacy 1:1 m.call.* calls (call.ts). Not in the headless page: it shares our device with the app's page, and two MatrixCalls would answer as one party
     disableVoip: isHeadless,
-    verificationMethods: ["m.sas.v1"], // emoji only: we can't show or scan QR codes, so don't let the other side pick them
+    verificationMethods: ["m.sas.v1", "m.qr_code.show.v1", "m.qr_code.scan.v1", "m.reciprocate.v1"], // emoji, or QR codes either way
     roomNameGenerator: (roomId, state) => roomName(state, inviter(c.getRoom(roomId))),
     cryptoCallbacks: {
       getSecretStorageKey: async ({ keys }) => (ssKey && keys[ssKey[0]] ? ssKey : null),
@@ -411,14 +411,15 @@ export async function isCached(c: FileContent, thumb?: { w: number; h: number })
   return !!k && (mediaCache.has(k) || await cacheHas(k));
 }
 
-type SendOpts = { onProgress?: (loaded: number, total: number) => void; abort?: AbortController; caption?: string; onUploaded?: () => void; asFile?: boolean };
+/** sendAt: uploaded now, sent then (scheduleMessage). */
+type SendOpts = { onProgress?: (loaded: number, total: number) => void; abort?: AbortController; caption?: string; onUploaded?: () => void; asFile?: boolean; sendAt?: number };
 
 /** `extra` is merged over the generated content (voice messages set msgtype, duration, waveform). A caption goes in body (MSC2530), the name in filename. */
 export async function sendFile(room: Room, file: File, threadId: string | null, replyTo?: MatrixEvent, extra?: Record<string, unknown>, opts: SendOpts = {}) {
   const { onProgress, abort, caption, asFile } = opts;
   const up = { progressHandler: onProgress && (({ loaded, total }: { loaded: number; total: number }) => onProgress(loaded, total)), abortController: abort };
   const encrypted = client.getCrypto() ? await client.getCrypto()!.isEncryptionEnabledInRoom(room.roomId) : false;
-  if (!asFile && !extra) file = await compressImage(file);
+  if (!asFile && !extra?.msgtype) file = await compressImage(file); // not voice notes; album tags still compress
   const info: Record<string, unknown> = { mimetype: file.type, size: file.size };
   const msgtype = asFile ? "m.file" : file.type.startsWith("image/") ? "m.image" : file.type.startsWith("video/") ? "m.video" : "m.file";
   if (msgtype === "m.image") Object.assign(info, await imageInfo(file));
@@ -445,6 +446,7 @@ export async function sendFile(room: Room, file: File, threadId: string | null, 
   if (abort?.signal.aborted) return;
   if (replyTo) content["m.relates_to"] = { "m.in_reply_to": { event_id: replyTo.getId() } };
   opts.onUploaded?.();
+  if (opts.sendAt) return void await scheduleMessage(room, content, opts.sendAt);
   await client.sendMessage(room.roomId, threadId, content as never);
   if (isGif(content)) saveGif(content as Gif).catch(() => { /* still sent, just not saved */ });
 }
@@ -474,7 +476,7 @@ export const cancelUpload = (id: number) => { uploads.find((u) => u.id === id)?.
 let queue: Promise<unknown> = Promise.resolve(); // one upload at a time, in order
 let nextId = 1;
 
-export function startUpload(room: Room, file: File, threadId: string | null, replyTo?: MatrixEvent, extra?: Record<string, unknown>, caption?: string, asFile?: boolean) {
+export function startUpload(room: Room, file: File, threadId: string | null, replyTo?: MatrixEvent, extra?: Record<string, unknown>, caption?: string, asFile?: boolean, sendAt?: number) {
   const id = nextId++;
   // a voice note plays from here while it uploads; other audio is a plain file row (the bubble would render it as an <img>)
   const preview = !asFile && (/^(image|video)\//.test(file.type) || (!!extra && file.type.startsWith("audio/")));
@@ -485,7 +487,7 @@ export function startUpload(room: Room, file: File, threadId: string | null, rep
       if (abort.signal.aborted) return;
       try {
         await sendFile(room, file, threadId, replyTo, extra, {
-          caption, asFile, abort, onProgress: (loaded, total) => patch(id, { loaded, total }), onUploaded: () => removeUpload(id),
+          caption, asFile, sendAt, abort, onProgress: (loaded, total) => patch(id, { loaded, total }), onUploaded: () => removeUpload(id),
         });
       } catch (e) {
         if (!abort.signal.aborted) patch(id, { error: (e as Error).message || "error" });
@@ -840,3 +842,76 @@ export const setBlocked = (userId: string, blocked: boolean) => {
   const ids = client.getIgnoredUsers().filter((id) => id !== userId);
   return client.setIgnoredUsers(blocked ? [...ids, userId] : ids);
 };
+
+// ---------- scheduled messages (MSC4140 delayed events) ----------
+
+let scheduling: Promise<boolean> | undefined;
+/** Whether the server keeps messages to send later. Synapse does once its admin sets max_event_delay_duration. */
+export const canSchedule = () => scheduling ??= client.doesServerSupportUnstableFeature(UNSTABLE_MSC4140_DELAYED_EVENTS).catch(() => false);
+
+export type Scheduled = { id: string; roomId: string; sendAt: number; type: string; content: Record<string, unknown> | null };
+/** What we scheduled from this device, readable: in encrypted rooms the server only holds ciphertext, and decrypting our own
+ *  message ahead of its real event could trip replay protection. delay id → room, type, plain content. */
+const SCHEDULED_KEY = () => `panbeh.scheduled:${client.getUserId()}`;
+type Kept = Record<string, { roomId: string; type: string; content: Record<string, unknown> }>;
+const kept = (): Kept => { try { return JSON.parse(localStorage.getItem(SCHEDULED_KEY()) ?? "{}"); } catch { return {}; } };
+const keep = (k: Kept) => { try { localStorage.setItem(SCHEDULED_KEY(), JSON.stringify(k)); } catch { /* full: the list shows them as unreadable */ } };
+const scheduledSubs = new Set<() => void>();
+/** Called when the scheduled list changes (ours: scheduled, sent now, cancelled). Returns an unsubscribe. */
+export const onScheduledChange = (f: () => void) => { scheduledSubs.add(f); return () => { scheduledSubs.delete(f); }; };
+const scheduledChanged = () => scheduledSubs.forEach((f) => f());
+
+/** Sends `content` (an m.room.message, or `type`) into the room at `sendAt`. The SDK sends delayed events unencrypted, so in
+ *  encrypted rooms we encrypt it now, with the room's current session: people who join before it goes out can't read it. */
+export async function scheduleMessage(room: Room, content: Record<string, unknown>, sendAt: number, type: string = EventType.RoomMessage) {
+  let wireType = type, wire = content;
+  if (room.hasEncryptionStateEvent()) {
+    // ponytail: the crypto backend's encryptEvent isn't public API (the SDK uses it to send); src/sdk.test.ts guards it
+    const backend = client.getCrypto() as unknown as { encryptEvent?: (ev: MatrixEvent, room: Room) => Promise<void> };
+    if (!backend?.encryptEvent) throw new Error("زمان‌بندی در گفتگوهای رمزنگاری‌شده با این نسخه ممکن نیست");
+    const ev = new MatrixEvent({ type, content, room_id: room.roomId, sender: client.getSafeUserId(), event_id: "~scheduled" });
+    await backend.encryptEvent(ev, room);
+    wireType = ev.getWireType();
+    wire = ev.getWireContent();
+  }
+  try {
+    const { delay_id } = await client._unstable_sendDelayedEvent(room.roomId, { delay: Math.max(1000, sendAt - Date.now()) }, null, wireType as never, wire as never);
+    keep({ ...kept(), [delay_id]: { roomId: room.roomId, type, content } });
+    scheduledChanged();
+    return delay_id;
+  } catch (e) {
+    // the MSC's M_MAX_DELAY_EXCEEDED with max_delay; Synapse: ORG.MATRIX.MSC4140_DELAY_TOO_LARGE, the maximum only in the text
+    const d = (e as MatrixError).data ?? {};
+    if (/MAX_DELAY_EXCEEDED|DELAY_TOO_LARGE/.test(d["org.matrix.msc4140.errcode"] ?? d.errcode ?? "")) {
+      const max = d["org.matrix.msc4140.max_delay"] ?? d.max_delay ?? +(/maximum \((\d+)ms\)/.exec(d.error ?? "")?.[1] ?? NaN);
+      throw new Error(max > 0 ? `سرور فقط تا ${fmtSpan(max)} بعد را زمان‌بندی می‌کند` : "این زمان برای سرور خیلی دور است");
+    }
+    throw e;
+  }
+}
+
+type DelayedItem = { delay_id: string; room_id: string; type: string; state_key?: string; delay: number; running_since: number; content: Record<string, unknown> };
+/** The room's scheduled messages, soonest first. content: null when it's encrypted and wasn't scheduled from this device. */
+export async function scheduledIn(roomId: string): Promise<Scheduled[]> {
+  // newer servers answer { scheduled }, Synapse { delayed_events }
+  // ponytail: first page only (next_batch ignored); a person has a handful of scheduled messages, not hundreds
+  const r = await client._unstable_getDelayedEvents("scheduled") as { scheduled?: DelayedItem[]; delayed_events?: DelayedItem[] };
+  const all = r.scheduled ?? r.delayed_events ?? [];
+  const k = kept(), live = new Set(all.map((d) => d.delay_id));
+  if (Object.keys(k).some((id) => !live.has(id))) keep(Object.fromEntries(Object.entries(k).filter(([id]) => live.has(id)))); // sent or cancelled
+  return all
+    // not state: Element Call schedules its own "left the call" state events this way
+    .filter((d) => d.room_id === roomId && d.state_key === undefined && [EventType.RoomMessage, EventType.RoomMessageEncrypted, "org.matrix.msc3381.poll.start"].includes(d.type))
+    .map((d) => ({ id: d.delay_id, roomId: d.room_id, sendAt: d.running_since + d.delay, type: k[d.delay_id]?.type ?? d.type,
+      content: k[d.delay_id]?.content ?? (d.type === EventType.RoomMessageEncrypted ? null : d.content) }))
+    .sort((a, b) => a.sendAt - b.sendAt);
+}
+
+export async function cancelScheduled(id: string) {
+  await client._unstable_cancelScheduledDelayedEvent(id);
+  scheduledChanged();
+}
+export async function sendScheduledNow(id: string) {
+  await client._unstable_sendScheduledDelayedEvent(id);
+  scheduledChanged();
+}

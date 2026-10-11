@@ -1,11 +1,14 @@
 // Pure helpers — no SDK imports so `node --test` can run them directly.
 
-export type Msg = { id: string; sender: string; ts: number; kind: "msg" | "notice" };
+/** album: "t:<id>" for Panbeh's tagged albums, "h" for media that may group by the heuristic (uncaptioned, close in time). */
+export type Msg = { id: string; sender: string; ts: number; kind: "msg" | "notice"; album?: string };
 export type Row =
   | { type: "day"; key: string; label: string }
   | { type: "notice"; key: string; id: string }
   | { type: "unread"; key: "unread" }
-  | { type: "msg"; key: string; id: string; first: boolean; last: boolean };
+  | { type: "msg"; key: string; id: string; first: boolean; last: boolean }
+  /** photos/videos shown as one grid; id is the last one's */
+  | { type: "album"; key: string; id: string; ids: string[]; first: boolean; last: boolean };
 
 const LOCALE = "fa-IR"; // Jalali calendar + Persian digits
 // formatters built once: toLocale*String builds a new one per call, which made every message re-render slow
@@ -21,20 +24,35 @@ const groups = (a: Msg | undefined, b: Msg | undefined) =>
   !!a && !!b && a.kind === "msg" && b.kind === "msg" &&
   a.sender === b.sender && b.ts - a.ts < GROUP_GAP && day(a.ts) === day(b.ts);
 
-/** Timeline rows: day separators + messages flagged as first/last of a same-sender burst,
- *  plus an "unread" divider after `unreadAfter` (a Msg id) when anything follows it. */
+const ALBUM_MAX = 10, ALBUM_GAP = 10_000;
+/** `m` joins the album `prev` ends: same sender and day, and the same tag, or both untagged and seconds apart. */
+const joinsAlbum = (prev: Msg, m: Msg, size: number) =>
+  !!prev.album && prev.album === m.album && size < ALBUM_MAX && prev.sender === m.sender && day(prev.ts) === day(m.ts)
+  && (prev.album !== "h" || m.ts - prev.ts <= ALBUM_GAP);
+
+/** Timeline rows: day separators + messages flagged as first/last of a same-sender burst, consecutive album members
+ *  as one row, plus an "unread" divider after `unreadAfter` (a Msg id) when anything follows it (it splits albums too). */
 export function buildRows(msgs: Msg[], now = Date.now(), unreadAfter?: string): Row[] {
+  const units: { m: Msg; ids: string[] }[] = []; // an album counts as its last message
+  for (const m of msgs) {
+    const u = units.at(-1);
+    if (u && u.m.id !== unreadAfter && joinsAlbum(u.m, m, u.ids.length)) { u.m = m; u.ids.push(m.id); }
+    else units.push({ m, ids: [m.id] });
+  }
   const rows: Row[] = [];
   let prevDay = "";
-  msgs.forEach((m, i) => {
+  units.forEach(({ m, ids }, i) => {
     if (day(m.ts) !== prevDay) {
       prevDay = day(m.ts);
       rows.push({ type: "day", key: "day-" + prevDay, label: dayLabel(m.ts, now) });
     }
-    if (m.kind === "notice") rows.push({ type: "notice", key: m.id, id: m.id });
+    const prev = units[i - 1]?.m, next = units[i + 1]?.m;
     // the divider splits a burst
-    else rows.push({ type: "msg", key: m.id, id: m.id, first: !groups(msgs[i - 1], m) || msgs[i - 1].id === unreadAfter, last: !groups(m, msgs[i + 1]) || m.id === unreadAfter });
-    if (m.id === unreadAfter && i < msgs.length - 1) rows.push({ type: "unread", key: "unread" });
+    const first = !groups(prev, m) || prev?.id === unreadAfter, last = !groups(m, next) || m.id === unreadAfter;
+    if (m.kind === "notice") rows.push({ type: "notice", key: m.id, id: m.id });
+    else if (ids.length > 1) rows.push({ type: "album", key: ids[0], id: m.id, ids, first, last });
+    else rows.push({ type: "msg", key: m.id, id: m.id, first, last });
+    if (m.id === unreadAfter && i < units.length - 1) rows.push({ type: "unread", key: "unread" });
   });
   return rows;
 }
@@ -595,3 +613,23 @@ export function blurhashDecode(hash: string, w: number, h: number): Uint8Clamped
   }
   return px;
 }
+
+// ---------- scheduled messages ----------
+
+/** The days a message can be scheduled for: today, tomorrow, then weekday and date (Jalali), as each day's local midnight. */
+export function scheduleDays(now = Date.now(), n = 31) {
+  const d = new Date(now);
+  return Array.from({ length: n }, (_, i) => {
+    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i).getTime();
+    return { ts: day, label: i === 0 ? "امروز" : i === 1 ? "فردا" : `${WEEKDAY.format(day)}، ${DAY_MONTH.format(day)}` };
+  });
+}
+
+/** A length of time in its biggest whole unit: "۳۰ روز", "۵ ساعت", "۱۰ دقیقه". */
+export function fmtSpan(ms: number) {
+  const [n, unit] = ms >= 86_400_000 ? [ms / 86_400_000, "روز"] : ms >= 3_600_000 ? [ms / 3_600_000, "ساعت"] : [ms / 60_000, "دقیقه"];
+  return `${num(Math.floor(n as number))} ${unit}`;
+}
+
+/** When a scheduled message goes out, for its list row: "امروز ساعت ۲۱:۰۰", "۱۹ مهر ساعت ۰۹:۳۰". */
+export const scheduleLabel = (ts: number, now = Date.now()) => `${dayLabel(ts, now)} ساعت ${TIME.format(ts)}`;
