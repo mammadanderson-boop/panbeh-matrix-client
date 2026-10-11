@@ -1290,6 +1290,12 @@ div.msg-text blockquote { color: color-mix(in srgb, currentColor 85%, transparen
 /* link + QR sheet */
 .qr { width: min(240px, 70vw); margin: 8px auto 0; padding: 8px; border-radius: 12px; background: #fff; line-height: 0; }
 .qr svg { width: 100%; height: auto; }
+.verify .qr { margin-bottom: 8px; }
+.qr-scan { position: relative; width: min(320px, 80vw); aspect-ratio: 1; margin: 0 auto; border-radius: 16px; overflow: hidden; background: #000; display: grid; place-items: center; }
+.qr-scan video { width: 100%; height: 100%; object-fit: cover; }
+.qr-scan .error { padding: 16px; text-align: center; color: #fff; }
+.qr-frame { position: absolute; inset: 15%; border: 3px solid rgba(255, 255, 255, 0.85); border-radius: 16px; box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35); }
+.qr-scan-close { position: absolute; top: 8px; left: 8px; color: #fff; background: rgba(0, 0, 0, 0.4); }
 .qr-link { display: block; text-align: center; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; user-select: text; }
 
 /* app lock */

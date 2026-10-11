@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { CryptoEvent, VerificationPhase, VerificationRequestEvent, VerifierEvent, type ShowSasCallbacks, type UserVerificationStatus, type VerificationRequest } from "matrix-js-sdk/lib/crypto-api/index.js";
+import { renderSVG } from "uqr";
+import { CryptoEvent, VerificationPhase, VerificationRequestEvent, VerifierEvent, type ShowQrCodeCallbacks, type ShowSasCallbacks, type UserVerificationStatus, type VerificationRequest } from "matrix-js-sdk/lib/crypto-api/index.js";
 import { client } from "../matrix.ts";
 import { useTick } from "../hooks.ts";
 import { num } from "../logic.ts";
 import { Icon } from "../icons.tsx";
 import { bdi, errText, Sheet } from "./common.tsx";
+import { QrScan } from "./QrScan.tsx";
 
 // ---------- the one verification on screen (incoming or started from Settings/Profile) ----------
 let current: VerificationRequest | null = null;
@@ -51,6 +53,9 @@ const started = new WeakSet<object>(); // verify() once per verifier
 function VerificationSheet({ req }: { req: VerificationRequest }) {
   useTick(req, [VerificationRequestEvent.Change]);
   const [sas, setSas] = useState<ShowSasCallbacks | null>(null);
+  const [reciprocate, setReciprocate] = useState<ShowQrCodeCallbacks | null>(null); // they scanned our code: did it work there?
+  const [qr, setQr] = useState<string | null>(null); // our code, as SVG
+  const [scanning, setScanning] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
   const verifier = req.verifier;
@@ -59,20 +64,27 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
   useEffect(() => {
     if (!verifier) return;
     setSas(verifier.getShowSasCallbacks());
+    setReciprocate(verifier.getReciprocateQrCodeCallbacks());
     verifier.on(VerifierEvent.ShowSas, setSas);
+    verifier.on(VerifierEvent.ShowReciprocateQr, setReciprocate);
     if (!started.has(verifier)) {
       started.add(verifier);
       verifier.verify().catch(() => {}); // cancellation shows up as the request's phase
     }
-    return () => { verifier.off(VerifierEvent.ShowSas, setSas); };
+    return () => { verifier.off(VerifierEvent.ShowSas, setSas); verifier.off(VerifierEvent.ShowReciprocateQr, setReciprocate); };
   }, [verifier]);
 
-  // we asked: start the emoji comparison as soon as the other side accepts
+  // ready: show our code if they can scan it. Without QR on either side, we asked: start the emoji comparison at once
+  const canScan = req.phase === VerificationPhase.Ready && req.otherPartySupportsMethod("m.qr_code.show.v1");
   const autoStarted = useRef(false);
   useEffect(() => {
-    if (req.phase !== VerificationPhase.Ready || !req.initiatedByMe || req.verifier || autoStarted.current) return;
-    autoStarted.current = true;
-    run(() => req.startVerification("m.sas.v1"));
+    if (req.phase !== VerificationPhase.Ready || req.verifier) return;
+    if (req.otherPartySupportsMethod("m.qr_code.scan.v1")) {
+      req.generateQRCode().then((b) => b && setQr(renderSVG([...b], { border: 2 })), () => {});
+    } else if (req.initiatedByMe && !req.otherPartySupportsMethod("m.qr_code.show.v1") && !autoStarted.current) {
+      autoStarted.current = true;
+      run(() => req.startVerification("m.sas.v1"));
+    }
   }, [req.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = () => {
@@ -102,7 +114,18 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
       );
       break;
     case VerificationPhase.Ready:
-      body = req.initiatedByMe ? <span className="spinner inline" /> : (
+      body = scanning ? (
+        <QrScan onClose={() => setScanning(false)} onCode={(b) => { setScanning(false); run(() => req.scanQRCode(b)); }} />
+      ) : qr || canScan ? (
+        <>
+          {qr && <>
+            <p>{`این کد را با ${other} اسکن کنید.`}</p>
+            <div className="qr" role="img" aria-label="کد QR تأیید" dangerouslySetInnerHTML={{ __html: qr }} />
+          </>}
+          {canScan && <button className={qr ? "" : "primary"} onClick={() => setScanning(true)}><Icon name="camera" size={18} /> {`اسکن کد ${other}`}</button>}
+          <button onClick={() => run(() => req.startVerification("m.sas.v1"))}>مقایسه‌ی شکلک‌ها</button>
+        </>
+      ) : req.initiatedByMe ? <span className="spinner inline" /> : (
         <>
           <p>درخواست پذیرفته شد. شکلک‌ها را در هر دو دستگاه مقایسه کنید.</p>
           <button className="primary" onClick={() => run(() => req.startVerification("m.sas.v1"))}>مقایسه‌ی شکلک‌ها</button>
@@ -110,7 +133,15 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
       );
       break;
     case VerificationPhase.Started:
-      body = !sas ? <span className="spinner inline" /> : confirmed ? (
+      body = reciprocate && !sas ? (confirmed ? <span className="spinner inline" /> : (
+        <>
+          <p>{`${other} کد شما را اسکن کرد. آیا آنجا تأیید را نشان می‌دهد؟`}</p>
+          <div className="verify-actions">
+            <button onClick={() => reciprocate.cancel()}>خیر</button>
+            <button className="primary" onClick={() => { setConfirmed(true); reciprocate.confirm(); }}>بله</button>
+          </div>
+        </>
+      )) : !sas ? <><p>{`منتظر ${other}…`}</p><span className="spinner inline" /></> : confirmed ? (
         <><p>{`منتظر تأیید ${other}…`}</p><span className="spinner inline" /></>
       ) : (
         <>

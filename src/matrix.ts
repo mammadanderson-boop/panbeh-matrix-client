@@ -124,7 +124,7 @@ export async function start(s: Session) {
     timelineSupport: true,
     // legacy 1:1 m.call.* calls (call.ts). Not in the headless page: it shares our device with the app's page, and two MatrixCalls would answer as one party
     disableVoip: isHeadless,
-    verificationMethods: ["m.sas.v1"], // emoji only: we can't show or scan QR codes, so don't let the other side pick them
+    verificationMethods: ["m.sas.v1", "m.qr_code.show.v1", "m.qr_code.scan.v1", "m.reciprocate.v1"], // emoji, or QR codes either way
     roomNameGenerator: (roomId, state) => roomName(state, inviter(c.getRoom(roomId))),
     cryptoCallbacks: {
       getSecretStorageKey: async ({ keys }) => (ssKey && keys[ssKey[0]] ? ssKey : null),
