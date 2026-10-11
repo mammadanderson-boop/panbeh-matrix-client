@@ -393,13 +393,15 @@ public class SyncService extends Service {
         @JavascriptInterface
         public void showNotification(String json) {
             try {
-                JSONObject o = new JSONObject(json);
-                Notifier.show(SyncService.this, o.getString("roomId"), o.getString("title"), o.optString("sender", ""),
-                    o.optString("text", o.getString("body")), o.optLong("ts", System.currentTimeMillis()), o.optBoolean("group", false),
-                    o.optString("icon", null), o.optBoolean("sound", true));
+                Notifier.show(SyncService.this, new JSONObject(json));
             } catch (JSONException e) {
                 Log.w(TAG, "bad notification", e);
             }
+        }
+
+        @JavascriptInterface
+        public void unnotify(String roomId, String eventId) {
+            Notifier.remove(SyncService.this, roomId, eventId);
         }
 
         @JavascriptInterface
