@@ -1,24 +1,25 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import DOMPurify from "dompurify";
 import { handleIncomingLink } from "../openTarget.ts";
 import { matrixToLink, parseMatrixLink, viaServers } from "../uri.ts";
 import { EventStatus, EventType, M_POLL_START, RelationType, type MatrixEvent, type Room } from "matrix-js-sdk";
-import { avatarUrl, client, isSavedGif, loadEvent, mediaUrl, pinnedIds, seenBy, toggleGif, togglePin } from "../matrix.ts";
-import { abortSave, openSave, openSaved, rememberSave, writeSave, type SaveTarget } from "../native.ts";
+import { avatarUrl, BLURHASH, client, isCached, isSavedGif, loadEvent, mediaUrl, pinnedIds, prefetch, seenBy, toggleGif, togglePin } from "../matrix.ts";
+import { abortSave, isMetered, openSave, openSaved, rememberSave, writeSave, type SaveTarget } from "../native.ts";
 import { usePromise } from "../hooks.ts";
-import { LINK_SRC, clock, fmtDuration, isGif, linkHref, num, osmUrl, parseGeoUri, stamp, textDir, type Gif } from "../logic.ts";
+import { LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, num, osmUrl, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
-import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, previewText, senderMember, senderName, stripReplyFallback, toast, useChange } from "./common.tsx";
+import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, previewText, senderMember, senderName, stripReplyFallback, toast, useChange, isVoice } from "./common.tsx";
 import { AudioPlayer, trackFor } from "./Voice.tsx";
 import { PollBody } from "./Poll.tsx";
-import { EmojiPanel, GifView } from "./Emoji.tsx";
+import { EmojiPanel } from "./Emoji.tsx";
 import { LinkPreview } from "./LinkPreview.tsx";
 import { captionOf, EDITABLE } from "./Composer.tsx";
 import { useBackdropHold } from "./useBackdropHold.ts";
 import { reducedMotion, useDismiss } from "./useDismiss.ts";
 import { thumbFor } from "./Media.tsx";
 import { alertDialog, confirmDialog, promptDialog } from "./dialog.tsx";
+import { loadPrefs } from "./Settings.tsx";
 
 export type Actions = {
   reply: (ev: MatrixEvent) => void;
@@ -292,14 +293,26 @@ function MsgMenu({ x, y, items, onReact, onMore, onClose }: { x: number; y: numb
     document.body);
 }
 
+/** Whether media of `kind` downloads by itself in this chat, by the auto-download rules of the network we're on. */
+const autoDl = (room: Room, kind: DlKind, c: Content) => {
+  const p = loadPrefs().autoDl;
+  return shouldAutoDl(isMetered() ? p.mobile : p.wifi, kind, !isGroupChat(room), c.info?.size);
+};
+
 function Body({ ev, room, onView, onUser }: { ev: MatrixEvent; room: Room; onView: (ev: MatrixEvent) => void; onUser: (id: string) => void }) {
+  useEffect(() => { // auto-download: videos, files and voice go into the media cache, so opening them needs no network
+    const c: Content = ev.getContent();
+    const kind: DlKind | null = c.msgtype === "m.video" ? (isGif(c) ? null : "videos") : c.msgtype === "m.file" ? "files"
+      : c.msgtype === "m.audio" ? (isVoice(c) ? "voice" : "files") : null;
+    if (kind && autoDl(room, kind, c)) prefetch(c);
+  }, [ev, room]);
   if (ev.isDecryptionFailure()) return <p className="msg-text muted"><Icon name="lock" size={14} /> فعلاً رمزگشایی نشد. رمزنگاری را در تنظیمات باز کنید.</p>;
   if (ev.getType() === EventType.RoomMessageEncrypted) return <p className="msg-text muted">در حال رمزگشایی…</p>;
   const c = ev.getContent();
   if (M_POLL_START.matches(ev.getType())) return <PollBody ev={ev} room={room} />;
   const caption = c.msgtype !== "m.audio" && captionOf(c) && <p className="msg-text caption" dir={textDir(c.body)}>{linkify(c.body)}</p>;
-  if (c.msgtype === "m.image" || ev.getType() === EventType.Sticker) return <><Image c={c} onView={() => onView(ev)} />{caption}</>;
-  if (c.msgtype === "m.video" && isGif(c)) return <><GifBox c={c} />{caption}</>;
+  if (c.msgtype === "m.image" || ev.getType() === EventType.Sticker) return <><Image c={c} onView={() => onView(ev)} auto={ev.getType() === EventType.Sticker || autoDl(room, isGif(c) ? "gifs" : "photos", c)} />{caption}</>;
+  if (c.msgtype === "m.video" && isGif(c)) return <><GifBox c={c} auto={autoDl(room, "gifs", c)} />{caption}</>;
   if (c.msgtype === "m.video") return <><Video c={c} onView={() => onView(ev)} />{caption}</>;
   if (c.msgtype === "m.audio") return (
     <div onClick={(e) => e.stopPropagation()}>
@@ -396,28 +409,94 @@ function fit(info: Content | undefined, max = 320) {
   return { width: Math.round(w * s), height: Math.round(h * s) };
 }
 
-function Image({ c, onView }: { c: Content; onView: () => void }) {
+/** A download gated by auto-download: runs by itself when `auto` or already on the device, otherwise on start().
+ *  A user-started one reports progress and can be cancelled; a failed one goes back to waiting. */
+function useMedia(c: Content, thumb: { w: number; h: number } | undefined, auto: boolean) {
+  const [go, setGo] = useState(auto);
+  const [prog, setProg] = useState<number | null>(null);
+  const ac = useRef<AbortController | null>(null);
+  useEffect(() => { if (!go) void isCached(c, thumb).then((y) => { if (y) setGo(true); }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const p = useMemo(() => {
+    if (!go) return null;
+    if (auto) return mediaUrl(c, thumb);
+    ac.current = new AbortController();
+    return mediaUrl(c, thumb, (loaded, total) => setProg(total ? loaded / total : 0), ac.current.signal);
+  }, [go]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { p?.catch(() => { setGo(false); setProg(null); }); }, [p]);
+  const url = usePromise(p);
+  return { url, idle: !go, prog: go && !url ? prog : null, start: () => setGo(true), cancel: () => ac.current?.abort() };
+}
+
+const blurs = new Map<string, string>();
+/** A blurhash as a 32×32 image URL; null if there's none or it's invalid. */
+function blurUrl(hash: unknown) {
+  if (typeof hash !== "string") return null;
+  let u = blurs.get(hash);
+  if (u === undefined) {
+    const px = blurhashDecode(hash, 32, 32);
+    u = "";
+    if (px) {
+      const cv = Object.assign(document.createElement("canvas"), { width: 32, height: 32 });
+      cv.getContext("2d")!.putImageData(new ImageData(px as Uint8ClampedArray<ArrayBuffer>, 32, 32), 0, 0);
+      u = cv.toDataURL();
+    }
+    blurs.set(hash, u);
+  }
+  return u || null;
+}
+
+/** Media not downloaded yet: its blurhash (or a tiny server thumbnail when unencrypted), its size, and download / cancel. */
+function Pending({ c, dl, label }: { c: Content; dl: ReturnType<typeof useMedia>; label?: string }) {
+  const blur = blurUrl(c.info?.[BLURHASH]);
+  const tinyOf = c.info?.thumbnail_url ? { url: c.info.thumbnail_url } : c.msgtype === "m.image" && c.url ? c : null;
+  const tiny = usePromise(blur || !tinyOf ? null : mediaUrl(tinyOf, { w: 32, h: 32 }));
+  const bg = blur ?? tiny;
+  return (
+    <>
+      {bg ? <img className="media-blur" src={bg} alt="" /> : !dl.idle && dl.prog === null && <span className="shimmer" />}
+      {dl.idle ? (
+        <button className="dl-btn" onClick={(e) => { e.stopPropagation(); dl.start(); }} aria-label="دانلود">
+          <Icon name="download" size={22} />
+          {(label || c.info?.size > 0) && <small>{[label, c.info?.size > 0 && formatSize(c.info.size)].filter(Boolean).join(" · ")}</small>}
+        </button>
+      ) : dl.prog !== null && (
+        <span className="dl-ring" onClick={(e) => e.stopPropagation()}><ProgressRing f={dl.prog || 0.04} label="لغو دانلود" onClick={dl.cancel} /></span>
+      )}
+    </>
+  );
+}
+
+function Image({ c, onView, auto }: { c: Content; onView: () => void; auto: boolean }) {
   const size = fit(c.info);
-  const thumb = usePromise(c.info?.thumbnail_file ? mediaUrl({ file: c.info.thumbnail_file }) : mediaUrl(c, { w: 640, h: 640 }));
+  const own = c.info?.thumbnail_file; // the sender's thumbnail; else a server-side one (encrypted: the file itself)
+  const dl = useMedia(own ? { file: own } : c, own ? undefined : { w: 640, h: 640 }, auto);
+  if (!dl.url) return <div className="media-box" style={size}><Pending c={c} dl={dl} /></div>;
   return (
     <button className="media-box" style={size} onClick={onView}>
-      {thumb ? <img src={thumb} alt={c.body} /> : <span className="shimmer" />}
+      <img src={dl.url} alt={c.body} />
     </button>
   );
 }
 
-/** Sized from the sender's info, then from the file itself: info may be missing (older Panbeh) or wrong. */
-function GifBox({ c }: { c: Content }) {
+/** Sized from the sender's info, then from the file itself: info may be missing (older Panbeh) or wrong. Plays by itself, looped and muted. */
+function GifBox({ c, auto }: { c: Content; auto: boolean }) {
   const [size, setSize] = useState<{ w: number; h: number } | undefined>(c.info?.w && c.info?.h ? c.info : undefined);
-  return <div className="media-box gif" style={fit(size)}><GifView c={c as Gif} onSize={(w, h) => w && h && setSize({ w, h })} /></div>;
+  const dl = useMedia(c, undefined, auto);
+  return (
+    <div className="media-box gif" style={fit(size)}>
+      {dl.url ? <video src={dl.url} autoPlay loop muted playsInline disablePictureInPicture onLoadedMetadata={(e) => setSize({ w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })} />
+        : <Pending c={c} dl={dl} label="GIF" />}
+    </div>
+  );
 }
 
-/** The poster frame with ▶ and the length; the video itself downloads only once opened in the viewer. */
+/** The poster frame with ▶ and the length; the video itself downloads once opened, or ahead of that by auto-download. */
 function Video({ c, onView }: { c: Content; onView: () => void }) {
   const thumb = usePromise(thumbFor(c));
+  const poster = thumb ?? blurUrl(c.info?.[BLURHASH]);
   return (
     <button className="media-box video-box" style={fit(c.info)} onClick={onView} aria-label="پخش ویدیو">
-      {thumb && <img src={thumb} alt="" />}
+      {poster && <img src={poster} alt="" />}
       <span className="play-badge"><Icon name="play" size={26} /></span>
       {c.info?.duration > 0 && <span className="dur-badge">{fmtDuration(c.info.duration)}</span>}
     </button>

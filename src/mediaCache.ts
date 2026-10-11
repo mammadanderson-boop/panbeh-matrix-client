@@ -3,7 +3,7 @@
 import { toEvict } from "./logic.ts";
 
 const NAME = "panbeh-media";
-const MAX_FILE = 100 * 1024 * 1024; // bigger files aren't worth evicting everything else for
+export const CACHE_MAX_FILE = 100 * 1024 * 1024; // bigger files aren't worth evicting everything else for
 export const CACHE_MB_DEFAULT = 1024;
 // the Cache API wants request URLs; the size rides along in the URL so the index can be rebuilt from keys() alone
 const urlOf = (key: string, size: number) => `https://media.panbeh.invalid/${encodeURIComponent(key)}?s=${size}`;
@@ -38,9 +38,12 @@ export async function cacheGet(key: string): Promise<ArrayBuffer | null> {
   return null;
 }
 
+/** Whether `key` is kept, without reading it. */
+export const cacheHas = async (key: string) => !!(await load())?.entries.has(key);
+
 // ponytail: FIFO, not LRU: an avatar seen every day still ages out after a cache's worth of newer media; refresh on hit if that bites
 export function cachePut(key: string, buf: ArrayBuffer) {
-  if (buf.byteLength > MAX_FILE) return;
+  if (buf.byteLength > CACHE_MAX_FILE) return;
   const body = new Blob([buf]); // copied now: the caller may hand the buffer on
   void (async () => {
     const ix = await load();

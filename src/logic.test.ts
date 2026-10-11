@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats } from "./logic.ts";
+import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode } from "./logic.ts";
 import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
@@ -378,4 +378,28 @@ test("fitMenu: after the click, flipped before it near the edge, kept on screen"
   assert.equal(fitMenu(900, 200, 1000), 700); // last message: opens upward
   assert.equal(fitMenu(150, 200, 300), 8); // fits neither way: clamped
   assert.equal(fitMenu(5, 200, 1000), 8);
+});
+
+test("auto-download rules: chat kind, size cap, no limit, merging stored rules", () => {
+  const r = mergeAutoDl({ mobile: { files: { group: false } } });
+  assert.equal(shouldAutoDl(r.mobile, "files", true, 500_000), true);
+  assert.equal(shouldAutoDl(r.mobile, "files", true, 2_000_000), false); // over 1 MB
+  assert.equal(shouldAutoDl(r.mobile, "files", false, 10), false); // groups turned off
+  assert.equal(r.mobile.files.maxMB, 1); // the rest of the stored kind keeps its default
+  assert.equal(shouldAutoDl(r.mobile, "videos", true), true); // size unknown
+  assert.equal(shouldAutoDl({ ...r.wifi, videos: { dm: true, group: true, maxMB: 0 } }, "videos", false, 5e9), true);
+  assert.deepEqual(mergeAutoDl(undefined), AUTO_DL_DEFAULT);
+});
+
+test("blurhash: average colour and left/right survive a round trip, bad hashes are refused", () => {
+  const w = 32, h = 24, px = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) px.set(i % w < w / 2 ? [220, 40, 40, 255] : [40, 40, 220, 255], i * 4);
+  const hash = blurhashEncode(px, w, h);
+  assert.equal(hash.length, 4 + 2 * 4 * 3);
+  const out = blurhashDecode(hash, w, h)!;
+  const at = (x: number, y: number, k: number) => out[4 * (x + y * w) + k];
+  assert.ok(at(2, 12, 0) > at(2, 12, 2) + 80 && at(29, 12, 2) > at(29, 12, 0) + 80); // red left, blue right
+  assert.equal(blurhashDecode("LEHV6nWB2yk8pyo0adR*.7kCMdnj", 4, 3)?.length, 48); // the reference hash
+  assert.equal(blurhashDecode("LEHV6nWB2yk8", 4, 3), null);
+  assert.equal(blurhashDecode("LEHV6nWB2yk8pyo0adR*.7kCMdn\"", 4, 3), null);
 });

@@ -515,3 +515,83 @@ export const lockDelay = (fails: number) => (fails < 5 ? 0 : Math.min(3_600_000,
 
 /** One axis of a menu opened at `v`: after it, or before it when it would cross `max`; 8px from the edges. */
 export const fitMenu = (v: number, size: number, max: number) => Math.max(8, Math.min(v + size > max - 8 ? v - size : v, max - size - 8));
+
+// ---------- media auto-download ----------
+
+export type DlKind = "photos" | "videos" | "files" | "gifs" | "voice";
+export type DlWho = { dm: boolean; group: boolean };
+/** maxMB: 0 = no limit. voice: voice messages and round videos. */
+export type DlRules = { photos: DlWho; videos: DlWho & { maxMB: number }; files: DlWho & { maxMB: number }; gifs: DlWho; voice: DlWho };
+export type AutoDl = { mobile: DlRules; wifi: DlRules };
+const EVERYWHERE: DlWho = { dm: true, group: true };
+export const AUTO_DL_DEFAULT: AutoDl = {
+  wifi: { photos: EVERYWHERE, videos: { ...EVERYWHERE, maxMB: 50 }, files: { ...EVERYWHERE, maxMB: 50 }, gifs: EVERYWHERE, voice: EVERYWHERE },
+  mobile: { photos: EVERYWHERE, videos: { ...EVERYWHERE, maxMB: 10 }, files: { ...EVERYWHERE, maxMB: 1 }, gifs: EVERYWHERE, voice: EVERYWHERE },
+};
+
+/** Stored rules over the defaults, per network and kind, so kinds added later get their defaults. */
+export function mergeAutoDl(stored: unknown): AutoDl {
+  const s = (stored ?? {}) as Partial<Record<keyof AutoDl, Partial<Record<DlKind, object>>>>;
+  const net = (n: keyof AutoDl) => Object.fromEntries((Object.keys(AUTO_DL_DEFAULT[n]) as DlKind[])
+    .map((k) => [k, { ...AUTO_DL_DEFAULT[n][k], ...s[n]?.[k] }])) as DlRules;
+  return { mobile: net("mobile"), wifi: net("wifi") };
+}
+
+/** Whether media of `kind` (and `size` bytes, if known) downloads by itself in this kind of chat. */
+export function shouldAutoDl(rules: DlRules, kind: DlKind, isDM: boolean, size?: number) {
+  const r = rules[kind];
+  if (!(isDM ? r.dm : r.group)) return false;
+  return !("maxMB" in r) || !r.maxMB || !size || size <= r.maxMB * 1024 * 1024;
+}
+
+// ---------- blurhash (MSC2448: info["xyz.amorgan.blurhash"]) ----------
+
+const B83 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#$%*+,-.:;=?@[]^_{|}~";
+const enc83 = (n: number, len: number) => { let s = ""; for (let i = len - 1; i >= 0; i--) s += B83[Math.floor(n / 83 ** i) % 83]; return s; };
+const dec83 = (s: string) => [...s].reduce((n, c) => n * 83 + B83.indexOf(c), 0);
+const toLinear = (v: number) => { const x = v / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+const toSrgb = (v: number) => { const x = Math.max(0, Math.min(1, v)); return Math.trunc((x <= 0.0031308 ? x * 12.92 : 1.055 * x ** (1 / 2.4) - 0.055) * 255 + 0.5); };
+const signPow = (v: number, e: number) => Math.sign(v) * Math.abs(v) ** e;
+
+/** RGBA pixels (keep them small, ~32px: the cost is pixels × components) → blurhash. */
+export function blurhashEncode(px: Uint8ClampedArray, w: number, h: number, cx = 4, cy = 3) {
+  const f: number[][] = [];
+  for (let j = 0; j < cy; j++) for (let i = 0; i < cx; i++) {
+    const norm = i || j ? 2 : 1, rgb = [0, 0, 0];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const basis = norm * Math.cos((Math.PI * i * x) / w) * Math.cos((Math.PI * j * y) / h), o = 4 * (x + y * w);
+      for (let k = 0; k < 3; k++) rgb[k] += basis * toLinear(px[o + k]);
+    }
+    f.push(rgb.map((v) => v / (w * h)));
+  }
+  const [dc, ...ac] = f;
+  const q = ac.length ? Math.max(0, Math.min(82, Math.floor(Math.max(...ac.flat().map(Math.abs)) * 166 - 0.5))) : 0;
+  const maxV = (q + 1) / 166;
+  const quant = (v: number) => Math.max(0, Math.min(18, Math.floor(signPow(v / maxV, 0.5) * 9 + 9.5)));
+  return enc83(cx - 1 + (cy - 1) * 9, 1) + enc83(q, 1) + enc83((toSrgb(dc[0]) << 16) + (toSrgb(dc[1]) << 8) + toSrgb(dc[2]), 4)
+    + ac.map((c) => enc83(quant(c[0]) * 361 + quant(c[1]) * 19 + quant(c[2]), 2)).join("");
+}
+
+/** blurhash → w×h RGBA pixels; null if it isn't a valid hash (it comes from other people's events). */
+export function blurhashDecode(hash: string, w: number, h: number): Uint8ClampedArray | null {
+  if (typeof hash !== "string" || hash.length < 6 || [...hash].some((c) => !B83.includes(c))) return null;
+  const n = dec83(hash[0]), cy = Math.floor(n / 9) + 1, cx = (n % 9) + 1;
+  if (hash.length !== 4 + 2 * cx * cy) return null;
+  const maxV = (dec83(hash[1]) + 1) / 166, dc = dec83(hash.slice(2, 6));
+  const colors = [[dc >> 16, (dc >> 8) & 255, dc & 255].map(toLinear)];
+  for (let i = 1; i < cx * cy; i++) {
+    const v = dec83(hash.slice(4 + 2 * i, 6 + 2 * i));
+    colors.push([Math.floor(v / 361), Math.floor(v / 19) % 19, v % 19].map((d) => signPow((d - 9) / 9, 2) * maxV));
+  }
+  const px = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const rgb = [0, 0, 0];
+    for (let j = 0; j < cy; j++) for (let i = 0; i < cx; i++) {
+      const basis = Math.cos((Math.PI * x * i) / w) * Math.cos((Math.PI * y * j) / h), c = colors[i + j * cx];
+      for (let k = 0; k < 3; k++) rgb[k] += c[k] * basis;
+    }
+    const o = 4 * (x + y * w);
+    px.set([...rgb.map(toSrgb), 255], o);
+  }
+  return px;
+}

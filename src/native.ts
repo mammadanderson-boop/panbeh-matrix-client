@@ -46,6 +46,7 @@ interface PanbehPlugin {
   takeLaunchShare(): Promise<Partial<Shared>>;
   biometricAvailable(): Promise<{ available: boolean }>;
   biometricUnlock(p: { title: string; cancel: string }): Promise<{ ok: boolean }>;
+  metered(): Promise<{ metered: boolean }>;
   addListener(e: "openRoom", f: (d: { roomId: string }) => void): Promise<PluginListenerHandle>;
   addListener(e: "openLink", f: (d: { link: string }) => void): Promise<PluginListenerHandle>;
   addListener(e: "callAction", f: (d: CallAction) => void): Promise<PluginListenerHandle>;
@@ -154,6 +155,21 @@ export function onCallAction(f: (a: CallAction) => void) {
   plugin.takeLaunchCall().then((a) => a.action && f(a as CallAction), () => {});
   const h = plugin.addListener("callAction", f);
   return () => { h.then((x) => x.remove()); };
+}
+
+/** On mobile data (or a metered Wi‑Fi): what the auto-download rules pick between. Synchronous for rendering, so it
+ *  answers from a cache the Android check refreshes in the background (older app builds: never metered). */
+const metered = { v: false, at: 0 };
+const refreshMetered = () => {
+  if (Date.now() - metered.at < 10_000) return;
+  metered.at = Date.now();
+  plugin.metered().then((r) => { metered.v = r.metered; }, () => {});
+};
+if (isNative && !headless) refreshMetered();
+export function isMetered() {
+  if (!isNative) return (navigator as { connection?: { type?: string } }).connection?.type === "cellular";
+  refreshMetered();
+  return metered.v;
 }
 
 /** The app lock's fingerprint/face unlock: whether the phone has one set up, and asking for it. */
