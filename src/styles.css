@@ -702,6 +702,9 @@ input[role="switch"]:checked::before { transform: translateX(-18px); }
 .note-live video { width: 100%; height: 100%; object-fit: cover; }
 .note-live video.mirror { transform: scaleX(-1); }
 .note-live .play-badge { pointer-events: none; }
+/* the circle's bottom-right corner */
+.note-flip { position: absolute; bottom: calc(100% + 16px); left: calc(50% + min(140px, 35vw) - 44px); width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: rgba(0, 0, 0, 0.55); color: #fff; box-shadow: var(--shadow); }
+.note-flip:active { transform: scale(0.9); }
 .note-live svg, .note-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); pointer-events: none; }
 .note-live circle, .note-ring circle { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; }
 /* a round video message in the timeline */

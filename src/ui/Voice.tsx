@@ -298,6 +298,9 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
   const [play, setPlay] = useState({ on: false, pos: 0 }); // the preview's playback
   const cam = useRef<HTMLVideoElement>(null);
   const preview = useRef<HTMLVideoElement>(null);
+  const [front, setFront] = useState(true);
+  const [cams, setCams] = useState(0);
+  const flip = useRef(() => {});
   const stop = useRef<(keep: boolean) => void>(() => {});
   const sendOnStop = useRef(false);
   const lockedNow = useRef(locked);
@@ -324,6 +327,25 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
       const v = cam.current!;
       v.srcObject = stream;
       await v.play().catch(() => {});
+      void navigator.mediaDevices.enumerateDevices().then((d) => setCams(d.filter((x) => x.kind === "videoinput").length));
+      // front ↔ back mid-recording: the canvas keeps drawing from the <video> (holding the last frame during the swap),
+      // so the recording just carries on. The old camera closes first: many phones can't open two at once.
+      let facing = "user", busy = false;
+      const open = (f: string) => navigator.mediaDevices.getUserMedia({ video: { facingMode: f, width: { ideal: 1280 }, height: { ideal: 720 } } }).then((s) => s.getVideoTracks()[0]);
+      flip.current = async () => {
+        if (busy || !stream) return;
+        busy = true;
+        const old = stream.getVideoTracks()[0], next = facing === "user" ? "environment" : "user";
+        stream.removeTrack(old); old.stop();
+        const t = await open(next).then((t) => (facing = next, t), () => open(facing).catch(() => undefined)); // no such camera: back to the old one
+        if (t && live) {
+          stream.addTrack(t);
+          v.srcObject = new MediaStream([t]);
+          await v.play().catch(() => {});
+          setFront(facing === "user");
+        } else t?.stop();
+        busy = false;
+      };
       // the camera's frame cropped to its middle square, so every camera (and orientation) gives a square video
       const px = +loadPrefs().noteQuality;
       const canvas = Object.assign(document.createElement("canvas"), { width: px, height: px }), g = canvas.getContext("2d")!;
@@ -373,10 +395,11 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
             onPlay={() => setPlay((p) => ({ ...p, on: true }))} onPause={() => setPlay((p) => ({ ...p, on: false }))}
             onEnded={(e) => { e.currentTarget.currentTime = 0; setPlay({ on: false, pos: 0 }); }}
             onTimeUpdate={(e) => setPlay((p) => ({ ...p, pos: e.currentTarget.currentTime }))} />
-        ) : <video ref={cam} muted playsInline className="mirror" />}
+        ) : <video ref={cam} muted playsInline className={front ? "mirror" : undefined} />}
         {(!rec || play.on) && <svg viewBox="0 0 100 100" aria-hidden><circle cx="50" cy="50" r={R} strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(1, f))} /></svg>}
         {rec && !play.on && <span className="play-badge" aria-hidden><Icon name="play" size={26} /></span>}
       </div>
+      {!rec && cams > 1 && <button className="note-flip" onClick={() => void flip.current()} title="چرخش دوربین" aria-label="چرخش دوربین"><Icon name="flip" /></button>}
       {!locked && !rec ? <HeldRow elapsed={elapsed} dx={dx} icon="camera" /> : (
         <div className="composer-row recorder">
           <button className="icon-btn" onClick={() => onDone()} title="حذف" aria-label="حذف"><Icon name="trash" /></button>
