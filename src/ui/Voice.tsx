@@ -394,7 +394,7 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
           <video ref={preview} src={rec.url} poster={rec.poster} autoPlay playsInline disablePictureInPicture onClick={toggle}
             onPlay={() => setPlay((p) => ({ ...p, on: true }))} onPause={() => setPlay((p) => ({ ...p, on: false }))}
             onEnded={(e) => { e.currentTarget.currentTime = 0; setPlay({ on: false, pos: 0 }); }}
-            onTimeUpdate={(e) => setPlay((p) => ({ ...p, pos: e.currentTarget.currentTime }))} />
+            onTimeUpdate={(e) => { const pos = e.currentTarget.currentTime; setPlay((p) => ({ ...p, pos })); }} />
         ) : <video ref={cam} muted playsInline className={front ? "mirror" : undefined} />}
         {(!rec || play.on) && <svg viewBox="0 0 100 100" aria-hidden><circle cx="50" cy="50" r={R} strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(1, f))} /></svg>}
         {rec && !play.on && <span className="play-badge" aria-hidden><Icon name="play" size={26} /></span>}
