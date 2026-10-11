@@ -22,7 +22,8 @@ import androidx.core.graphics.drawable.RoundedBitmapDrawable;
 
 /** Message notifications, shared by the app's WebView (plugin) and the headless one (JS interface). */
 final class Notifier {
-    static final String CH_MESSAGES = "messages", CH_QUIET = "messages_quiet", CH_SERVICE = "service", CH_CALLS = "calls";
+    /** Messages that sound go to a channel per kind, so each can have its own sound in Android's settings. */
+    static final String CH_DMS = "dms", CH_GROUPS = "groups", CH_MENTIONS = "mentions", CH_QUIET = "messages_quiet", CH_SERVICE = "service", CH_CALLS = "calls";
     static final String EXTRA_ROOM = "roomId";
     /** Incoming-call intents: "open" | "answer" | "decline", plus the ring's event id and whether it's a video call. */
     static final String EXTRA_CALL = "callAction", EXTRA_EVENT = "eventId", EXTRA_VIDEO = "video";
@@ -35,9 +36,13 @@ final class Notifier {
     static void createChannels(Context ctx) {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
-        NotificationChannel msg = new NotificationChannel(CH_MESSAGES, ctx.getString(R.string.channel_messages), NotificationManager.IMPORTANCE_HIGH);
-        msg.enableVibration(true);
-        nm.createNotificationChannel(msg);
+        nm.deleteNotificationChannel("messages"); // before the per-kind channels
+        for (String[] c : new String[][] { { CH_DMS, ctx.getString(R.string.channel_dms) }, { CH_GROUPS, ctx.getString(R.string.channel_groups) },
+                { CH_MENTIONS, ctx.getString(R.string.channel_mentions) } }) {
+            NotificationChannel msg = new NotificationChannel(c[0], c[1], NotificationManager.IMPORTANCE_HIGH);
+            msg.enableVibration(true);
+            nm.createNotificationChannel(msg);
+        }
         NotificationChannel quiet = new NotificationChannel(CH_QUIET, ctx.getString(R.string.channel_quiet), NotificationManager.IMPORTANCE_LOW);
         nm.createNotificationChannel(quiet);
         NotificationChannel svc = new NotificationChannel(CH_SERVICE, ctx.getString(R.string.channel_service), NotificationManager.IMPORTANCE_MIN);
@@ -106,6 +111,8 @@ final class Notifier {
 
     /** Reply / mark-as-read buttons on a message notification (NotifyReceiver). */
     static final String EXTRA_NOTIFY = "notifyAction", KEY_REPLY = "reply";
+    /** A message's event id, kept in its extras so a deleted one can be taken out. */
+    private static final String KEY_EVENT = "eventId";
     /** Messages kept in one chat's notification. */
     private static final int MAX_MESSAGES = 7;
     /** Rooms given a conversation shortcut by this process (pushing again per message is wasted work). */
@@ -113,35 +120,38 @@ final class Notifier {
 
     /** One notification per room (tag = room id), Android's conversation style: the chat's recent messages, newest last,
      *  with reply and mark-as-read buttons. Earlier messages are read back from the notification already showing, so
-     *  nothing has to be kept here and they survive the process dying. `sender` names who wrote it in a group. */
+     *  nothing has to be kept here and they survive the process dying. The payload is src/native.ts's: `sender` names who
+     *  wrote it in a group, `hidden` = a notification that mustn't name the chat (no shortcut, no photo). */
     @SuppressLint("MissingPermission") // checked via areNotificationsEnabled; SecurityException caught
-    static void show(Context ctx, String roomId, String title, String sender, String text, long ts, boolean group, String iconDataUrl, boolean sound) {
+    static void show(Context ctx, org.json.JSONObject o) {
+        String roomId = o.optString("roomId"), title = o.optString("title"), sender = o.optString("sender"), text = o.optString("text", o.optString("body"));
+        long ts = o.optLong("ts", System.currentTimeMillis());
+        boolean group = o.optBoolean("group"), sound = o.optBoolean("sound", true), hidden = o.optBoolean("hidden");
+        if (roomId.isEmpty()) return;
         createChannels(ctx);
         NotificationManagerCompat nm = NotificationManagerCompat.from(ctx);
         if (!nm.areNotificationsEnabled()) return;
-        Bitmap icon = decode(iconDataUrl);
+        Bitmap icon = decode(o.optString("icon", null)), senderIcon = decode(o.optString("senderIcon", null));
         Bitmap round = icon == null ? null : circle(ctx, icon);
+        String channel = !sound ? CH_QUIET : o.optBoolean("mention") ? CH_MENTIONS : group ? CH_GROUPS : CH_DMS;
 
-        NotificationCompat.MessagingStyle style = null;
-        if (Build.VERSION.SDK_INT >= 23) {
-            for (android.service.notification.StatusBarNotification n : ctx.getSystemService(NotificationManager.class).getActiveNotifications()) {
-                if (n.getId() == 1 && roomId.equals(n.getTag())) { style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n.getNotification()); break; }
-            }
-        }
+        android.service.notification.StatusBarNotification shown = active(ctx, roomId);
+        NotificationCompat.MessagingStyle style = shown == null ? null : NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(shown.getNotification());
         if (style == null) style = new NotificationCompat.MessagingStyle(new Person.Builder().setName(ctx.getString(R.string.notify_me)).setKey("me").build());
         style.setConversationTitle(group ? title : null).setGroupConversation(group);
         Person.Builder from = new Person.Builder().setName(group && sender != null && !sender.isEmpty() ? sender : title).setKey(group ? "sender:" + sender : "room:" + roomId);
-        if (!group && round != null) from.setIcon(IconCompat.createWithBitmap(round));
-        style.addMessage(text, ts, from.build());
+        if (group ? senderIcon != null : round != null) from.setIcon(IconCompat.createWithBitmap(group ? circle(ctx, senderIcon) : round));
+        NotificationCompat.MessagingStyle.Message m = new NotificationCompat.MessagingStyle.Message(text, ts, from.build());
+        m.getExtras().putString(KEY_EVENT, o.optString("eventId"));
+        style.addMessage(m);
         java.util.List<NotificationCompat.MessagingStyle.Message> msgs = style.getMessages();
         while (msgs.size() > MAX_MESSAGES) msgs.remove(0);
 
-        NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, sound ? CH_MESSAGES : CH_QUIET)
+        NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, channel)
             .setSmallIcon(R.drawable.ic_stat_panbeh)
             .setContentTitle(title)
             .setContentText(group && sender != null && !sender.isEmpty() ? sender + ": " + text : text)
             .setStyle(style)
-            .setShortcutId(conversationShortcut(ctx, roomId, title, round))
             .setWhen(ts)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(sound ? NotificationCompat.PRIORITY_HIGH : NotificationCompat.PRIORITY_LOW)
@@ -158,12 +168,17 @@ final class Notifier {
             .addAction(new NotificationCompat.Action.Builder(0, ctx.getString(R.string.notify_read), notifyIntent(ctx, "read", roomId))
                 .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ)
                 .setShowsUserInterface(false)
+                .build())
+            .addAction(new NotificationCompat.Action.Builder(0, ctx.getString(R.string.notify_mute), notifyIntent(ctx, "mute", roomId))
+                .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MUTE)
+                .setShowsUserInterface(false)
                 .build());
+        if (!hidden) b.setShortcutId(conversationShortcut(ctx, roomId, title, round));
         if (round != null) b.setLargeIcon(round);
         try {
             nm.notify(roomId, 1, b.build());
             // the group summary keeps several chats bundled together on Android 7+
-            nm.notify(GROUP, 0, new NotificationCompat.Builder(ctx, sound ? CH_MESSAGES : CH_QUIET)
+            nm.notify(GROUP, 0, new NotificationCompat.Builder(ctx, channel)
                 .setSmallIcon(R.drawable.ic_stat_panbeh)
                 .setColor(0xFF3390EC)
                 .setGroup(GROUP)
@@ -174,6 +189,38 @@ final class Notifier {
         } catch (SecurityException e) {
             // POST_NOTIFICATIONS revoked meanwhile
         }
+    }
+
+    /** A message deleted after it was notified: out of its chat's notification, silently (the whole notification if it was the last). */
+    @SuppressLint("MissingPermission") // SecurityException caught
+    static void remove(Context ctx, String roomId, String eventId) {
+        android.service.notification.StatusBarNotification shown = active(ctx, roomId);
+        if (shown == null) return;
+        NotificationCompat.MessagingStyle style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(shown.getNotification());
+        if (style == null) return;
+        java.util.List<NotificationCompat.MessagingStyle.Message> msgs = style.getMessages();
+        if (!msgs.removeIf((m) -> eventId.equals(m.getExtras().getString(KEY_EVENT)))) return;
+        if (msgs.isEmpty()) { cancel(ctx, roomId); return; }
+        NotificationCompat.MessagingStyle.Message last = msgs.get(msgs.size() - 1);
+        CharSequence who = last.getPerson() == null ? null : last.getPerson().getName();
+        try {
+            NotificationManagerCompat.from(ctx).notify(roomId, 1, new NotificationCompat.Builder(ctx, shown.getNotification())
+                .setStyle(style)
+                .setContentText(style.isGroupConversation() && who != null ? who + ": " + last.getText() : last.getText())
+                .setWhen(last.getTimestamp())
+                .setOnlyAlertOnce(true) // an update, not a new message
+                .build());
+        } catch (SecurityException e) {
+            // POST_NOTIFICATIONS revoked meanwhile
+        }
+    }
+
+    /** The chat's message notification, if it's showing. */
+    private static android.service.notification.StatusBarNotification active(Context ctx, String roomId) {
+        for (android.service.notification.StatusBarNotification n : ctx.getSystemService(NotificationManager.class).getActiveNotifications()) {
+            if (n.getId() == 1 && roomId.equals(n.getTag())) return n;
+        }
+        return null;
     }
 
     /** A long-lived shortcut per chat: Android 11+ then lists the chat under Conversations (priority, bubbles, per-chat settings). */

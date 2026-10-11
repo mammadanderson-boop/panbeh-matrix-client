@@ -15,12 +15,12 @@ import { mergeAutoDl, num, stamp, type AutoDl, type DlKind } from "../logic.ts";
 import { decryptKeyFile, encryptKeyFile } from "../keyfile.ts";
 import { showVerification } from "./Verify.tsx";
 import { appVersion, canUpdate, checkUpdate, downloadUpdate, getAutostart, getAutoUpdate, installUpdate, isDesktop, setAutostart, setAutoUpdate, useUpdate, type Update } from "../desktop.ts";
-import { isNative, nativeCancelAll, nativeStatus, requestBatteryExemption, requestFullScreen, requestNotifyPermission, saveFile, setBackgroundInterval, setBackgroundService } from "../native.ts";
+import { isNative, nativeCancelAll, nativeStatus, openNotifySettings, requestBatteryExemption, requestFullScreen, requestNotifyPermission, saveFile, setBackgroundInterval, setBackgroundService } from "../native.ts";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { LinkSheet } from "./LinkSheet.tsx";
 import { matrixToLink } from "../uri.ts";
 
-type Prefs = { theme: "system" | "light" | "dark"; accent: string; wallpaper: string; notify: boolean; notifyDMs: boolean; notifyGroups: boolean; previews: boolean; shareLastSeen: boolean; searchIndex: boolean; dev: boolean; legacyCalls: boolean; enterSends: boolean; askSave: boolean;
+type Prefs = { theme: "system" | "light" | "dark"; accent: string; wallpaper: string; notify: boolean; notifyDMs: boolean; notifyGroups: boolean; notifyPreview: "all" | "name" | "none"; previews: boolean; shareLastSeen: boolean; searchIndex: boolean; dev: boolean; legacyCalls: boolean; enterSends: boolean; askSave: boolean;
   camQuality: "360" | "540" | "720" | "1080"; screenQuality: "720" | "1080" | "1080hi"; audioQuality: "low" | "normal" | "high";
   lowData: "off" | "auto" | "on";
   cacheMB: number; autoDl: AutoDl;
@@ -36,7 +36,7 @@ const CACHE_MB: [number, string][] = [[250, "۲۵۰ مگابایت"], [500, "۵�
 const LOW_DATA: [Prefs["lowData"], string][] = [["off", "خاموش"], ["auto", "خودکار، با اتصال ضعیف"], ["on", "همیشه"]];
 
 // the Android app defaults to notifying: it asks for permission on first start. The desktop app needs no permission.
-export const loadPrefs = (): Prefs => withAutoDl({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, recordMode: "voice", noteQuality: "640", ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
+export const loadPrefs = (): Prefs => withAutoDl({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, notifyPreview: "all", previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, recordMode: "voice", noteQuality: "640", ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
 const withAutoDl = (p: Prefs): Prefs => ({ ...p, autoDl: mergeAutoDl(p.autoDl) }); // nested: kinds added later get their defaults
 
 /** Enter (or Ctrl/⌘+Enter when Enter is set to a new line) sends. */
@@ -204,8 +204,12 @@ const KindSwitches = ({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) =
       <input type="checkbox" role="switch" checked={prefs.notifyDMs} onChange={(e) => set({ notifyDMs: e.target.checked })} /></label>
     <label className="switch-row"><span>گروه‌ها<small>نام‌بردن از شما همیشه اعلان می‌شود</small></span>
       <input type="checkbox" role="switch" checked={prefs.notifyGroups} onChange={(e) => set({ notifyGroups: e.target.checked })} /></label>
+    <label className="select-row">محتوای اعلان
+      <Select value={prefs.notifyPreview} options={PREVIEWS} onChange={(v) => set({ notifyPreview: v })} />
+    </label>
   </>
 );
+const PREVIEWS: [Prefs["notifyPreview"], string][] = [["all", "نام و متن پیام"], ["name", "فقط نام، بدون متن"], ["none", "هیچ (فقط «پیام تازه»)"]];
 
 /** Background check modes: minutes between checks, 0 = real-time. */
 const INTERVALS: [number, string][] = [[0, "فوری"], ...[1, 2, 5, 10, 15, 30].map((m): [number, string] => [m, `هر ${m.toLocaleString("fa-IR")} دقیقه`]), [60, "هر ساعت"]];
@@ -235,6 +239,12 @@ function AndroidNotifications({ prefs, set }: { prefs: Prefs; set: (p: Partial<P
       <label className="switch-row"><span>اعلان پیام‌های تازه<small>پنبه در پس‌زمینه متصل می‌ماند، حتی وقتی بسته است</small></span>
         <input type="checkbox" role="switch" checked={on} onChange={(e) => toggle(e.target.checked)} /></label>
       {on && <KindSwitches prefs={prefs} set={set} />}
+      {on && (
+        <button className="user-row" onClick={() => void openNotifySettings()}>
+          <span className="device-box"><Icon name="bell" /></span>
+          <span><b>صدا و لرزش</b><small>برای گفتگوهای شخصی، گروه‌ها و نام‌بردن از شما جداگانه، در تنظیمات اندروید</small></span>
+        </button>
+      )}
       {on && <>
         <label className="select-row">دریافت پیام در پس‌زمینه
           <Select value={st.interval} options={INTERVALS} onChange={(m) => { setSt({ ...st, interval: m }); void setBackgroundInterval(m); }} />
