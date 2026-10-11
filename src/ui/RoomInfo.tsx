@@ -5,11 +5,11 @@ import { matrixToLink, viaServers } from "../uri.ts";
 import { usePresence, usePromise, useTick } from "../hooks.ts";
 import { JOIN_RULES, normalize, num, spaceRooms, stamp } from "../logic.ts";
 import { Icon } from "../icons.tsx";
-import { Avatar, errText, me, RoomAvatar, roomAvatarMxc, Sheet } from "./common.tsx";
+import { Avatar, errText, me, RoomAvatar, roomAvatarMxc, Select, Sheet } from "./common.tsx";
 import { useSlider } from "./useSlider.ts";
 import { UserProfile } from "./Profile.tsx";
 import { ChatForm, joinOrKnock, UserPicker } from "./NewChat.tsx";
-import { isMuted, setMuted } from "../notify.ts";
+import { isMuted, muteEnds, setMuted } from "../notify.ts";
 import { PhotoViewer, SharedMedia } from "./Media.tsx";
 import { BannedList, canManage, GroupSettings, KnockRequests, MemberRow, RoomDetails } from "./Admin.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
@@ -27,7 +27,7 @@ type View = "main" | "invite" | "add" | "new-group" | "settings" | "details";
 
 /** Chat/space info: profile, members, invite, space contents, leave. */
 export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void }) {
-  useTick(client, [RoomStateEvent.Events, RoomStateEvent.Members, RoomEvent.Name, ClientEvent.Room, ClientEvent.AccountData]);
+  useTick(client, [RoomStateEvent.Events, RoomStateEvent.Members, RoomEvent.Name, ClientEvent.Room, ClientEvent.AccountData, RoomEvent.AccountData]);
   useEffect(() => { room.loadMembersIfNeeded().catch(() => {}); }, [room]); // spaces open here without Room.tsx loading them
   const [view, setView] = useState<View>("main");
   const [busy, setBusy] = useState(false);
@@ -122,8 +122,7 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
       </div>
       <Profile key={room.name + topic} room={room} topic={topic} editable={can(EventType.RoomName)} />
       {!space && (
-        <label className="switch-row"><span>اعلان‌ها<small>{isMuted(room) ? "بی‌صدا؛ فقط وقتی از شما نام برده شود" : "روشن"}</small></span>
-          <input type="checkbox" role="switch" checked={!isMuted(room)} disabled={busy} onChange={(e) => act(() => setMuted(room, !e.target.checked))} /></label>
+        <MuteRow room={room} busy={busy} act={act} />
       )}
       {!space && <button className="user-row" onClick={() => setMedia(true)}><span className="device-box"><Icon name="file" /></span><span><b>رسانه‌ها، فایل‌ها و پیوندها</b></span></button>}
       {!isDirect(room) && (
@@ -204,6 +203,20 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
 }
 
 /** Name + topic; editable fields save only what changed. Remounted (key) when the room's values change. */
+/** Mute choices: hours, or until turned back on. Mentions still notify (they're server push rules above the room's). */
+const MUTE_FOR: [string, string][] = [["on", "روشن"], ["1", "بی‌صدا ۱ ساعت"], ["8", "بی‌صدا ۸ ساعت"], ["24", "بی‌صدا ۱ روز"], ["168", "بی‌صدا ۱ هفته"], ["ever", "بی‌صدا تا روشن کردن"]];
+
+function MuteRow({ room, busy, act }: { room: Room; busy: boolean; act: (fn: () => Promise<unknown>) => void }) {
+  const muted = isMuted(room), until = muted ? muteEnds(room) : undefined;
+  const options: [string, string][] = until ? [...MUTE_FOR, ["until", `بی‌صدا تا ${new Date(until).toLocaleString("fa-IR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`]] : MUTE_FOR;
+  return (
+    <label className="select-row">اعلان‌ها
+      <Select value={!muted ? "on" : until ? "until" : "ever"} options={options} disabled={busy}
+        onChange={(v) => act(() => setMuted(room, v !== "on", Number(v) ? Date.now() + Number(v) * 3600_000 : undefined))} />
+    </label>
+  );
+}
+
 function Profile({ room, topic, editable }: { room: Room; topic: string; editable: boolean }) {
   // the explicit name, not room.name: that one is computed from members when there's none
   const current: string = room.currentState.getStateEvents(EventType.RoomName, "")?.getContent().name ?? "";

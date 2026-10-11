@@ -4,7 +4,9 @@
     <string name="title_activity_main">Panbeh</string>
     <string name="package_name">ir.panbeh.app</string>
     <string name="custom_url_scheme">ir.panbeh.app</string>
-    <string name="channel_messages">پیام‌ها</string>
+    <string name="channel_dms">گفتگوهای شخصی</string>
+    <string name="channel_groups">گروه‌ها</string>
+    <string name="channel_mentions">نام‌بردن از شما</string>
     <string name="channel_quiet">پیام‌های بی‌صدا</string>
     <string name="channel_service">اتصال پس‌زمینه</string>
     <string name="service_title">پنبه متصل است</string>
@@ -19,5 +21,6 @@
     <string name="notify_reply">پاسخ</string>
     <string name="notify_reply_hint">پیام</string>
     <string name="notify_read">خوانده شد</string>
+    <string name="notify_mute">بی‌صدا ۸ ساعت</string>
     <string name="notify_failed">پاسخ شما ارسال نشد؛ برای ارسال، پنبه را باز کنید</string>
 </resources>
