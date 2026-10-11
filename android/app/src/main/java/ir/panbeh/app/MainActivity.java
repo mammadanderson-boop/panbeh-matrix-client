@@ -3,12 +3,14 @@ package ir.panbeh.app;
 import android.app.Activity;
 import android.app.PictureInPictureParams;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Rational;
 import android.view.WindowManager;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
     /** Resumed and on screen: no notification for the chat being looked at. */
@@ -51,6 +53,13 @@ public class MainActivity extends BridgeActivity {
         WebView w = bridge.getWebView();
         // the app's own sizes are the source of truth; don't let the system font scale inflate the UI
         w.getSettings().setTextZoom(100);
+        // no grey ▶ placeholder on a <video> that has no frame yet (camera starting, upload previews): a transparent one
+        w.setWebChromeClient(new BridgeWebChromeClient(bridge) {
+            @Override
+            public Bitmap getDefaultVideoPoster() {
+                return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
+            }
+        });
         // keep the renderer at full priority while hidden, so the sync loop isn't starved in the background
         if (Build.VERSION.SDK_INT >= 26) w.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
         if (SyncService.isEnabled(this)) SyncService.start(this);

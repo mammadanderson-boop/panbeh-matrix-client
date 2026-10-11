@@ -326,7 +326,7 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
 :root:not([data-theme="dark"]) .msg.mine .tick.read { color: #4fae4e; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .msg.mine .tick.read { color: var(--out-meta); } }
 
-.bubble.media { padding: 0; overflow: hidden; background: transparent; box-shadow: none; }
+.bubble.media, .msg.mine .bubble.media { padding: 0; overflow: hidden; background: transparent; box-shadow: none; }
 /* a name / reply / forward header frames the media in a normal bubble, Telegram-style */
 .bubble.media:has(> .msg-sender, > .reply-quote, > .fwd-from) { padding: 4px; background: var(--bubble-in); box-shadow: var(--shadow); }
 .msg.mine .bubble.media:has(> .msg-sender, > .reply-quote, > .fwd-from) { background: var(--bubble-out); }
@@ -697,9 +697,11 @@ input[role="switch"]:checked::before { transform: translateX(-18px); }
 .rec-lock { position: absolute; bottom: calc(100% + 18px); left: 50%; translate: -50% 0; width: 32px; height: 44px; display: grid; place-items: center; border-radius: 16px; background: var(--panel); color: var(--muted); box-shadow: var(--shadow); animation: lock-hint 1.4s ease-in-out infinite; }
 @keyframes lock-hint { 50% { transform: translateY(-6px); } }
 /* recording a round video: the camera in a circle above the composer, its ring filling over the minute */
+.note-backdrop { position: fixed; inset: 0; z-index: -1; background: rgba(0, 0, 0, 0.25); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: fade 0.18s; }
 .note-live { position: absolute; bottom: calc(100% + 16px); left: 50%; translate: -50% 0; width: min(280px, 70vw); aspect-ratio: 1; border-radius: 50%; overflow: hidden; background: #000; box-shadow: var(--shadow); }
 .note-live video { width: 100%; height: 100%; object-fit: cover; }
 .note-live video.mirror { transform: scaleX(-1); }
+.note-live .play-badge { pointer-events: none; }
 .note-live svg, .note-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); pointer-events: none; }
 .note-live circle, .note-ring circle { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; }
 /* a round video message in the timeline */

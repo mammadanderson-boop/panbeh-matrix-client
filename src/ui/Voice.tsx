@@ -293,9 +293,11 @@ const noteOf = (blob: Blob, duration: number, px: number): Voice => {
 /** A round video message from the front camera, square-cropped, up to a minute. Same controls as VoiceRecorder, with the
  *  camera shown in a circle above the composer. */
 export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
-  const [rec, setRec] = useState<{ blob: Blob; url: string; duration: number; px: number } | null>(null);
+  const [rec, setRec] = useState<{ blob: Blob; url: string; duration: number; px: number; poster: string } | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [play, setPlay] = useState({ on: false, pos: 0 }); // the preview's playback
   const cam = useRef<HTMLVideoElement>(null);
+  const preview = useRef<HTMLVideoElement>(null);
   const stop = useRef<(keep: boolean) => void>(() => {});
   const sendOnStop = useRef(false);
   const lockedNow = useRef(locked);
@@ -313,7 +315,7 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
     };
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 } }); // like VoiceRecorder: echo cancelling puts Android's mic in call mode
       } catch {
         alertDialog("دسترسی به دوربین یا میکروفون ممکن نشد. اجازه‌ی آن‌ها را در تنظیمات مرورگر یا برنامه بدهید.");
         return onDone();
@@ -341,7 +343,7 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
         const blob = new Blob(chunks, { type: r!.mimeType.split(";")[0] }), duration = Math.min(NOTE_MAX, Date.now() - started);
         if (sendOnStop.current) return onDone(duration < MIN_MS ? undefined : noteOf(blob, duration, px));
         url = URL.createObjectURL(blob);
-        setRec({ blob, url, duration, px });
+        setRec({ blob, url, duration, px, poster: canvas.toDataURL("image/jpeg", 0.85) }); // the last frame, until it plays
       };
       timer = window.setInterval(() => {
         const e = Date.now() - started;
@@ -356,12 +358,24 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   control.current = { finish: (send) => { if (send) { sendOnStop.current = true; stop.current(true); } else { stop.current(false); onDone(); } } };
 
-  const f = rec ? 1 : Math.min(1, elapsed / NOTE_MAX);
+  const toggle = () => {
+    const el = preview.current;
+    if (!el) return;
+    if (el.paused) void el.play().catch(() => {}); else el.pause();
+  };
+  const f = rec ? (play.pos * 1000) / rec.duration : Math.min(1, elapsed / NOTE_MAX);
   return (
     <>
+      <div className="note-backdrop" aria-hidden />
       <div className="note-live">
-        {rec ? <video src={rec.url} autoPlay loop playsInline /> : <video ref={cam} muted playsInline className="mirror" />}
-        {!rec && <svg viewBox="0 0 100 100" aria-hidden><circle cx="50" cy="50" r={R} strokeDasharray={C} strokeDashoffset={C * (1 - f)} /></svg>}
+        {rec ? (
+          <video ref={preview} src={rec.url} poster={rec.poster} autoPlay playsInline disablePictureInPicture onClick={toggle}
+            onPlay={() => setPlay((p) => ({ ...p, on: true }))} onPause={() => setPlay((p) => ({ ...p, on: false }))}
+            onEnded={(e) => { e.currentTarget.currentTime = 0; setPlay({ on: false, pos: 0 }); }}
+            onTimeUpdate={(e) => setPlay((p) => ({ ...p, pos: e.currentTarget.currentTime }))} />
+        ) : <video ref={cam} muted playsInline className="mirror" />}
+        {(!rec || play.on) && <svg viewBox="0 0 100 100" aria-hidden><circle cx="50" cy="50" r={R} strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(1, f))} /></svg>}
+        {rec && !play.on && <span className="play-badge" aria-hidden><Icon name="play" size={26} /></span>}
       </div>
       {!locked && !rec ? <HeldRow elapsed={elapsed} dx={dx} icon="camera" /> : (
         <div className="composer-row recorder">
