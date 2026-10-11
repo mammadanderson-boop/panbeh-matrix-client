@@ -613,3 +613,23 @@ export function blurhashDecode(hash: string, w: number, h: number): Uint8Clamped
   }
   return px;
 }
+
+// ---------- scheduled messages ----------
+
+/** The days a message can be scheduled for: today, tomorrow, then weekday and date (Jalali), as each day's local midnight. */
+export function scheduleDays(now = Date.now(), n = 31) {
+  const d = new Date(now);
+  return Array.from({ length: n }, (_, i) => {
+    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i).getTime();
+    return { ts: day, label: i === 0 ? "امروز" : i === 1 ? "فردا" : `${WEEKDAY.format(day)}، ${DAY_MONTH.format(day)}` };
+  });
+}
+
+/** A length of time in its biggest whole unit: "۳۰ روز", "۵ ساعت", "۱۰ دقیقه". */
+export function fmtSpan(ms: number) {
+  const [n, unit] = ms >= 86_400_000 ? [ms / 86_400_000, "روز"] : ms >= 3_600_000 ? [ms / 3_600_000, "ساعت"] : [ms / 60_000, "دقیقه"];
+  return `${num(Math.floor(n as number))} ${unit}`;
+}
+
+/** When a scheduled message goes out, for its list row: "امروز ساعت ۲۱:۰۰", "۱۹ مهر ساعت ۰۹:۳۰". */
+export const scheduleLabel = (ts: number, now = Date.now()) => `${dayLabel(ts, now)} ساعت ${TIME.format(ts)}`;

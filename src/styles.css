@@ -526,6 +526,10 @@ button.user-row:hover { background: var(--hover); }
 .avatar-edit { position: relative; border-radius: 50%; }
 .avatar-edit::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.3); opacity: 0; transition: opacity 0.15s; }
 .avatar-edit:hover::after { opacity: 1; }
+.time-pick { display: inline-flex; align-items: center; gap: 4px; }
+.scheduled-row > span:nth-child(2) { flex: 1; min-width: 0; }
+.scheduled-row b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scheduled-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 .dl-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 6px 2px; }
 .dl-row > b { font-weight: 500; }
 .dl-chips { flex-basis: 100%; display: flex; gap: 6px; }

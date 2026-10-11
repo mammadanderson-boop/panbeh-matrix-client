@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode } from "./logic.ts";
+import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel } from "./logic.ts";
 import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
@@ -414,4 +414,15 @@ test("albums: tagged ones group, untagged only seconds apart, captions and the d
   assert.equal(buildRows(Array.from({ length: 12 }, (_, i) => at("m" + i, i, "h")), T).filter((r) => r.type === "album").length, 2); // 10 at most
   const rows = buildRows([at("a", 0, "t:1"), at("b", 1, "t:1"), at("c", 2)], T).filter((r) => r.type !== "day");
   assert.deepEqual(rows.map((r) => r.type !== "unread" && r.type !== "notice" && [r.key, r.id, r.first, r.last]), [["a", "b", true, false], ["c", "c", false, true]]);
+});
+
+test("schedule days, spans and labels", () => {
+  const days = scheduleDays(new Date("2026-10-11T22:30:00").getTime(), 3);
+  assert.deepEqual(days.map((d) => d.label.split("، ")[0]), ["امروز", "فردا", days[2].label.split("، ")[0]]);
+  assert.equal(new Date(days[1].ts).getHours(), 0);
+  assert.equal(new Date(days[1].ts).getDate(), 12);
+  assert.equal(fmtSpan(30 * 86_400_000), "۳۰ روز");
+  assert.equal(fmtSpan(5.5 * 3_600_000), "۵ ساعت");
+  assert.equal(fmtSpan(600_000), "۱۰ دقیقه");
+  assert.match(scheduleLabel(new Date("2026-10-11T21:00:00").getTime(), new Date("2026-10-11T08:00:00").getTime()), /^امروز ساعت ۲۱:۰۰$/);
 });
