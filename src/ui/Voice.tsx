@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type MutableRefObject, type ReactNode } from "react";
 import type { MatrixEvent } from "matrix-js-sdk";
 import { downsample, fmtDuration, num } from "../logic.ts";
 import { Icon } from "../icons.tsx";
@@ -154,19 +154,61 @@ export function NowPlaying({ onJump }: { onJump?: (id: string) => void }) {
 
 export type Voice = { file: File; extra: Record<string, unknown> };
 type Recording = { blob: Blob; url: string; duration: number; waveform: number[] };
+/** The mic button drives a recording while the finger is down: finish(true) on release sends, finish(false) cancels. */
+export type RecControl = { finish: (send: boolean) => void };
+/** locked: started by a tap, or the finger slid up; the recorder's own stop / send / trash buttons then take over.
+ *  dx: how far the held finger has slid toward cancelling (≤ 0). */
+type RecProps = { onDone: (v?: Voice) => void; locked: boolean; dx: number; control: MutableRefObject<RecControl | null> };
+const MIN_MS = 700; // a release sooner than this was a slip, not a message
 
-/** Records on mount; ■ stops into a preview, ✓ sends, trash discards. onDone() without a voice = cancelled. */
-export function VoiceRecorder({ onDone }: { onDone: (v?: Voice) => void }) {
+const voiceOf = (r: { blob: Blob; duration: number; waveform: number[] }): Voice => {
+  const type = r.blob.type || "audio/webm";
+  const ext = type.includes("ogg") ? "ogg" : type.includes("mp4") ? "m4a" : "webm";
+  const duration = Math.round(r.duration);
+  return {
+    file: new File([r.blob], `voice.${ext}`, { type }),
+    extra: {
+      msgtype: "m.audio", body: "پیام صوتی", info: { duration },
+      // what Element reads to show it as a voice message with a waveform
+      "org.matrix.msc1767.audio": { duration, waveform: r.waveform },
+      "org.matrix.msc3245.voice": {},
+    },
+  };
+};
+
+/** While the finger is down: the time, "slide to cancel" following the finger, and the lock above the button. */
+function HeldRow({ elapsed, dx, icon }: { elapsed: number; dx: number; icon: "mic" | "camera" }) {
+  return (
+    <div className="composer-row recorder held">
+      <div className="recorder-live" dir="ltr">
+        <span className="rec-dot" />
+        <span className="rec-time">{fmtDuration(elapsed)}</span>
+        <span className="rec-hint" dir="rtl" style={{ transform: `translateX(${dx}px)`, opacity: Math.max(0, 1 + dx / 120) }}><Icon name="back" size={16} /> برای لغو بکشید</span>
+      </div>
+      <span className="rec-mic"><Icon name={icon} /><span className="rec-lock" aria-hidden><Icon name="lock" size={16} /></span></span>
+    </div>
+  );
+}
+
+/** Records on mount. Held: release sends (control.finish). Locked: ■ stops into a preview, ✓ sends, trash discards.
+ *  onDone() without a voice = cancelled. */
+export function VoiceRecorder({ onDone, locked, dx, control }: RecProps) {
   const [rec, setRec] = useState<Recording | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const levels = useRef<number[]>([]);
   const stop = useRef<(keep: boolean) => void>(() => {});
+  const sendOnStop = useRef(false);
 
   useEffect(() => {
     let live = true, keep = false, timer = 0, url = "";
     let stream: MediaStream | undefined, ctx: AudioContext | undefined, r: MediaRecorder | undefined;
     const release = () => { clearInterval(timer); stream?.getTracks().forEach((t) => t.stop()); ctx?.close().catch(() => {}); };
-    stop.current = (k) => { keep = k; if (r?.state === "recording") r.stop(); release(); };
+    stop.current = (k) => {
+      keep = k;
+      if (r?.state === "recording") r.stop();
+      else if (sendOnStop.current) onDone(); // released before the mic even opened
+      release();
+    };
     (async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 } }) // nothing plays while recording;
@@ -184,9 +226,10 @@ export function VoiceRecorder({ onDone }: { onDone: (v?: Voice) => void }) {
       r.ondataavailable = (e) => chunks.push(e.data);
       r.onstop = () => {
         if (!keep || !live) return;
-        const blob = new Blob(chunks, { type: r!.mimeType.split(";")[0] });
-        url = URL.createObjectURL(blob);
-        setRec({ blob, url, duration: Date.now() - started, waveform: downsample(levels.current) });
+        const got = { blob: new Blob(chunks, { type: r!.mimeType.split(";")[0] }), duration: Date.now() - started, waveform: downsample(levels.current) };
+        if (sendOnStop.current) return onDone(got.duration < MIN_MS ? undefined : voiceOf(got));
+        url = URL.createObjectURL(got.blob);
+        setRec({ ...got, url });
       };
       ctx = new AudioContext();
       const an = ctx.createAnalyser();
@@ -204,22 +247,9 @@ export function VoiceRecorder({ onDone }: { onDone: (v?: Voice) => void }) {
     })();
     return () => { live = false; stop.current(false); if (snap.track?.id === "preview:" + url) stopPlayer(); if (url) URL.revokeObjectURL(url); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  control.current = { finish: (send) => { if (send) { sendOnStop.current = true; stop.current(true); } else { stop.current(false); onDone(); } } };
 
-  function send() {
-    const type = rec!.blob.type || "audio/webm";
-    const ext = type.includes("ogg") ? "ogg" : type.includes("mp4") ? "m4a" : "webm";
-    const duration = Math.round(rec!.duration);
-    onDone({
-      file: new File([rec!.blob], `voice.${ext}`, { type }),
-      extra: {
-        msgtype: "m.audio", body: "پیام صوتی", info: { duration },
-        // what Element reads to show it as a voice message with a waveform
-        "org.matrix.msc1767.audio": { duration, waveform: rec!.waveform },
-        "org.matrix.msc3245.voice": {},
-      },
-    });
-  }
-
+  if (!locked && !rec) return <HeldRow elapsed={elapsed} dx={dx} icon="mic" />;
   const recent = levels.current.slice(-BARS);
   return (
     <div className="composer-row recorder">
@@ -234,10 +264,119 @@ export function VoiceRecorder({ onDone }: { onDone: (v?: Voice) => void }) {
         </div>
       )}
       {rec ? (
-        <button className="send-btn ready" onClick={send} aria-label="ارسال"><Icon name="send" /></button>
+        <button className="send-btn ready" onClick={() => onDone(voiceOf(rec))} aria-label="ارسال"><Icon name="send" /></button>
       ) : (
         <button className="send-btn ready rec-stop" onClick={() => stop.current(true)} aria-label="پایان ضبط"><Icon name="stop" /></button>
       )}
     </div>
+  );
+}
+
+// ---------- round video messages ----------
+
+export const NOTE_MAX = 60_000;
+const NOTE_BPS: Record<number, number> = { 384: 1_000_000, 480: 1_500_000, 640: 2_500_000 };
+// H.264 in mp4 first: iPhones (Element X, FluffyChat on iOS) can't play webm. Never a bare "video/mp4": Chrome then picks VP9.
+// Linux Chrome has no AAC encoder, hence the Opus variant.
+const NOTE_TYPES = ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4;codecs=avc1.42E01E,opus", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+const R = 47, C = 2 * Math.PI * R;
+
+const noteOf = (blob: Blob, duration: number, px: number): Voice => {
+  const type = blob.type || "video/webm";
+  return {
+    file: new File([blob], `video-note.${type.includes("mp4") ? "mp4" : "webm"}`, { type }),
+    // other clients show an ordinary (square) video
+    extra: { body: "پیام ویدیویی", "app.panbeh.video_note": true, info: { duration: Math.round(duration), w: px, h: px } },
+  };
+};
+
+/** A round video message from the front camera, square-cropped, up to a minute. Same controls as VoiceRecorder, with the
+ *  camera shown in a circle above the composer. */
+export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
+  const [rec, setRec] = useState<{ blob: Blob; url: string; duration: number; px: number } | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const cam = useRef<HTMLVideoElement>(null);
+  const stop = useRef<(keep: boolean) => void>(() => {});
+  const sendOnStop = useRef(false);
+  const lockedNow = useRef(locked);
+  lockedNow.current = locked;
+
+  useEffect(() => {
+    let live = true, keep = false, timer = 0, draw = 0, url = "";
+    let stream: MediaStream | undefined, r: MediaRecorder | undefined;
+    const release = () => { clearInterval(timer); clearInterval(draw); stream?.getTracks().forEach((t) => t.stop()); };
+    stop.current = (k) => {
+      keep = k;
+      if (r?.state === "recording") r.stop();
+      else if (sendOnStop.current) onDone();
+      release();
+    };
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      } catch {
+        alertDialog("دسترسی به دوربین یا میکروفون ممکن نشد. اجازه‌ی آن‌ها را در تنظیمات مرورگر یا برنامه بدهید.");
+        return onDone();
+      }
+      if (!live) return release();
+      const v = cam.current!;
+      v.srcObject = stream;
+      await v.play().catch(() => {});
+      // the camera's frame cropped to its middle square, so every camera (and orientation) gives a square video
+      const px = +loadPrefs().noteQuality;
+      const canvas = Object.assign(document.createElement("canvas"), { width: px, height: px }), g = canvas.getContext("2d")!;
+      const frame = () => {
+        const w = v.videoWidth, h = v.videoHeight, sq = Math.min(w, h);
+        if (sq) g.drawImage(v, (w - sq) / 2, (h - sq) / 2, sq, sq, 0, 0, px, px);
+      };
+      frame();
+      draw = window.setInterval(frame, 1000 / 30);
+      const out = new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...stream.getAudioTracks()]);
+      r = new MediaRecorder(out, { mimeType: NOTE_TYPES.find((t) => MediaRecorder.isTypeSupported(t)), videoBitsPerSecond: NOTE_BPS[px], audioBitsPerSecond: AUDIO_BPS[loadPrefs().audioQuality] });
+      const chunks: Blob[] = [];
+      const started = Date.now();
+      r.ondataavailable = (e) => chunks.push(e.data);
+      r.onstop = () => {
+        if (!keep || !live) return;
+        const blob = new Blob(chunks, { type: r!.mimeType.split(";")[0] }), duration = Math.min(NOTE_MAX, Date.now() - started);
+        if (sendOnStop.current) return onDone(duration < MIN_MS ? undefined : noteOf(blob, duration, px));
+        url = URL.createObjectURL(blob);
+        setRec({ blob, url, duration, px });
+      };
+      timer = window.setInterval(() => {
+        const e = Date.now() - started;
+        setElapsed(e);
+        if (e < NOTE_MAX) return;
+        if (!lockedNow.current) sendOnStop.current = true; // the minute's up: held sends, locked goes to the preview
+        stop.current(true);
+      }, 100);
+      r.start(1000);
+    })();
+    return () => { live = false; stop.current(false); if (url) URL.revokeObjectURL(url); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  control.current = { finish: (send) => { if (send) { sendOnStop.current = true; stop.current(true); } else { stop.current(false); onDone(); } } };
+
+  const f = rec ? 1 : Math.min(1, elapsed / NOTE_MAX);
+  return (
+    <>
+      <div className="note-live">
+        {rec ? <video src={rec.url} autoPlay loop playsInline /> : <video ref={cam} muted playsInline className="mirror" />}
+        {!rec && <svg viewBox="0 0 100 100" aria-hidden><circle cx="50" cy="50" r={R} strokeDasharray={C} strokeDashoffset={C * (1 - f)} /></svg>}
+      </div>
+      {!locked && !rec ? <HeldRow elapsed={elapsed} dx={dx} icon="camera" /> : (
+        <div className="composer-row recorder">
+          <button className="icon-btn" onClick={() => onDone()} title="حذف" aria-label="حذف"><Icon name="trash" /></button>
+          <div className="recorder-live" dir="ltr">
+            {!rec && <span className="rec-dot" />}
+            <span className="rec-time">{fmtDuration(rec?.duration ?? elapsed)}</span>
+          </div>
+          {rec ? (
+            <button className="send-btn ready" onClick={() => onDone(noteOf(rec.blob, rec.duration, rec.px))} aria-label="ارسال"><Icon name="send" /></button>
+          ) : (
+            <button className="send-btn ready rec-stop" onClick={() => stop.current(true)} aria-label="پایان ضبط"><Icon name="stop" /></button>
+          )}
+        </div>
+      )}
+    </>
   );
 }

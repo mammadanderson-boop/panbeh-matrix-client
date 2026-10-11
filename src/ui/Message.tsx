@@ -10,7 +10,7 @@ import { usePromise } from "../hooks.ts";
 import { LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, num, osmUrl, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
 import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, previewText, senderMember, senderName, stripReplyFallback, toast, useChange, isVoice } from "./common.tsx";
-import { AudioPlayer, trackFor } from "./Voice.tsx";
+import { AudioPlayer, stopPlayer, trackFor } from "./Voice.tsx";
 import { PollBody } from "./Poll.tsx";
 import { EmojiPanel } from "./Emoji.tsx";
 import { LinkPreview } from "./LinkPreview.tsx";
@@ -317,6 +317,7 @@ function Body({ ev, room, onView, onUser, album }: { ev: MatrixEvent; room: Room
   const caption = c.msgtype !== "m.audio" && captionOf(c) && <p className="msg-text caption" dir={textDir(c.body)}>{linkify(c.body)}</p>;
   if (album) return <><AlbumGrid evs={album} room={room} onView={onView} />{caption}</>;
   if (c.msgtype === "m.image" || ev.getType() === EventType.Sticker) return <><Image c={c} onView={() => onView(ev)} auto={ev.getType() === EventType.Sticker || autoDl(room, isGif(c) ? "gifs" : "photos", c)} />{caption}</>;
+  if (c.msgtype === "m.video" && c["app.panbeh.video_note"]) return <VideoNote c={c} room={room} />;
   if (c.msgtype === "m.video" && isGif(c)) return <><GifBox c={c} auto={autoDl(room, "gifs", c)} />{caption}</>;
   if (c.msgtype === "m.video") return <><Video c={c} onView={() => onView(ev)} />{caption}</>;
   if (c.msgtype === "m.audio") return (
@@ -451,9 +452,9 @@ function blurUrl(hash: unknown) {
 }
 
 /** Media not downloaded yet: its blurhash (or a tiny server thumbnail when unencrypted), its size, and download / cancel. */
-function Pending({ c, dl, label }: { c: Content; dl: ReturnType<typeof useMedia>; label?: string }) {
-  const blur = blurUrl(c.info?.[BLURHASH]);
-  const tinyOf = c.info?.thumbnail_url ? { url: c.info.thumbnail_url } : c.msgtype === "m.image" && c.url ? c : null;
+function Pending({ c, dl, label, noBg }: { c: Content; dl: ReturnType<typeof useMedia>; label?: string; noBg?: boolean }) {
+  const blur = noBg ? null : blurUrl(c.info?.[BLURHASH]);
+  const tinyOf = noBg ? null : c.info?.thumbnail_url ? { url: c.info.thumbnail_url } : c.msgtype === "m.image" && c.url ? c : null;
   const tiny = usePromise(blur || !tinyOf ? null : mediaUrl(tinyOf, { w: 32, h: 32 }));
   const bg = blur ?? tiny;
   return (
@@ -506,6 +507,63 @@ function Video({ c, onView, tile }: { c: Content; onView: () => void; tile?: boo
       <span className="play-badge"><Icon name="play" size={26} /></span>
       {c.info?.duration > 0 && <span className="dur-badge">{fmtDuration(c.info.duration)}</span>}
     </button>
+  );
+}
+
+/** The round video message playing with sound, so starting another (or a voice message) stops it. */
+let noteWithSound: { el: HTMLVideoElement; quiet: () => void } | null = null;
+const NR = 47, NC = 2 * Math.PI * NR;
+
+/** A round video message. Auto-downloaded ones play muted on a loop; a tap plays it from the start with sound (a ring shows
+ *  how far), another tap pauses. Not downloaded: its poster, size and a download button; once it's in, it plays with sound. */
+function VideoNote({ c, room }: { c: Content; room: Room }) {
+  const auto = autoDl(room, "voice", c);
+  const dl = useMedia(c, undefined, auto);
+  const poster = usePromise(thumbFor(c)) ?? blurUrl(c.info?.[BLURHASH]);
+  const v = useRef<HTMLVideoElement>(null);
+  const [sound, setSound] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [pos, setPos] = useState(0);
+  const wantSound = useRef(false);
+  const dur = c.info?.duration > 0 ? c.info.duration : 0;
+  const quiet = () => { // back to the silent loop (or stopped, if it wasn't auto-playing)
+    const el = v.current;
+    setSound(false); setPaused(false); setPos(0);
+    if (noteWithSound?.el === el) noteWithSound = null;
+    if (!el) return;
+    el.muted = true; el.loop = true;
+    if (auto) void el.play().catch(() => {}); else el.pause();
+  };
+  const loud = () => {
+    const el = v.current!;
+    if (noteWithSound && noteWithSound.el !== el) noteWithSound.quiet();
+    stopPlayer();
+    noteWithSound = { el, quiet };
+    el.currentTime = 0; el.muted = false; el.loop = false;
+    void el.play().catch(() => {});
+    setSound(true); setPaused(false);
+  };
+  useEffect(() => { if (dl.url && wantSound.current) { wantSound.current = false; loud(); } }, [dl.url]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { if (noteWithSound?.el === v.current) noteWithSound = null; }, []);
+  const tap = (e: MouseEvent) => {
+    e.stopPropagation();
+    if (!dl.url) { if (dl.idle) { wantSound.current = true; dl.start(); } return; }
+    const el = v.current!;
+    if (!sound) loud();
+    else if (el.paused) { void el.play(); setPaused(false); } else { el.pause(); setPaused(true); }
+  };
+  const left = sound && dur ? Math.max(0, dur - pos * 1000) : dur;
+  return (
+    <div className={"note" + (sound ? " sound" : "")} onClick={tap} role="button" tabIndex={0} aria-label={sound && !paused ? "توقف" : "پخش پیام ویدیویی"}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(e as unknown as MouseEvent); } }}>
+      {dl.url ? <video ref={v} src={dl.url} poster={poster ?? undefined} autoPlay={auto} muted loop playsInline disablePictureInPicture
+        onTimeUpdate={(e) => sound && setPos(e.currentTarget.currentTime)} onEnded={quiet} />
+        : poster ? <img src={poster} alt="" /> : <span className="shimmer" />}
+      {!dl.url && <Pending c={c} dl={dl} noBg={!!poster} />}
+      {sound && <svg className="note-ring" viewBox="0 0 100 100" aria-hidden><circle cx="50" cy="50" r={NR} strokeDasharray={NC} strokeDashoffset={NC * (1 - (dur ? Math.min(1, (pos * 1000) / dur) : 0))} /></svg>}
+      {sound && paused && <span className="play-badge"><Icon name="play" size={26} /></span>}
+      {dl.url && <span className="dur-badge">{fmtDuration(left)}{!sound && <Icon name="mute" size={12} />}</span>}
+    </div>
   );
 }
 

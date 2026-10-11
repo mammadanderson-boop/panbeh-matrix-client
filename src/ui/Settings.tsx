@@ -23,18 +23,20 @@ import { matrixToLink } from "../uri.ts";
 type Prefs = { theme: "system" | "light" | "dark"; accent: string; wallpaper: string; notify: boolean; notifyDMs: boolean; notifyGroups: boolean; previews: boolean; shareLastSeen: boolean; searchIndex: boolean; dev: boolean; legacyCalls: boolean; enterSends: boolean; askSave: boolean;
   camQuality: "360" | "540" | "720" | "1080"; screenQuality: "720" | "1080" | "1080hi"; audioQuality: "low" | "normal" | "high";
   lowData: "off" | "auto" | "on";
-  cacheMB: number; autoDl: AutoDl }; // media kept on the device (mediaCache.ts reads it from localStorage too) // calls: everyone's video at its lowest layer (auto = while our connection is poor)
+  cacheMB: number; autoDl: AutoDl;
+  recordMode: "voice" | "video"; noteQuality: "384" | "480" | "640" }; // the mic button records voice or round video; video message size (px) // media kept on the device (mediaCache.ts reads it from localStorage too) // calls: everyone's video at its lowest layer (auto = while our connection is poor)
 const ACCENTS = ["#3390ec", "#8774e1", "#40a7a0", "#e5864a", "#e0578b", "#4fae4e"];
 const WALLPAPERS = { doodle: "طرح‌دار", gradient: "گرادیان", plain: "ساده" };
 const THEMES = { system: "سیستم", light: "روشن", dark: "تیره" };
 const CAM_Q: [Prefs["camQuality"], string][] = [["360", "۳۶۰p"], ["540", "۵۴۰p"], ["720", "۷۲۰p"], ["1080", "۱۰۸۰p"]];
 const SCREEN_Q: [Prefs["screenQuality"], string][] = [["720", "۷۲۰p، ۱۵ فریم"], ["1080", "۱۰۸۰p، ۱۵ فریم"], ["1080hi", "۱۰۸۰p، ۳۰ فریم"]];
+const NOTE_Q: [Prefs["noteQuality"], string][] = [["384", "۳۸۴p"], ["480", "۴۸۰p"], ["640", "۶۴۰p"]];
 const AUDIO_Q: [Prefs["audioQuality"], string][] = [["low", "کم"], ["normal", "معمولی"], ["high", "بالا"]];
 const CACHE_MB: [number, string][] = [[250, "۲۵۰ مگابایت"], [500, "۵۰۰ مگابایت"], [1024, "۱ گیگابایت"], [2048, "۲ گیگابایت"], [5120, "۵ گیگابایت"]];
 const LOW_DATA: [Prefs["lowData"], string][] = [["off", "خاموش"], ["auto", "خودکار، با اتصال ضعیف"], ["on", "همیشه"]];
 
 // the Android app defaults to notifying: it asks for permission on first start. The desktop app needs no permission.
-export const loadPrefs = (): Prefs => withAutoDl({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
+export const loadPrefs = (): Prefs => withAutoDl({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, recordMode: "voice", noteQuality: "640", ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
 const withAutoDl = (p: Prefs): Prefs => ({ ...p, autoDl: mergeAutoDl(p.autoDl) }); // nested: kinds added later get their defaults
 
 /** Enter (or Ctrl/⌘+Enter when Enter is set to a new line) sends. */
@@ -147,6 +149,8 @@ export function Settings({ onClose, onSecurityChange }: { onClose: () => void; o
         <Select value={prefs.camQuality} options={CAM_Q} onChange={(v) => set({ camQuality: v })} /></label>
       {!isNative && <label className="select-row">اشتراک صفحه
         <Select value={prefs.screenQuality} options={SCREEN_Q} onChange={(v) => set({ screenQuality: v })} /></label>}
+      <label className="select-row">پیام ویدیویی
+        <Select value={prefs.noteQuality} options={NOTE_Q} onChange={(v) => set({ noteQuality: v })} /></label>
       <label className="select-row">صدا (تماس و پیام صوتی)
         <Select value={prefs.audioQuality} options={AUDIO_Q} onChange={(v) => set({ audioQuality: v })} /></label>
       <label className="select-row">تصویر کم‌مصرف در تماس

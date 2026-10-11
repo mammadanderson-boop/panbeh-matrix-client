@@ -26,7 +26,7 @@ const rowId = (ev: MatrixEvent) => ev.getTxnId() ?? ev.getId()!; // stable acros
 /** Album grouping (see buildRows): Panbeh's tag, else uncaptioned photos/videos (not GIFs) that may group by time. */
 function albumOf(ev: MatrixEvent): string | undefined {
   const c = ev.getContent();
-  if ((c.msgtype !== "m.image" && c.msgtype !== "m.video") || isGif(c) || ev.status === EventStatus.NOT_SENT) return;
+  if ((c.msgtype !== "m.image" && c.msgtype !== "m.video") || isGif(c) || c["app.panbeh.video_note"] || ev.status === EventStatus.NOT_SENT) return;
   const tag = c["app.panbeh.album"]?.id;
   if (typeof tag === "string") return "t:" + tag;
   return captionOf(c) || ev.replyEventId ? undefined : "h";
@@ -405,7 +405,7 @@ function PendingUpload({ u }: { u: Upload }) {
             waveform: (u.extra!["org.matrix.msc1767.audio"] as { waveform?: number[] } | undefined)?.waveform }}
             lead={u.error ? <span className="file-icon"><Icon name="mic" /></span> : <Ring u={u} />} />
         ) : u.previewUrl ? (
-          <div className="media-box up-box">
+          <div className={"media-box up-box" + (u.extra?.["app.panbeh.video_note"] ? " note" : "")}>
             {u.file.type.startsWith("video/") ? <video src={u.previewUrl} preload="metadata" muted /> : <img src={u.previewUrl} alt="" />}
             {!u.error && <Ring u={u} />}
             {u.error && <span className="up-state">{state}</span>}

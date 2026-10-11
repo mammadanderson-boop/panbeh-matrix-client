@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ContentHelpers, LocationAssetType, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, GIF_INFO, scheduleMessage, startUpload } from "../matrix.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
 import { escRe, formatMessage, normalize, num, osmUrl, scheduleLabel, type Gif } from "../logic.ts";
 import { isMessage } from "../hooks.ts";
-import { VoiceRecorder } from "./Voice.tsx";
+import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
 import { EmojiPanel } from "./Emoji.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
-import { isSendKey } from "./Settings.tsx";
+import { isSendKey, loadPrefs } from "./Settings.tsx";
 import { reducedMotion, useExit } from "./useDismiss.ts";
 import { useLongPress } from "./useLongPress.ts";
 import { SchedulePicker, ScheduledList, useScheduled } from "./Scheduled.tsx";
@@ -45,6 +45,8 @@ export function takeShared(roomId: string) {
   return f;
 }
 
+const LOCK_AT = 60, CANCEL_AT = 100; // px the held finger slides up to lock, sideways to cancel
+
 type Props = { room: Room; threadId: string | null; mode: Mode; setMode: (m: Mode) => void; files: File[]; setFiles: (f: (x: File[]) => File[]) => void };
 type Mention = { name: string; id: string };
 type Suggestion = Mention & { mxc?: string | null };
@@ -56,7 +58,11 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const [menu, setMenu] = useState(false);
   const [menuShown, menuClosing] = useExit(menu);
   const [pollForm, setPollForm] = useState(false);
-  const [recording, setRecording] = useState(false);
+  // recording a voice or video message: held while the finger is down (slide up locks, slide toward the text cancels)
+  const [rec, setRec] = useState<{ kind: "voice" | "video"; locked: boolean; dx: number } | null>(null);
+  const recording = !!rec;
+  const recControl = useRef<RecControl | null>(null);
+  const [recordMode, setRecordMode] = useState(() => loadPrefs().recordMode);
   const [locating, setLocating] = useState(false);
   const [emoji, setEmoji] = useState(false);
   const [emojiShown, emojiClosing] = useExit(emoji && !recording);
@@ -292,6 +298,44 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     if (f.length) { e.preventDefault(); setFiles((x) => [...x, ...f]); }
   };
 
+  function recorded(v?: Voice) {
+    recControl.current = null;
+    setRec(null);
+    if (!v) return;
+    startUpload(room, v.file, threadId, mode?.kind === "reply" ? mode.ev : undefined, v.extra);
+    setMode(null);
+  }
+
+  /** Telegram's mic button: a tap switches voice ↔ video; holding records, up to lock, sideways (toward the text) to cancel. */
+  function holdRecord(e: ReactPointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault(); // no focus change, no text selection, no long-press menu
+    const id = e.pointerId, x0 = e.clientX, y0 = e.clientY, kind = recordMode;
+    let started = false, over = false;
+    const timer = window.setTimeout(() => { started = true; navigator.vibrate?.(20); setRec({ kind, locked: false, dx: 0 }); }, 200);
+    const done = () => { over = true; clearTimeout(timer); removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); };
+    function move(ev: PointerEvent) {
+      if (ev.pointerId !== id || !started || over) return;
+      const dx = Math.min(0, ev.clientX - x0), dy = ev.clientY - y0;
+      if (dy < -LOCK_AT) { done(); navigator.vibrate?.(15); setRec((r) => r && { ...r, locked: true, dx: 0 }); }
+      else if (dx < -CANCEL_AT) { done(); recControl.current?.finish(false); }
+      else setRec((r) => r && { ...r, dx });
+    }
+    function up(ev: PointerEvent) {
+      if (ev.pointerId !== id || over) return;
+      done();
+      if (!started) { // a tap: switch what the button records
+        const next = kind === "voice" ? "video" : "voice";
+        setRecordMode(next);
+        localStorage.setItem("panbeh.prefs", JSON.stringify({ ...loadPrefs(), recordMode: next }));
+        toast(next === "video" ? "برای ضبط پیام ویدیویی نگه دارید" : "برای ضبط پیام صوتی نگه دارید");
+      } else recControl.current?.finish(ev.type === "pointerup");
+    }
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+    addEventListener("pointercancel", up);
+  }
+
   const canRecord = !text.trim() && mode?.kind !== "edit" && "MediaRecorder" in window;
   const attachAway = !!text.trim() || mode?.kind === "edit";
 
@@ -325,13 +369,15 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
         </div>
       )}
       {recording && bar}
-      {recording ? (
-        <VoiceRecorder onDone={(v) => { setRecording(false); if (v) { startUpload(room, v.file, threadId, mode?.kind === "reply" ? mode.ev : undefined, v.extra); setMode(null); } }} />
-      ) : (
+      {rec ? (rec.kind === "video" ? <VideoNoteRecorder {...rec} control={recControl} onDone={recorded} /> : <VoiceRecorder {...rec} control={recControl} onDone={recorded} />) : (
         <div className="composer-row">
           {/* RTL: first child sits on the right — send/mic there, the pill on the left */}
           {canRecord ? (
-            <button className="send-btn" onClick={() => setRecording(true)} title="پیام صوتی" aria-label="ضبط پیام صوتی"><Icon key="mic" name="mic" /></button>
+            <button className="send-btn rec-btn" onPointerDown={holdRecord} onContextMenu={(e) => e.preventDefault()}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRec({ kind: recordMode, locked: true, dx: 0 }); } }}
+              title={recordMode === "video" ? "پیام ویدیویی: نگه دارید" : "پیام صوتی: نگه دارید"} aria-label={recordMode === "video" ? "ضبط پیام ویدیویی" : "ضبط پیام صوتی"}>
+              <Icon key={recordMode} name={recordMode === "video" ? "camera" : "mic"} />
+            </button>
           ) : (
             <button className={"send-btn" + (text.trim() || mediaEdit ? " ready" : "")} onClick={sendPress.click(send)} {...sendPress.handlers} aria-label="ارسال"
               onMouseDown={(e) => e.preventDefault()} /* keeps focus (and the phone's keyboard) in the textarea */ disabled={!text.trim() && !mediaEdit}>

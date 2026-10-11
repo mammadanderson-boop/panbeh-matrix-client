@@ -101,7 +101,7 @@ export function previewText(ev: MatrixEvent): string {
   const c = ev.getContent();
   switch (c.msgtype) {
     case "m.image": return "🖼 " + (cap(c) ?? "عکس");
-    case "m.video": return isGif(c) ? "🎞 " + (cap(c) ?? "گیف") : "🎬 " + (cap(c) ?? "ویدیو");
+    case "m.video": return c["app.panbeh.video_note"] ? "📹 پیام ویدیویی " + fmtDuration(c.info?.duration ?? 0) : isGif(c) ? "🎞 " + (cap(c) ?? "گیف") : "🎬 " + (cap(c) ?? "ویدیو");
     case "m.audio": return isVoice(c) ? "🎤 پیام صوتی " + fmtDuration(audioDuration(c)) : "🎵 صدا";
     case "m.location": return "📍 موقعیت مکانی";
     case "m.file": return "📎 " + (cap(c) ?? c.filename ?? c.body ?? "فایل");
