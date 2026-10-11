@@ -403,3 +403,15 @@ test("blurhash: average colour and left/right survive a round trip, bad hashes a
   assert.equal(blurhashDecode("LEHV6nWB2yk8", 4, 3), null);
   assert.equal(blurhashDecode("LEHV6nWB2yk8pyo0adR*.7kCMdn\"", 4, 3), null);
 });
+
+test("albums: tagged ones group, untagged only seconds apart, captions and the divider split them", () => {
+  const at = (id: string, sec: number, album?: string, sender = "@x"): Msg => ({ id, sender, ts: T + sec * 1000, kind: "msg", album });
+  const kinds = (rows: ReturnType<typeof buildRows>) => rows.filter((r) => r.type !== "day").map((r) => r.type === "album" ? r.ids.join("+") : r.type === "msg" ? r.id : r.type);
+  assert.deepEqual(kinds(buildRows([at("a", 0, "t:1"), at("b", 40, "t:1"), at("c", 41, "t:2"), at("d", 42, "t:2")], T)), ["a+b", "c+d"]); // tags, however far apart
+  assert.deepEqual(kinds(buildRows([at("a", 0, "h"), at("b", 3, "h"), at("c", 20, "h"), at("d", 21), at("e", 22, "h")], T)), ["a+b", "c", "d", "e"]); // gap, caption (no album key)
+  assert.deepEqual(kinds(buildRows([at("a", 0, "h"), at("b", 1, "h", "@y")], T)), ["a", "b"]); // other sender
+  assert.deepEqual(kinds(buildRows([at("a", 0, "h"), at("b", 1, "h"), at("c", 2, "h")], T, "a")), ["a", "unread", "b+c"]);
+  assert.equal(buildRows(Array.from({ length: 12 }, (_, i) => at("m" + i, i, "h")), T).filter((r) => r.type === "album").length, 2); // 10 at most
+  const rows = buildRows([at("a", 0, "t:1"), at("b", 1, "t:1"), at("c", 2)], T).filter((r) => r.type !== "day");
+  assert.deepEqual(rows.map((r) => r.type !== "unread" && r.type !== "notice" && [r.key, r.id, r.first, r.last]), [["a", "b", true, false], ["c", "c", false, true]]);
+});

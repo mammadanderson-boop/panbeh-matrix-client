@@ -191,8 +191,20 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     const replyTo = mode?.kind === "reply" ? mode.ev : undefined;
     setMode(null);
     setFiles(() => []);
-    const extra = (f: File) => (asGif && !asFile && f.type.startsWith("video/") ? { info: GIF_INFO } : undefined);
-    list.forEach((f, i) => startUpload(room, f, threadId, i ? undefined : replyTo, extra(f), i ? undefined : caption, asFile));
+    const gif = (f: File) => asGif && !asFile && f.type.startsWith("video/");
+    const media = list.filter((f) => !asFile && /^(image|video)\//.test(f.type) && f.type !== "image/gif" && !gif(f));
+    // photos and videos go as albums of up to 10 (Telegram's limit), each tagged so Panbeh shows them as one grid.
+    // The reply goes on the first, the caption on the last of the first album: other clients show it after the photos.
+    const albums = media.length > 1 ? Array.from({ length: Math.ceil(media.length / 10) }, (_, k) => media.slice(k * 10, k * 10 + 10)) : [];
+    const firstAlbum = albums[0];
+    for (const a of albums) {
+      const id = crypto.randomUUID();
+      a.forEach((f, i) => startUpload(room, f, threadId, a === firstAlbum && !i ? replyTo : undefined,
+        { "app.panbeh.album": { id, n: a.length, i } }, a === firstAlbum && i === a.length - 1 ? caption : undefined));
+    }
+    const rest = list.filter((f) => !albums.flat().includes(f));
+    rest.forEach((f, i) => startUpload(room, f, threadId, albums.length || i ? undefined : replyTo, gif(f) ? { info: GIF_INFO } : undefined,
+      albums.length || i ? undefined : caption, asFile));
   }
 
   function shareLocation() {
@@ -348,7 +360,8 @@ function SendFiles({ files, setFiles, onSend }: { files: File[]; setFiles: Props
   const remove = (i: number) => setFiles((x) => x.filter((_, j) => j !== i));
   const imgs = files.map((f, i) => i).filter((i) => urls[i]);
   const others = files.map((f, i) => i).filter((i) => !urls[i]);
-  const title = files.length === 1 && files[0].type.startsWith("image/") ? "ارسال عکس" : `ارسال ${num(files.length)} فایل`;
+  const photos = files.every((f) => f.type.startsWith("image/"));
+  const title = files.length === 1 && photos ? "ارسال عکس" : `ارسال ${num(files.length)} ${photos && !asFile ? "عکس" : "فایل"}`;
   const x = (i: number) => <button className="icon-btn send-x" aria-label="حذف" onClick={() => remove(i)}><Icon name="close" size={14} /></button>;
   return (
     <div className="modal-backdrop" onClick={close}>

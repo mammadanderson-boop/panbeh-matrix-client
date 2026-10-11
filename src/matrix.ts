@@ -418,7 +418,7 @@ export async function sendFile(room: Room, file: File, threadId: string | null, 
   const { onProgress, abort, caption, asFile } = opts;
   const up = { progressHandler: onProgress && (({ loaded, total }: { loaded: number; total: number }) => onProgress(loaded, total)), abortController: abort };
   const encrypted = client.getCrypto() ? await client.getCrypto()!.isEncryptionEnabledInRoom(room.roomId) : false;
-  if (!asFile && !extra) file = await compressImage(file);
+  if (!asFile && !extra?.msgtype) file = await compressImage(file); // not voice notes; album tags still compress
   const info: Record<string, unknown> = { mimetype: file.type, size: file.size };
   const msgtype = asFile ? "m.file" : file.type.startsWith("image/") ? "m.image" : file.type.startsWith("video/") ? "m.video" : "m.file";
   if (msgtype === "m.image") Object.assign(info, await imageInfo(file));
