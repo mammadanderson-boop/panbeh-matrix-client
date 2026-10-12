@@ -3,6 +3,7 @@ import { login, loginMode, startOAuth } from "../matrix.ts";
 import { normalizeServer } from "../logic.ts";
 import { errText } from "./common.tsx";
 import { isDesktop } from "../desktop.ts";
+import logo from "../logo.svg";
 
 // only here does M_FORBIDDEN mean bad credentials; elsewhere it's a missing permission
 const loginErr = (e: unknown) => ((e as { errcode?: string })?.errcode === "M_FORBIDDEN" ? "نام کاربری یا رمز عبور اشتباه است." : errText(e));
@@ -60,7 +61,7 @@ export function Login({ onDone, initialError, onCancel }: { onDone: () => void; 
   return (
     <div className="login wallpaper">
       <form className="login-card" onSubmit={submit}>
-        <div className="login-logo">✦</div>
+        <img className="login-logo" src={logo} alt="" />
         <h1>ورود به ماتریکس</h1>
         <label>
           سرور

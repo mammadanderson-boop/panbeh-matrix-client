@@ -7,6 +7,7 @@ import { checkPin, lockConf, removeLock, setLockOpts, setPin, unlock, unlockedBy
 import { num } from "../logic.ts";
 import { Icon } from "../icons.tsx";
 import { Select, Sheet, toast } from "./common.tsx";
+import logo from "../logo.svg";
 
 const MIN = 4, MAX = 8;
 
@@ -102,7 +103,7 @@ export function LockScreen() {
   const forget = () => { setForgetting("busy"); removeLock(true); void logoutAll(); }; // logout reloads
   return (
     <div className="lock-screen wallpaper" role="dialog" aria-modal="true" aria-label="پنبه قفل است">
-      <div className="login-logo">✦</div>
+      <img className="login-logo" src={logo} alt="" />
       {forgetting ? (
         <div className="lock-forget">
           <p>رمز را فراموش کرده‌اید؟ قفل برداشته می‌شود و همه‌ی حساب‌ها از این دستگاه خارج می‌شوند. پس از ورود دوباره، پیام‌های رمزنگاری‌شده‌ی قبلی فقط با کلید بازیابی یا تأیید از دستگاهی دیگر خوانده می‌شوند.</p>

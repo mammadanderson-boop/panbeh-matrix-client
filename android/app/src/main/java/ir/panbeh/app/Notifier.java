@@ -67,7 +67,7 @@ final class Notifier {
         PendingIntent open = callIntent(ctx, "open", roomId, eventId, video);
         Notification n = new NotificationCompat.Builder(ctx, CH_CALLS)
             .setSmallIcon(R.drawable.ic_stat_panbeh)
-            .setColor(0xFF3390EC)
+            .setColor(0xFF007DED)
             .setContentTitle(caller)
             .setContentText(ctx.getString(video ? R.string.call_video : R.string.call_voice))
             .setCategory(NotificationCompat.CATEGORY_CALL)
@@ -155,7 +155,7 @@ final class Notifier {
             .setWhen(ts)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(sound ? NotificationCompat.PRIORITY_HIGH : NotificationCompat.PRIORITY_LOW)
-            .setColor(0xFF3390EC)
+            .setColor(0xFF007DED)
             .setGroup(GROUP)
             .setAutoCancel(true)
             .setOnlyAlertOnce(false)
@@ -180,7 +180,7 @@ final class Notifier {
             // the group summary keeps several chats bundled together on Android 7+
             nm.notify(GROUP, 0, new NotificationCompat.Builder(ctx, channel)
                 .setSmallIcon(R.drawable.ic_stat_panbeh)
-                .setColor(0xFF3390EC)
+                .setColor(0xFF007DED)
                 .setGroup(GROUP)
                 .setGroupSummary(true)
                 .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
@@ -247,7 +247,7 @@ final class Notifier {
         try {
             NotificationManagerCompat.from(ctx).notify(roomId, 1, new NotificationCompat.Builder(ctx, CH_QUIET)
                 .setSmallIcon(R.drawable.ic_stat_panbeh)
-                .setColor(0xFF3390EC)
+                .setColor(0xFF007DED)
                 .setContentTitle(ctx.getString(R.string.notify_failed))
                 .setContentText(text)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(text))

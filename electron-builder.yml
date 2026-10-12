@@ -35,6 +35,7 @@ nsis:
 
 mac:
   category: public.app-category.social-networking
+  icon: build/icon-mac.png # the logo tile on Apple's icon grid; Windows and Linux use build/icon.png
   target:
     - target: dmg
       arch: [universal]
