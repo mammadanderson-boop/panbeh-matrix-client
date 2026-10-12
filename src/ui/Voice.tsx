@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type MutableRefObject, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import type { MatrixEvent } from "matrix-js-sdk";
 import { downsample, fmtDuration, num } from "../logic.ts";
 import { Icon } from "../icons.tsx";
@@ -281,6 +281,22 @@ const NOTE_BPS: Record<number, number> = { 384: 1_000_000, 480: 1_500_000, 640: 
 const NOTE_TYPES = ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4;codecs=avc1.42E01E,opus", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
 const R = 47, C = 2 * Math.PI * R;
 
+/** A playing round video's progress ring, moved every frame: timeupdate fires only ~4 times a second, so it stepped. */
+export function NoteRing({ video, duration, className }: { video: RefObject<HTMLVideoElement | null>; duration: number; className?: string }) {
+  const arc = useRef<SVGCircleElement>(null);
+  useEffect(() => {
+    let f = 0;
+    const run = () => {
+      const el = video.current;
+      if (el && arc.current) arc.current.style.strokeDashoffset = String(C * (1 - (duration ? Math.min(1, (el.currentTime * 1000) / duration) : 0)));
+      f = requestAnimationFrame(run);
+    };
+    run();
+    return () => cancelAnimationFrame(f);
+  }, [video, duration]);
+  return <svg className={className} viewBox="0 0 100 100" aria-hidden><circle ref={arc} cx="50" cy="50" r={R} strokeDasharray={C} strokeDashoffset={C} style={{ transition: "none" }} /></svg>;
+}
+
 const noteOf = (blob: Blob, duration: number, px: number): Voice => {
   const type = blob.type || "video/webm";
   return {
@@ -295,7 +311,7 @@ const noteOf = (blob: Blob, duration: number, px: number): Voice => {
 export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
   const [rec, setRec] = useState<{ blob: Blob; url: string; duration: number; px: number; poster: string } | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [play, setPlay] = useState({ on: false, pos: 0 }); // the preview's playback
+  const [play, setPlay] = useState(false); // the preview is playing
   const cam = useRef<HTMLVideoElement>(null);
   const preview = useRef<HTMLVideoElement>(null);
   const [front, setFront] = useState(true);
@@ -385,19 +401,19 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
     if (!el) return;
     if (el.paused) void el.play().catch(() => {}); else el.pause();
   };
-  const f = rec ? (play.pos * 1000) / rec.duration : Math.min(1, elapsed / NOTE_MAX);
   return (
     <>
       <div className="note-backdrop" aria-hidden />
       <div className="note-live">
+        {/* keyed: React would otherwise reuse the camera's <video> for the preview, and its dead srcObject beats src (black) */}
         {rec ? (
-          <video ref={preview} src={rec.url} poster={rec.poster} autoPlay playsInline disablePictureInPicture onClick={toggle}
-            onPlay={() => setPlay((p) => ({ ...p, on: true }))} onPause={() => setPlay((p) => ({ ...p, on: false }))}
-            onEnded={(e) => { e.currentTarget.currentTime = 0; setPlay({ on: false, pos: 0 }); }}
-            onTimeUpdate={(e) => { const pos = e.currentTarget.currentTime; setPlay((p) => ({ ...p, pos })); }} />
-        ) : <video ref={cam} muted playsInline className={front ? "mirror" : undefined} />}
-        {(!rec || play.on) && <svg viewBox="0 0 100 100" aria-hidden><circle cx="50" cy="50" r={R} strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(1, f))} /></svg>}
-        {rec && !play.on && <span className="play-badge" aria-hidden><Icon name="play" size={26} /></span>}
+          <video key="preview" ref={preview} src={rec.url} poster={rec.poster} autoPlay playsInline disablePictureInPicture onClick={toggle}
+            onPlay={() => setPlay(true)} onPause={() => setPlay(false)}
+            onEnded={(e) => { e.currentTarget.currentTime = 0; setPlay(false); }} />
+        ) : <video key="cam" ref={cam} muted playsInline className={front ? "mirror" : undefined} />}
+        {rec ? play && <NoteRing video={preview} duration={rec.duration} />
+          : <svg viewBox="0 0 100 100" aria-hidden><circle cx="50" cy="50" r={R} strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(1, elapsed / NOTE_MAX))} /></svg>}
+        {rec && !play && <span className="play-badge" aria-hidden><Icon name="play" size={26} /></span>}
       </div>
       {!rec && cams > 1 && <button className="note-flip" onClick={() => void flip.current()} title="چرخش دوربین" aria-label="چرخش دوربین"><Icon name="flip" /></button>}
       {!locked && !rec ? <HeldRow elapsed={elapsed} dx={dx} icon="camera" /> : (
