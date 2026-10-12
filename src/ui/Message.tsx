@@ -10,7 +10,7 @@ import { usePromise } from "../hooks.ts";
 import { LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, num, osmUrl, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
 import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, previewText, senderMember, senderName, stripReplyFallback, toast, useChange, isVoice } from "./common.tsx";
-import { AudioPlayer, stopPlayer, trackFor } from "./Voice.tsx";
+import { AudioPlayer, NoteRing, stopPlayer, trackFor } from "./Voice.tsx";
 import { PollBody } from "./Poll.tsx";
 import { EmojiPanel } from "./Emoji.tsx";
 import { LinkPreview } from "./LinkPreview.tsx";
@@ -512,7 +512,6 @@ function Video({ c, onView, tile }: { c: Content; onView: () => void; tile?: boo
 
 /** The round video message playing with sound, so starting another (or a voice message) stops it. */
 let noteWithSound: { el: HTMLVideoElement; quiet: () => void } | null = null;
-const NR = 47, NC = 2 * Math.PI * NR;
 
 /** A round video message. Auto-downloaded ones play muted on a loop; a tap plays it from the start with sound (a ring shows
  *  how far), another tap pauses. Not downloaded: its poster, size and a download button; once it's in, it plays with sound. */
@@ -560,7 +559,7 @@ function VideoNote({ c, room }: { c: Content; room: Room }) {
         onTimeUpdate={(e) => sound && setPos(e.currentTarget.currentTime)} onEnded={quiet} />
         : poster ? <img src={poster} alt="" /> : <span className="shimmer" />}
       {!dl.url && <Pending c={c} dl={dl} noBg={!!poster} />}
-      {sound && <svg className="note-ring" viewBox="0 0 100 100" aria-hidden><circle cx="50" cy="50" r={NR} strokeDasharray={NC} strokeDashoffset={NC * (1 - (dur ? Math.min(1, (pos * 1000) / dur) : 0))} /></svg>}
+      {sound && <NoteRing className="note-ring" video={v} duration={dur} />}
       {sound && paused && <span className="play-badge"><Icon name="play" size={26} /></span>}
       {dl.url && <span className="dur-badge">{fmtDuration(left)}{!sound && <Icon name="mute" size={12} />}</span>}
     </div>
