@@ -25,7 +25,7 @@ type Prefs = { theme: "system" | "light" | "dark"; accent: string; wallpaper: st
   lowData: "off" | "auto" | "on";
   cacheMB: number; autoDl: AutoDl;
   recordMode: "voice" | "video"; noteQuality: "384" | "480" | "640" }; // the mic button records voice or round video; video message size (px) // media kept on the device (mediaCache.ts reads it from localStorage too) // calls: everyone's video at its lowest layer (auto = while our connection is poor)
-const ACCENTS = ["#3390ec", "#8774e1", "#40a7a0", "#e5864a", "#e0578b", "#4fae4e"];
+const ACCENTS = ["#007ded", "#8774e1", "#40a7a0", "#e5864a", "#e0578b", "#4fae4e"];
 const WALLPAPERS = { doodle: "طرح‌دار", gradient: "گرادیان", plain: "ساده" };
 const THEMES = { system: "سیستم", light: "روشن", dark: "تیره" };
 const CAM_Q: [Prefs["camQuality"], string][] = [["360", "۳۶۰p"], ["540", "۵۴۰p"], ["720", "۷۲۰p"], ["1080", "۱۰۸۰p"]];
@@ -36,8 +36,9 @@ const CACHE_MB: [number, string][] = [[250, "۲۵۰ مگابایت"], [500, "۵�
 const LOW_DATA: [Prefs["lowData"], string][] = [["off", "خاموش"], ["auto", "خودکار، با اتصال ضعیف"], ["on", "همیشه"]];
 
 // the Android app defaults to notifying: it asks for permission on first start. The desktop app needs no permission.
-export const loadPrefs = (): Prefs => withAutoDl({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, notifyPreview: "all", previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, recordMode: "voice", noteQuality: "640", ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
-const withAutoDl = (p: Prefs): Prefs => ({ ...p, autoDl: mergeAutoDl(p.autoDl) }); // nested: kinds added later get their defaults
+export const loadPrefs = (): Prefs => migrate({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, notifyPreview: "all", previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, recordMode: "voice", noteQuality: "640", ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
+const migrate = (p: Prefs): Prefs => ({ ...p, autoDl: mergeAutoDl(p.autoDl), // nested: kinds added later get their defaults
+  accent: p.accent === "#3390ec" ? ACCENTS[0] : p.accent }); // the old default blue, before the new logo
 
 /** Enter (or Ctrl/⌘+Enter when Enter is set to a new line) sends. */
 export const isSendKey = (e: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; nativeEvent: { isComposing: boolean } }) =>

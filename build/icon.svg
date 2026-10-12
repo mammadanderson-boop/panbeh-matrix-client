@@ -1,4 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="1024" height="1024">
-  <rect x="6" y="6" width="96" height="96" rx="22" fill="#3390EC"/>
-  <path fill="#FFFFFF" d="M54,26 C56.5,45 63,51.5 82,54 C63,56.5 56.5,63 54,82 C51.5,63 45,56.5 26,54 C45,51.5 51.5,45 54,26 Z"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="linear-gradient-1" x1="512.987" y1="214.717" x2="512.987" y2="540.266" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.38" stop-color="#f6fcff"/>
+      <stop offset="0.73" stop-color="#b6e3fa"/>
+      <stop offset="1" stop-color="#008df7"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="631.368" y1="422.871" x2="619.53" y2="759.272" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.3" stop-color="#f1fbff"/>
+      <stop offset="0.65" stop-color="#bde7fc"/>
+      <stop offset="1" stop-color="#61b9f3"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-3" x1="332.455" y1="420.898" x2="390.659" y2="804.652" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.3" stop-color="#f8fdff"/>
+      <stop offset="0.68" stop-color="#b5defa"/>
+      <stop offset="0.82" stop-color="#c8e3fd"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+  <path d="M676.748 378.478 C676.748 469.466 602.987 543.226 512 543.226 C421.013 543.226 347.252 469.466 347.252 378.478 C347.252 287.491 421.013 213.731 512 213.731 C602.987 213.731 676.748 287.491 676.748 378.478 Z" fill="url(#linear-gradient-1)"/>
+  <path d="M512.987 532.374 C535.676 467.264 594.867 420.898 660.963 420.898 C751.723 420.898 825.711 495.873 825.711 587.619 C825.711 679.365 751.723 759.272 660.963 759.272 C594.867 759.272 560.339 725.731 512.987 725.731 C467.607 725.731 437.025 746.447 406.443 765.191 C478.459 695.149 532.717 621.16 512.987 532.374 Z" fill="url(#linear-gradient-2)"/>
+  <path d="M361.064 420.898 C450.836 420.898 523.838 493.9 523.838 585.646 C523.838 674.432 461.688 728.69 402.497 770.124 C373.888 789.854 349.225 801.692 328.509 808.598 C309.765 815.503 322.59 799.719 331.468 784.921 C349.225 756.313 340.347 744.474 319.63 739.542 C250.574 721.785 198.289 660.621 198.289 588.605 C198.289 495.873 271.291 420.898 361.064 420.898 Z" fill="url(#linear-gradient-3)"/>
 </svg>

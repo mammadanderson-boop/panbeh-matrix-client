@@ -1,6 +1,6 @@
 /* ---------- tokens ---------- */
 :root {
-  --accent: #3390ec;
+  --accent: #007ded;
   --bg: #ffffff;
   --panel: #ffffff;
   --hover: #f4f4f5;
@@ -127,10 +127,7 @@ button:disabled { opacity: 0.6; cursor: default; }
   animation: rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .login-card h1 { margin: 0 0 6px; font-size: 22px; text-align: center; }
-.login-logo {
-  width: 72px; height: 72px; margin: 0 auto; display: grid; place-items: center;
-  border-radius: 50%; background: var(--accent); color: #fff; font-size: 34px;
-}
+.login-logo { width: 72px; height: 72px; margin: 0 auto; display: block; }
 .login-card label, .card { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
 .login-card input, .card input, .form input, .modal input:not([role]) {
   height: 48px; padding: 0 14px; border-radius: 12px; font-size: 16px; color: var(--text);
@@ -161,8 +158,6 @@ button:disabled { opacity: 0.6; cursor: default; }
 .sidebar { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); border-inline-end: 1px solid var(--border); }
 .sidebar-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
 .sidebar-head .logo { width: 30px; height: 30px; flex: none; }
-.sidebar-head .logo rect { fill: var(--accent); }
-.sidebar-head .logo path { fill: #fff; }
 .search {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px;
   border-radius: 22px; background: var(--hover); color: var(--muted); border: 2px solid transparent; transition: border-color 0.15s, background 0.15s;

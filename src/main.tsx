@@ -28,6 +28,7 @@ import { LockScreen } from "./ui/Lock.tsx";
 import { useLocked } from "./lock.ts";
 import "@fontsource-variable/vazirmatn";
 import "./styles.css";
+import logo from "./logo.svg";
 
 applyPrefs();
 // web: let the browser offer Panbeh for matrix: links; the hash form is picked up by Shell (see parseMatrixHash)
@@ -56,7 +57,7 @@ function App() {
   if (phase === "boot") return <Splash text="در حال راه‌اندازی…" />;
   if (phase === "error") return (
     <div className="splash wallpaper">
-      <div className="login-logo">✦</div>
+      <img className="login-logo" src={logo} alt="" />
       راه‌اندازی ممکن نشد.
       {bootError !== undefined && <small className="muted boot-error" dir="auto">{errText(bootError)}</small>}
       <button className="primary" onClick={() => location.reload()}>تلاش دوباره</button>
@@ -157,7 +158,7 @@ function Shell() {
 
 const Splash = ({ text }: { text: string }) => (
   <div className="splash wallpaper">
-    <div className="login-logo">✦</div><span className="spinner inline" /> {text}
+    <img className="login-logo" src={logo} alt="" /><span className="spinner inline" /> {text}
   </div>
 );
 
