@@ -641,7 +641,7 @@ input[role="switch"]:checked::before { transform: translateX(-18px); }
 .attach-menu svg { color: var(--accent); }
 .mention-list { bottom: calc(100% - 2px); inset-inline: 12px; max-height: 290px; overflow-y: auto; }
 .mention-list .user-row.on { background: var(--hover); }
-.mention-room { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: #fff; }
+.user-row > .mention-room { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: #fff; }
 
 /* ---------- mentions in messages ---------- */
 .msg .msg-text a.mention {
