@@ -292,8 +292,21 @@ export const packImages = (p: PackContent, use: Usage): [string, PackImage][] =>
     const u = i.usage?.length ? i.usage : p.pack?.usage?.length ? p.pack.usage : null;
     return !u || u.includes(use);
   });
-/** A shortcode from a file name: no extension, no spaces or colons. */
-export const codeFrom = (name: string) => name.replace(/\.[^.]*$/, "").replace(/[\s:]+/g, "_").slice(0, 32) || "emoji";
+// shortcode characters: Latin or Persian/Arabic letters, digits, _ - and the Persian half-space (ZWNJ)
+const CODE_CHAR = /(?=\p{L})[\p{sc=Latin}\p{sc=Arabic}]|\p{Nd}|[_\u200c-]/u;
+/** A shortcode as typed: characters outside CODE_CHAR dropped (`sep` ""), or runs of them made one `sep`. */
+export function cleanCode(s: string, sep = "") {
+  const out = [...s].map((c) => (CODE_CHAR.test(c) ? c : sep)).join("");
+  return (sep ? out.replace(new RegExp(`${escRe(sep)}{2,}`, "g"), sep) : out).slice(0, 32);
+}
+/** A shortcode from a file name: no extension, other characters as _. */
+export const codeFrom = (name: string) => cleanCode(name.replace(/\.[^.]*$/, ""), "_").replace(/^_+|_+$/g, "") || "emoji";
+/** How many images a pack may hold (Telegram's numbers). */
+export const PACK_CAP: Record<Usage, number> = { emoticon: 200, sticker: 120 };
+/** Emoji and stickers may be at most 2:1 either way: the size after padding the short side to fit. */
+export function padToRatio(w: number, h: number, max = 2) {
+  return w > h * max ? { w, h: Math.ceil(w / max) } : h > w * max ? { w: Math.ceil(h / max), h } : { w, h };
+}
 /** `code`, or code_2, code_3… when the pack already has it. */
 export function freeCode(code: string, taken: Record<string, unknown>) {
   let c = code, n = 1;

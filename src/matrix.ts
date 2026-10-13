@@ -1,7 +1,7 @@
 import { ClientEvent, createClient, UNSTABLE_MSC4140_DELAYED_EVENTS, Direction, EventTimeline, EventType, Filter, SearchOrderBy, HttpApiEvent, IndexedDBStore, MatrixEvent, Method, OAuth2, Preset, SetPresence, SyncState, Visibility, type ICreateRoomStateEvent, type MatrixClient, type MatrixError, type Room } from "matrix-js-sdk";
 import { decodeRecoveryKey, deriveRecoveryKeyFromPassphrase } from "matrix-js-sdk/lib/crypto-api/index.js";
 import { decryptAttachment, encryptAttachment, type IEncryptedFile } from "matrix-encrypt-attachment";
-import { blurhashEncode, endpointOf, fitSize, fmtSpan, freeCode, hasGif, isGif, normalizeServer, packImages, roomName, withGif, withoutGif, type Gif, type PackContent, type PackImage, type Usage } from "./logic.ts";
+import { blurhashEncode, cleanCode, endpointOf, fitSize, fmtSpan, freeCode, hasGif, isGif, normalizeServer, num, PACK_CAP, packImages, padToRatio, roomName, withGif, withoutGif, type Gif, type PackContent, type PackImage, type Usage } from "./logic.ts";
 import { isHeadless, isNative, nativeCancelAll, nativeLog, nativeSyncState, onKick, setBackgroundService } from "./native.ts";
 import { isDesktop, isWindowVisible, onWindowVisibility, openExternal } from "./desktop.ts";
 import { confirmDialog } from "./ui/dialog.tsx";
@@ -773,11 +773,47 @@ export function packsFor(room?: Room): Pack[] {
 export const emotesFor = (room: Room | undefined, use: Usage): Emote[] =>
   packsFor(room).flatMap((pack) => packImages(pack.content, use).map(([code, img]) => ({ code, img, pack })));
 
-/** Packs are shared, so their images go up unencrypted even for an encrypted room (every client expects a plain mxc). */
-export async function uploadEmote(file: File): Promise<PackImage> {
-  const { content_uri } = await client.uploadContent(file, { type: file.type });
-  const size = await createImageBitmap(file).then((b) => ({ w: b.width, h: b.height }), () => ({}));
-  return { url: content_uri, body: file.name, info: { mimetype: file.type, size: file.size, ...size } };
+const LONGEST: Record<Usage, number> = { emoticon: 128, sticker: 512 }; // px, after padding
+const ANIM_CAP: Record<Usage, number> = { emoticon: 1 << 20, sticker: 2 << 20 }; // bytes
+
+/** Animated GIF (looping block), APNG (acTL chunk) or WebP (VP8X animation flag): a canvas would freeze these.
+ *  ponytail: header sniffing, so a GIF without the looping block counts as still; ImageDecoder if that matters */
+async function isAnimated(file: File) {
+  const b = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
+  const text = new TextDecoder("latin1").decode(b);
+  if (file.type === "image/gif") return text.includes("NETSCAPE2.0");
+  if (file.type === "image/png") return text.includes("acTL");
+  if (file.type === "image/webp") return text.slice(12, 16) === "VP8X" && !!(b[20] & 2);
+  return false;
+}
+
+/** Packs are shared, so their images go up unencrypted even for an encrypted room (every client expects a plain mxc).
+ *  Still images are padded with transparency to at most 2:1 and shrunk to LONGEST; animated ones go up as they are,
+ *  so they must already be within 2:1 and ANIM_CAP. Throws a message for the user when a file can't be used. */
+export async function uploadEmote(file: File, use: Usage): Promise<PackImage> {
+  const bmp = await createImageBitmap(file).catch(() => { throw new Error("این فایل تصویر قابل استفاده نیست"); });
+  let w = bmp.width, h = bmp.height, data: Blob = file;
+  const box = padToRatio(w, h);
+  if (await isAnimated(file)) {
+    bmp.close();
+    if (box.w !== w || box.h !== h) throw new Error("نسبت طول و عرض گیف باید نزدیک به مربع باشد");
+    if (file.size > ANIM_CAP[use]) throw new Error(`انیمیشن ${use === "sticker" ? "استیکر" : "اموجی"} حداکثر ${num(ANIM_CAP[use] >> 20)} مگابایت می‌تواند باشد`);
+  } else {
+    const k = Math.min(1, LONGEST[use] / Math.max(box.w, box.h));
+    if (box.w !== w || box.h !== h || k < 1) {
+      const cv = Object.assign(document.createElement("canvas"), { width: Math.round(box.w * k), height: Math.round(box.h * k) });
+      const g = cv.getContext("2d")!;
+      g.imageSmoothingQuality = "high";
+      g.drawImage(bmp, ((box.w - w) / 2) * k, ((box.h - h) / 2) * k, w * k, h * k);
+      // WebP keeps the transparent padding and stays small; browsers without a WebP encoder give PNG
+      data = await new Promise<Blob>((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error("پردازش تصویر نشد"))), "image/webp", 0.9));
+      w = cv.width;
+      h = cv.height;
+    }
+    bmp.close();
+  }
+  const { content_uri } = await client.uploadContent(data, { type: data.type, name: file.name });
+  return { url: content_uri, body: file.name, info: { mimetype: data.type, size: data.size, w, h } };
 }
 
 export const inMyPack = (url: string, use: Usage) => packImages(personalPack(), use).some(([, i]) => i.url === url);
@@ -785,8 +821,9 @@ export const inMyPack = (url: string, use: Usage) => packImages(personalPack(), 
 export function addToMyPack(code: string, img: PackImage, use: Usage) {
   const p = personalPack();
   if (inMyPack(img.url, use)) return Promise.resolve();
+  if (packImages(p, use).length >= PACK_CAP[use]) return Promise.reject(new Error(`${use === "sticker" ? "استیکرهای" : "اموجی‌های"} شما پر است (${num(PACK_CAP[use])} تا)`));
   const images = { ...p.images };
-  images[freeCode(code.replace(/^:|:$/g, "") || "emoji", images)] = { url: img.url, ...(img.info && { info: img.info }), usage: [use] };
+  images[freeCode(cleanCode(code, "_").replace(/^_+|_+$/g, "") || "emoji", images)] = { url: img.url, ...(img.info && { info: img.info }), usage: [use] };
   return putPersonalPack({ ...p, images });
 }
 

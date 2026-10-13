@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ClientEvent, RoomStateEvent, type Room } from "matrix-js-sdk";
 import { addToMyPack, canEditPacks, client, isPackGlobal, packsFor, personalPack, putPersonalPack, putRoomPack, roomPack, roomPacks, setPackGlobal, uploadEmote, type Pack } from "../matrix.ts";
 import { useTick } from "../hooks.ts";
-import { codeFrom, freeCode, num, packImages, type PackContent, type Usage } from "../logic.ts";
+import { cleanCode, codeFrom, freeCode, num, PACK_CAP, packImages, type PackContent, type Usage } from "../logic.ts";
 import { Icon } from "../icons.tsx";
 import { ContextMenu, errText, Sheet, toast } from "./common.tsx";
 import { alertDialog, confirmDialog, promptDialog } from "./dialog.tsx";
@@ -20,17 +20,27 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
   const [menu, setMenu] = useState<{ x: number; y: number; code: string } | null>(null);
   const c = load();
   const list = use ? packImages(c, use) : Object.entries(c.images ?? {}).filter(([, i]) => i?.url?.startsWith("mxc://"));
+  const kind = use ?? (c.pack?.usage?.length === 1 ? c.pack.usage[0] : "emoticon"); // a room pack's own kind; mixed counts as emoji
+  const full = list.length >= PACK_CAP[kind];
   const run = (fn: () => Promise<unknown>) => { setBusy(true); fn().catch((e) => alertDialog(errText(e))).finally(() => setBusy(false)); };
 
+  /** Files that don't fit the pack or can't be used are skipped and listed; the rest still go in. */
   const add = (files: File[]) => run(async () => {
+    const fits = files.slice(0, Math.max(0, PACK_CAP[kind] - list.length)), errors: string[] = [];
+    if (fits.length < files.length) errors.push(`بسته پر است: ${num(files.length - fits.length)} فایل اضافه نشد (حداکثر ${num(PACK_CAP[kind])} تا).`);
     const up = [];
-    for (const f of files) up.push({ name: f.name, img: await uploadEmote(f) });
-    const cur = load(), images = { ...cur.images };
-    for (const { name, img } of up) images[freeCode(codeFrom(name), images)] = { ...img, ...(use && { usage: [use] }) };
-    await save({ ...cur, images });
+    for (const f of fits) {
+      try { up.push({ name: f.name, img: await uploadEmote(f, kind) }); } catch (e) { errors.push(`${f.name}: ${errText(e)}`); }
+    }
+    if (up.length) {
+      const cur = load(), images = { ...cur.images };
+      for (const { name, img } of up) images[freeCode(codeFrom(name), images)] = { ...img, ...(use && { usage: [use] }) };
+      await save({ ...cur, images });
+    }
+    if (errors.length) alertDialog(errors.join("\n"));
   });
   const rename = async (code: string) => {
-    const next = (await promptDialog("نام کوتاه (بدون فاصله)", { value: code, ok: "ذخیره" }))?.replace(/[\s:]+/g, "_").slice(0, 32);
+    const next = await promptDialog("نام کوتاه", { value: code, ok: "ذخیره", filter: (v) => cleanCode(v), hint: "حروف فارسی یا انگلیسی، عدد، _ و -" });
     if (!next || next === code) return;
     const cur = load();
     if (Object.hasOwn(cur.images ?? {}, next)) return alertDialog(`«:${next}:» در این بسته هست`);
@@ -45,10 +55,8 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
     else delete images[code];
     run(() => save({ ...cur, images }));
   };
-  const take = (code: string) => {
-    const as = use ?? (c.pack?.usage?.length === 1 ? c.pack.usage[0] : "emoticon");
-    addToMyPack(code, c.images![code], as).then(() => toast(`به ${KIND[as]}های شما اضافه شد`), (e) => alertDialog(errText(e)));
-  };
+  const take = (code: string) =>
+    addToMyPack(code, c.images![code], kind).then(() => toast(`به ${KIND[kind]}های شما اضافه شد`), (e) => alertDialog(errText(e)));
 
   return (
     <>
@@ -58,7 +66,7 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
             <EmoteImg url={i.url} alt="" className="" /><small dir="ltr">:{code}:</small>
           </button>
         ))}
-        {editable && (
+        {editable && !full && (
           <label className="pack-add" title="افزودن تصویر" aria-label="افزودن تصویر">
             <input type="file" accept="image/*" multiple hidden disabled={busy}
               onChange={(e) => { const f = [...e.target.files!]; e.target.value = ""; if (f.length) add(f); }} />
@@ -67,6 +75,7 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
         )}
       </div>
       {!list.length && !editable && <p className="muted">خالی است</p>}
+      {editable && full && <p className="muted">بسته پر است ({num(PACK_CAP[kind])} تا). برای افزودن، چندتایی را حذف کنید.</p>}
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} target=".pack-grid button" onClose={() => setMenu(null)}>
           {!mine && <button role="menuitem" onClick={() => { setMenu(null); take(menu.code); }}><Icon name="plus" /> افزودن به مال من</button>}

@@ -4,7 +4,8 @@ import { pushBack } from "../back.ts";
 import { reducedMotion } from "./useDismiss.ts";
 
 type Opts = { ok?: string; danger?: boolean };
-type Input = { placeholder?: string; value?: string };
+/** filter: applied as the user types, so disallowed characters never appear; hint: a line under the field. */
+type Input = { placeholder?: string; value?: string; filter?: (v: string) => string; hint?: string };
 
 function Dialog({ text, ok, danger, cancel, input, done }: Opts & { text: string; cancel: boolean; input?: Input; done: (v: boolean, value: string) => void }) {
   const [closing, setClosing] = useState(false);
@@ -24,7 +25,10 @@ function Dialog({ text, ok, danger, cancel, input, done }: Opts & { text: string
         onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); finish(false); } }}>
         <p dir="auto">{text}</p>
         {input && <input dir="auto" autoFocus value={value} placeholder={input.placeholder} aria-label={text}
-          onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } }} />}
+          // not mid-composition (IME keyboards): the composed text comes through again once it's done
+          onChange={(e) => setValue(input.filter && !(e.nativeEvent as InputEvent).isComposing ? input.filter(e.target.value) : e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } }} />}
+        {input?.hint && <small className="muted">{input.hint}</small>}
         <div className="modal-actions">
           {cancel && <button onClick={() => finish(false)}>لغو</button>}
           <button className={danger ? "danger" : "primary"} autoFocus={!input} onClick={() => finish(true)}>{ok ?? (cancel ? "تأیید" : "باشه")}</button>
