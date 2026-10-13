@@ -233,10 +233,10 @@ export function tallyPoll(votes: Vote[], answerIds: string[], max: number) {
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 export const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Telegram-style Markdown subset + "@Name" mentions as matrix.to links. Everything that must not be
- *  re-parsed (code, links, mentions) is stashed behind \0N\0 placeholders until the end.
+/** Telegram-style Markdown subset + "@Name" mentions as matrix.to links + ":code:" custom emoji (code → mxc).
+ *  Everything that must not be re-parsed (code, links, mentions, emoji) is stashed behind \0N\0 placeholders until the end.
  *  null when nothing got formatted, so plain messages send no formatted_body. */
-export function formatMessage(text: string, mentions: { name: string; id: string }[]): { html: string; ids: string[] } | null {
+export function formatMessage(text: string, mentions: { name: string; id: string }[], emotes: ReadonlyMap<string, string> = new Map()): { html: string; ids: string[] } | null {
   const stash: string[] = [];
   const hold = (html: string) => `\0${stash.push(html) - 1}\0`;
   let t = text.replaceAll("\0", "");
@@ -253,6 +253,10 @@ export function formatMessage(text: string, mentions: { name: string; id: string
       used.add(id);
       return hold(`<a href="https://matrix.to/#/${esc(id)}">${esc(m.slice(1))}</a>`);
     });
+  }
+  if (emotes.size) {
+    const re = new RegExp(`:(${[...emotes.keys()].sort((a, b) => b.length - a.length).map(escRe).join("|")}):`, "g");
+    t = t.replace(re, (m, code) => hold(`<img data-mx-emoticon src="${esc(emotes.get(code)!)}" alt="${esc(m)}" title="${esc(m)}" height="32">`));
   }
 
   t = esc(t);
@@ -275,6 +279,39 @@ export function formatMessage(text: string, mentions: { name: string; id: string
   while (h.includes("\0")) h = h.replace(/\0(\d+)\0/g, (_, n) => stash[+n]);
   const clean = esc(text.replaceAll("\0", "")).replace(/\n/g, "<br>");
   return used.size || h !== clean ? { html: h, ids: [...used] } : null;
+}
+
+// ---------- custom emoji & stickers (MSC2545 image packs) ----------
+export type Usage = "emoticon" | "sticker";
+export type PackImage = { url: string; body?: string; info?: Record<string, unknown>; usage?: Usage[] };
+export type PackContent = { pack?: { display_name?: string; avatar_url?: string; usage?: Usage[] }; images?: Record<string, PackImage> };
+/** A pack's images usable as `use`: by the image's usage, else the pack's, else both (absent or empty = both, per MSC2545). */
+export const packImages = (p: PackContent, use: Usage): [string, PackImage][] =>
+  Object.entries(p.images ?? {}).filter(([, i]) => {
+    if (typeof i?.url !== "string" || !i.url.startsWith("mxc://")) return false;
+    const u = i.usage?.length ? i.usage : p.pack?.usage?.length ? p.pack.usage : null;
+    return !u || u.includes(use);
+  });
+// shortcode characters: Latin or Persian/Arabic letters, digits, _ - and the Persian half-space (ZWNJ)
+const CODE_CHAR = /(?=\p{L})[\p{sc=Latin}\p{sc=Arabic}]|\p{Nd}|[_\u200c-]/u;
+/** A shortcode as typed: characters outside CODE_CHAR dropped (`sep` ""), or runs of them made one `sep`. */
+export function cleanCode(s: string, sep = "") {
+  const out = [...s].map((c) => (CODE_CHAR.test(c) ? c : sep)).join("");
+  return (sep ? out.replace(new RegExp(`${escRe(sep)}{2,}`, "g"), sep) : out).slice(0, 32);
+}
+/** A shortcode from a file name: no extension, other characters as _. */
+export const codeFrom = (name: string) => cleanCode(name.replace(/\.[^.]*$/, ""), "_").replace(/^_+|_+$/g, "") || "emoji";
+/** How many images a pack may hold (Telegram's numbers). */
+export const PACK_CAP: Record<Usage, number> = { emoticon: 200, sticker: 120 };
+/** Emoji and stickers may be at most 2:1 either way: the size after padding the short side to fit. */
+export function padToRatio(w: number, h: number, max = 2) {
+  return w > h * max ? { w, h: Math.ceil(w / max) } : h > w * max ? { w: Math.ceil(h / max), h } : { w, h };
+}
+/** `code`, or code_2, code_3… when the pack already has it. */
+export function freeCode(code: string, taken: Record<string, unknown>) {
+  let c = code, n = 1;
+  while (Object.hasOwn(taken, c)) c = `${code}_${++n}`;
+  return c;
 }
 
 const TLDS = "com|org|net|edu|gov|int|io|ir|co|me|app|dev|info|biz|ai|tv|xyz|ly|gl|us|uk|de|fr|ru|tech|online|site|chat|link|page";

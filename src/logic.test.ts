@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel } from "./logic.ts";
-import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, type Msg } from "./logic.ts";
+import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
 const m = (id: string, sender: string, min: number, kind: Msg["kind"] = "msg"): Msg => ({ id, sender, ts: T + min * 60_000, kind });
@@ -425,4 +425,32 @@ test("schedule days, spans and labels", () => {
   assert.equal(fmtSpan(5.5 * 3_600_000), "۵ ساعت");
   assert.equal(fmtSpan(600_000), "۱۰ دقیقه");
   assert.match(scheduleLabel(new Date("2026-10-11T21:00:00").getTime(), new Date("2026-10-11T08:00:00").getTime()), /^امروز ساعت ۲۱:۰۰$/);
+});
+
+test("custom emoji: :code: becomes an emoticon img, not in code, unknown codes stay text", () => {
+  const emotes = new Map([["cat", "mxc://s/cat"], ["cat_big", "mxc://s/big"]]);
+  const img = (code: string, url: string) => `<img data-mx-emoticon src="${url}" alt=":${code}:" title=":${code}:" height="32">`;
+  assert.equal(formatMessage(":cat:", [], emotes)?.html, img("cat", "mxc://s/cat"));
+  assert.equal(formatMessage("hi :cat_big: :dog:", [], emotes)?.html, `hi ${img("cat_big", "mxc://s/big")} :dog:`);
+  assert.equal(formatMessage("`:cat:`", [], emotes)?.html, "<code>:cat:</code>");
+  assert.equal(formatMessage(":dog: 10:30", [], emotes), null);
+});
+
+test("image packs: usage falls back image → pack → both; shortcodes from file names, de-duplicated", () => {
+  const p = { pack: { usage: ["sticker" as const] }, images: {
+    a: { url: "mxc://s/a" }, b: { url: "mxc://s/b", usage: ["emoticon" as const] }, c: { url: "https://x/c" }, d: { url: "mxc://s/d", usage: [] },
+  } };
+  assert.deepEqual(packImages(p, "sticker").map(([k]) => k), ["a", "d"]);
+  assert.deepEqual(packImages(p, "emoticon").map(([k]) => k), ["b"]);
+  assert.deepEqual(packImages({ images: p.images }, "emoticon").map(([k]) => k), ["a", "b", "d"]);
+  assert.equal(codeFrom("happy cat:1.png"), "happy_cat_1");
+  assert.equal(codeFrom("  <:)> .png"), "emoji");
+  assert.equal(codeFrom("خنده‌ی بلند!.gif"), "خنده‌ی_بلند");
+  assert.equal(cleanCode("ha ha:<b>😂_x-۲"), "hahab_x-۲");
+  assert.equal(cleanCode("x".repeat(40)).length, 32);
+  assert.deepEqual(padToRatio(300, 100), { w: 300, h: 150 });
+  assert.deepEqual(padToRatio(100, 250), { w: 125, h: 250 });
+  assert.deepEqual(padToRatio(200, 100), { w: 200, h: 100 });
+  assert.equal(freeCode("cat", { cat: 1, cat_2: 1 }), "cat_3");
+  assert.equal(freeCode("constructor", {}), "constructor");
 });

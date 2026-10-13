@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ContentHelpers, LocationAssetType, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
-import { client, GIF_INFO, scheduleMessage, startUpload } from "../matrix.ts";
+import { client, emotesFor, GIF_INFO, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
 import { escRe, formatMessage, normalize, num, osmUrl, scheduleLabel, type Gif } from "../logic.ts";
 import { isMessage } from "../hooks.ts";
 import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
-import { EmojiPanel } from "./Emoji.tsx";
+import { EmojiPanel, EmoteImg } from "./Emoji.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { isSendKey, loadPrefs } from "./Settings.tsx";
 import { reducedMotion, useExit } from "./useDismiss.ts";
@@ -49,7 +49,7 @@ const LOCK_AT = 60, CANCEL_AT = 100; // px the held finger slides up to lock, si
 
 type Props = { room: Room; threadId: string | null; mode: Mode; setMode: (m: Mode) => void; files: File[]; setFiles: (f: (x: File[]) => File[]) => void };
 type Mention = { name: string; id: string };
-type Suggestion = Mention & { mxc?: string | null };
+type Suggestion = Mention & { mxc?: string | null; emote?: Emote };
 
 export function Composer({ room, threadId, mode, setMode, files, setFiles }: Props) {
   const draftKey = room.roomId + (threadId ?? "");
@@ -120,10 +120,19 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     typingAt.current = 0;
   }, [room.roomId]);
 
-  // ---------- @ mentions ----------
+  // ---------- @ mentions, :custom emoji ----------
   const at = /(^|\s)@([^\s@]*)$/.exec(text.slice(0, caret));
-  const atPos = at ? caret - at[2].length - 1 : -1;
+  const colon = !at && /(^|\s):([^\s:]{2,})$/.exec(text.slice(0, caret));
+  const atPos = at ? caret - at[2].length - 1 : colon ? caret - colon[2].length - 1 : -1;
   const suggestions: Suggestion[] = [];
+  if (colon && atPos !== closedAt) {
+    const q = normalize(colon[2]), seen = new Set<string>();
+    for (const e of emotesFor(room, "emoticon")) {
+      if (suggestions.length >= 6 || seen.has(e.code) || !normalize(e.code).includes(q)) continue;
+      seen.add(e.code); // the first pack's wins, as on send
+      suggestions.push({ id: ":" + e.code + ":", name: e.pack.name, emote: e });
+    }
+  }
   if (at && atPos !== closedAt) {
     const q = normalize(at[2]);
     suggestions.push(...room.getJoinedMembers()
@@ -134,9 +143,9 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   useEffect(() => { if (at) room.loadMembersIfNeeded().catch(() => {}); }, [!!at, room]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function pick(s: Suggestion) {
-    const insert = "@" + s.name + " ";
+    const insert = s.emote ? s.id + " " : "@" + s.name + " ";
     const next = text.slice(0, atPos) + insert + text.slice(caret);
-    if (s.id !== "@room") mentions.current.push({ name: s.name, id: s.id });
+    if (s.id !== "@room" && !s.emote) mentions.current.push({ name: s.name, id: s.id });
     const c = atPos + insert.length;
     setText(next);
     setCaret(c);
@@ -156,7 +165,9 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     const typed = room.getJoinedMembers().filter((m) => m.userId !== me())
       .flatMap((m) => [{ name: m.name, id: m.userId }, { name: m.userId.slice(1), id: m.userId }])
       .filter((m) => new RegExp("@" + escRe(m.name) + "(?![\\p{L}\\p{N}_])", "u").test(body));
-    const html = formatMessage(body, [...mentions.current, ...typed]);
+    const emotes = new Map<string, string>();
+    for (const e of emotesFor(room, "emoticon")) if (!emotes.has(e.code)) emotes.set(e.code, e.img.url);
+    const html = formatMessage(body, [...mentions.current, ...typed], emotes);
     const ids = new Set(html?.ids);
     const replyTo = mode?.kind === "reply" ? mode.ev.getSender() : undefined;
     if (replyTo && replyTo !== me()) ids.add(replyTo); // spec: a reply mentions who it replies to
@@ -285,6 +296,14 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     requestAnimationFrame(() => el?.setSelectionRange(c, c));
   }
 
+  function sendSticker(s: Emote) {
+    setEmoji(false);
+    const content: Record<string, unknown> = { body: s.img.body || s.code, url: s.img.url, info: s.img.info ?? {} };
+    if (mode?.kind === "reply") content["m.relates_to"] = { "m.in_reply_to": { event_id: mode.ev.getId() } };
+    client.sendEvent(room.roomId, threadId, "m.sticker" as never, content as never).catch((e) => alertDialog(errText(e)));
+    setMode(null);
+  }
+
   function sendGif(g: Gif) {
     setEmoji(false);
     const content: Record<string, unknown> = { ...g };
@@ -358,12 +377,14 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   return (
     <div className="composer" ref={root}>
       {suggestions.length > 0 && (
-        <div className="mention-list" role="listbox" aria-label="نام بردن">
+        <div className="mention-list" role="listbox" aria-label={colon ? "اموجی" : "نام بردن"}>
           {suggestions.map((s, i) => (
             <button key={s.id} role="option" aria-selected={i === sel % suggestions.length} className={"user-row" + (i === sel % suggestions.length ? " on" : "")}
               onMouseDown={(e) => e.preventDefault()} onClick={() => pick(s)}>
-              {s.id === "@room" ? <span className="mention-room"><Icon name="group" /></span> : <Avatar mxc={s.mxc} name={s.name} id={s.id} size={32} />}
-              <span><b>{s.id === "@room" ? "@room" : s.name}</b><small dir="ltr">{s.id === "@room" ? "همه‌ی اعضای گفتگو" : s.id}</small></span>
+              {s.emote ? <span className="mention-room emote-sug"><EmoteImg url={s.emote.img.url} alt="" /></span>
+                : s.id === "@room" ? <span className="mention-room"><Icon name="group" /></span> : <Avatar mxc={s.mxc} name={s.name} id={s.id} size={32} />}
+              {s.emote ? <span><b dir="ltr">{s.id}</b><small>{s.name}</small></span>
+                : <span><b>{s.id === "@room" ? "@room" : s.name}</b><small dir="ltr">{s.id === "@room" ? "همه‌ی اعضای گفتگو" : s.id}</small></span>}
             </button>
           ))}
         </div>
@@ -413,7 +434,8 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
           </div>
         </div>
       )}
-      {emojiShown && <EmojiPanel closing={emojiClosing} onEmoji={insert} onClose={() => setEmoji(false)} gifs={mode?.kind === "edit" ? undefined : { onPick: sendGif }} />}
+      {emojiShown && <EmojiPanel closing={emojiClosing} room={room} onEmoji={(k, custom) => insert(custom ? k + " " : k)} onClose={() => setEmoji(false)}
+        gifs={mode?.kind === "edit" ? undefined : { onPick: sendGif }} stickers={mode?.kind === "edit" ? undefined : { onPick: sendSticker }} />}
       {files.length > 0 && <SendFiles files={files} setFiles={setFiles} onSend={sendFiles} canSchedule={canSched} />}
       {sendMenu && (
         <ContextMenu {...sendMenu} target=".send-btn" onClose={() => setSendMenu(null)}>

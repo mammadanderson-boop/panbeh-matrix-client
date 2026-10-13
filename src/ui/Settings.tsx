@@ -18,6 +18,7 @@ import { appVersion, canUpdate, checkUpdate, downloadUpdate, getAutostart, getAu
 import { isNative, nativeCancelAll, nativeStatus, openNotifySettings, requestBatteryExemption, requestFullScreen, requestNotifyPermission, saveFile, setBackgroundInterval, setBackgroundService } from "../native.ts";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { LinkSheet } from "./LinkSheet.tsx";
+import { MyPacks } from "./Packs.tsx";
 import { matrixToLink } from "../uri.ts";
 
 type Prefs = { theme: "system" | "light" | "dark"; accent: string; wallpaper: string; notify: boolean; notifyDMs: boolean; notifyGroups: boolean; notifyPreview: "all" | "name" | "none"; previews: boolean; shareLastSeen: boolean; searchIndex: boolean; dev: boolean; legacyCalls: boolean; enterSends: boolean; askSave: boolean;
@@ -62,7 +63,7 @@ export function applyPrefs(p = loadPrefs()) {
   if (isNative) SystemBars.setStyle({ style: { system: SystemBarsStyle.Default, light: SystemBarsStyle.Light, dark: SystemBarsStyle.Dark }[p.theme] }).catch(() => {});
 }
 
-type View = "main" | "devices" | "password" | "keys" | "blocked" | "deactivate" | "link" | "lock" | "autodl";
+type View = "main" | "devices" | "password" | "keys" | "blocked" | "deactivate" | "link" | "lock" | "autodl" | "emoji";
 const ACCOUNT: [View, IconName, string, string][] = [
   ["link", "link", "پیوند و کد QR من", "تا دیگران با یک اسکن به شما پیام بدهند"],
   ["password", "lock", "تغییر رمز عبور", ""],
@@ -86,6 +87,7 @@ export function Settings({ onClose, onSecurityChange }: { onClose: () => void; o
   if (view === "lock") return <LockSettings onClose={back} />;
   if (view === "link") return <LinkSheet title="پیوند من" link={matrixToLink(me())} onClose={back} />;
   if (view === "autodl") return <Sheet title="دانلود خودکار رسانه" onClose={back}><AutoDownload prefs={prefs} set={set} /></Sheet>;
+  if (view === "emoji") return <Sheet title="اموجی و استیکر" onClose={back}><MyPacks /></Sheet>;
   if (view === "devices") return <Sheet title="دستگاه‌ها" onClose={back}><Devices /></Sheet>;
   if (view === "password") return <Sheet title="تغییر رمز عبور" onClose={back}>{isOAuth() ? <AccountPage action="org.matrix.profile" /> : <ChangePassword />}</Sheet>;
   if (view === "keys") return <Sheet title="کلیدهای رمزنگاری" onClose={back}><Keys /></Sheet>;
@@ -131,6 +133,10 @@ export function Settings({ onClose, onSecurityChange }: { onClose: () => void; o
         <input type="checkbox" role="switch" checked={prefs.enterSends} onChange={(e) => set({ enterSends: e.target.checked })} /></label>
       {isNative && <label className="switch-row"><span>پرسیدن محل ذخیره<small>خاموش: فایل‌ها در پوشه‌ی دانلودها ذخیره می‌شوند</small></span>
         <input type="checkbox" role="switch" checked={prefs.askSave} onChange={(e) => set({ askSave: e.target.checked })} /></label>}
+
+      <button className="user-row" onClick={() => setView("emoji")}>
+        <span className="device-box"><Icon name="smile" /></span><span><b>اموجی و استیکر</b><small>اموجی‌ها و استیکرهای خودتان</small></span>
+      </button>
 
       <h3>حریم خصوصی</h3>
       <button className="user-row" onClick={() => setView("lock")}>

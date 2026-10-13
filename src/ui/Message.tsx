@@ -4,15 +4,15 @@ import DOMPurify from "dompurify";
 import { handleIncomingLink } from "../openTarget.ts";
 import { matrixToLink, parseMatrixLink, viaServers } from "../uri.ts";
 import { EventStatus, EventType, M_POLL_START, RelationType, type MatrixEvent, type Room } from "matrix-js-sdk";
-import { avatarUrl, BLURHASH, client, isCached, isSavedGif, loadEvent, mediaUrl, pinnedIds, prefetch, seenBy, toggleGif, togglePin } from "../matrix.ts";
+import { addToMyPack, avatarUrl, inMyPack, BLURHASH, client, isCached, isSavedGif, loadEvent, mediaUrl, pinnedIds, prefetch, seenBy, toggleGif, togglePin } from "../matrix.ts";
 import { abortSave, isMetered, openSave, openSaved, rememberSave, writeSave, type SaveTarget } from "../native.ts";
 import { usePromise } from "../hooks.ts";
-import { LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, num, osmUrl, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind } from "../logic.ts";
+import { LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, num, osmUrl, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind, type Usage } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
 import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, previewText, senderMember, senderName, stripReplyFallback, toast, useChange, isVoice } from "./common.tsx";
 import { AudioPlayer, NoteRing, stopPlayer, trackFor } from "./Voice.tsx";
 import { PollBody } from "./Poll.tsx";
-import { EmojiPanel } from "./Emoji.tsx";
+import { EmojiPanel, ReactionKey } from "./Emoji.tsx";
 import { LinkPreview } from "./LinkPreview.tsx";
 import { captionOf, EDITABLE } from "./Composer.tsx";
 import { useBackdropHold } from "./useBackdropHold.ts";
@@ -67,6 +67,32 @@ DOMPurify.addHook("afterSanitizeAttributes", (n) => {
   n.setAttribute("data-name", name ?? id);
   n.textContent = name ?? id; // current name, Telegram-style, whatever the sender typed
 });
+
+// custom emoji (MSC2545) become spans the Html effect fills from authenticated media; any other image, its alt text.
+// Inserted after the <img> (still forbidden, so removed), the way DOMPurify itself keeps a removed element's content.
+DOMPurify.addHook("uponSanitizeElement", (n, data) => {
+  if (data.tagName !== "img") return;
+  const img = n as Element, src = img.getAttribute("src") ?? "", alt = img.getAttribute("alt") ?? img.getAttribute("title") ?? "";
+  let out: Node = img.ownerDocument.createTextNode(alt);
+  if (img.hasAttribute("data-mx-emoticon") && src.startsWith("mxc://")) {
+    const s = img.ownerDocument.createElement("span");
+    s.className = "emote";
+    s.setAttribute("data-mxc", src);
+    s.setAttribute("data-code", alt);
+    s.setAttribute("title", alt);
+    s.textContent = alt; // until the image loads
+    out = s;
+  }
+  img.parentNode?.insertBefore(out, img.nextSibling);
+});
+const EMOTES_ONLY = /^(\s*<span class="emote"[^>]*>[^<]*<\/span>){1,3}\s*$/;
+
+/** Someone's custom emoji or sticker into mine. */
+function grab(code: string, url: string, use: Usage, info?: Record<string, unknown>) {
+  void confirmDialog(`«${code}» به ${use === "sticker" ? "استیکرهای" : "اموجی‌های"} شما اضافه شود؟`, { ok: "افزودن" }).then((y) => {
+    if (y) addToMyPack(code, { url, info }, use).then(() => toast(use === "sticker" ? "به استیکرها اضافه شد" : "به اموجی‌ها اضافه شد"), (e) => alertDialog(errText(e)));
+  });
+}
 
 const linkedRoom = (id: string) =>
   id.startsWith("!") ? client.getRoom(id) : client.getRooms().find((r) => r.getCanonicalAlias() === id || r.getAltAliases().includes(id));
@@ -243,6 +269,8 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
           ev.getId() && { icon: "link", label: "کپی پیوند", run: copyLink },
           !M_POLL_START.matches(ev.getType()) && { icon: "forward", label: "هدایت", run: forward },
           actions.thread && { icon: "thread", label: "پاسخ در رشته", run: () => actions.thread!(ev) },
+          ev.getType() === EventType.Sticker && content.url?.startsWith("mxc://") && !inMyPack(content.url, "sticker") &&
+            { icon: "plus", label: "افزودن به استیکرهای من", run: () => grab(content.body || "sticker", content.url, "sticker", content.info) },
           isGif(content) && (isSavedGif(content)
             ? { icon: "close", label: "حذف از گیف‌ها", run: () => toggleGif(content).catch((e) => alertDialog(errText(e))) }
             : { icon: "plus", label: "ذخیره‌ی گیف", run: () => toggleGif(content).then(() => toast("به گیف‌ها اضافه شد"), (e) => alertDialog(errText(e))) }),
@@ -257,7 +285,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
       )}
       {/* portal: .msg-actions fades out when the pointer leaves the message */}
       {fullPicker && createPortal(
-        <div className="react-picker"><EmojiPanel onEmoji={(k) => { toggleReaction(room, ev, k); setFullPicker(false); }} onClose={() => setFullPicker(false)} /></div>,
+        <div className="react-picker"><EmojiPanel room={room} onEmoji={(k, custom) => { toggleReaction(room, ev, custom?.img.url ?? k, custom && k); setFullPicker(false); }} onClose={() => setFullPicker(false)} /></div>,
         document.body)}
     </div>
   );
@@ -333,7 +361,7 @@ function Body({ ev, room, onView, onUser, album }: { ev: MatrixEvent; room: Room
     const html = DOMPurify.sanitize(c.formatted_body.replace(/<mx-reply>[\s\S]*?<\/mx-reply>/, ""), { FORBID_TAGS: ["style", "img"] });
     pillRoom = null;
     // the emote prefix holds a user-chosen display name: keep it out of innerHTML
-    return <div className={"msg-text" + (emote ? " emote" : "")} dir={textDir(emote + stripReplyFallback(String(c.body ?? "")))}>{emote}<Html html={html} room={room} onUser={onUser} /></div>;
+    return <div className={"msg-text" + (emote ? " emote" : EMOTES_ONLY.test(html) ? " jumbo" : "")} dir={textDir(emote + stripReplyFallback(String(c.body ?? "")))}>{emote}<Html html={html} room={room} onUser={onUser} /></div>;
   }
   const text = emote + stripReplyFallback(String(c.body ?? ""));
   return <p dir={textDir(text)} className={"msg-text" + (/^\p{Extended_Pictographic}{1,3}$/u.test(text) ? " jumbo" : "")}>{linkify(text)}</p>;
@@ -358,6 +386,15 @@ function Html({ html, room, onUser }: { html: string; room: Room; onUser: (id: s
         av.replaceChildren(img);
       }, () => {});
     });
+    ref.current?.querySelectorAll<HTMLElement>("span.emote[data-mxc]").forEach((s) => {
+      mediaUrl({ url: s.dataset.mxc! })?.then((u) => {
+        const img = document.createElement("img");
+        img.src = u;
+        img.alt = s.dataset.code ?? "";
+        img.draggable = false;
+        s.replaceChildren(img);
+      }, () => {});
+    });
     ref.current?.querySelectorAll("pre").forEach((pre) => {
       const b = document.createElement("button");
       b.className = "code-copy";
@@ -373,6 +410,13 @@ function Html({ html, room, onUser }: { html: string; room: Room; onUser: (id: s
       e.preventDefault();
       e.stopPropagation();
       void copyMessages((pre.querySelector("code") ?? pre).textContent ?? "");
+      return;
+    }
+    const em = t.closest<HTMLElement>("span.emote[data-mxc]");
+    if (em) {
+      e.preventDefault();
+      e.stopPropagation();
+      grab(em.dataset.code ?? "", em.dataset.mxc!, "emoticon");
       return;
     }
     const sp = t.closest("[data-mx-spoiler]");
@@ -712,8 +756,9 @@ function ReactionChip({ room, ev, emoji, users, added }: { room: Room; ev: Matri
   const bump = useChange(users.length);
   const mineToo = users.some((e) => e.getSender() === me());
   return (
-    <button className={(mineToo ? "on" : "") + (added ? " added" : "")} title={users.map(senderName).join(", ")} onClick={() => toggleReaction(room, ev, emoji)}>
-      {emoji} <span className={bump ? "bump" : undefined}>{num(users.length)}</span>
+    <button className={(mineToo ? "on" : "") + (added ? " added" : "")} title={users.map(senderName).join(", ")} onClick={() => toggleReaction(room, ev, emoji)}
+      onContextMenu={emoji.startsWith("mxc://") ? (e) => { e.preventDefault(); e.stopPropagation(); grab(shortcodeOf(users[0]) || "emoji", emoji, "emoticon"); } : undefined}>
+      <ReactionKey k={emoji} ev={users[0]} /> <span className={bump ? "bump" : undefined}>{num(users.length)}</span>
     </button>
   );
 }
@@ -725,11 +770,15 @@ async function report(room: Room, ev: MatrixEvent) {
   client.reportEvent(room.roomId, ev.getId()!, -100, reason).then(() => toast("گزارش برای مدیران سرور فرستاده شد"), (e) => alertDialog(errText(e)));
 }
 
-export function toggleReaction(room: Room, ev: MatrixEvent, key: string) {
+const shortcodeOf = (reaction?: MatrixEvent) => String(reaction?.getContent()["com.beeper.reaction.shortcode"] ?? "");
+
+/** `shortcode`: a custom emoji's ":code:" (key is then its mxc), so other clients can name it. */
+export function toggleReaction(room: Room, ev: MatrixEvent, key: string, shortcode?: string) {
   const rel = room.relations.getChildEventsForEvent(ev.getId()!, RelationType.Annotation, EventType.Reaction);
   const existing = [...(rel?.getAnnotationsBySender()?.[me()] ?? [])].find((e) => e.getRelation()?.key === key && !e.isRedacted());
   if (existing) return client.redactEvent(room.roomId, existing.getId()!);
   client.sendEvent(room.roomId, ev.threadRootId && ev.threadRootId !== ev.getId() ? ev.threadRootId : null, EventType.Reaction, {
     "m.relates_to": { rel_type: RelationType.Annotation, event_id: ev.getId()!, key },
+    ...(shortcode && { "com.beeper.reaction.shortcode": shortcode }),
   });
 }
