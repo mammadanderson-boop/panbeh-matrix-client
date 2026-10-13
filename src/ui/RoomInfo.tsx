@@ -215,7 +215,6 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
   );
 }
 
-/** Name + topic; editable fields save only what changed. Remounted (key) when the room's values change. */
 /** Mute choices: hours, or until turned back on. Mentions still notify (they're server push rules above the room's). */
 const MUTE_FOR: [string, string][] = [["on", "روشن"], ["1", "بی‌صدا ۱ ساعت"], ["8", "بی‌صدا ۸ ساعت"], ["24", "بی‌صدا ۱ روز"], ["168", "بی‌صدا ۱ هفته"], ["ever", "بی‌صدا تا روشن کردن"]];
 
@@ -230,6 +229,7 @@ function MuteRow({ room, busy, act }: { room: Room; busy: boolean; act: (fn: () 
   );
 }
 
+/** Name + topic; editable fields save only what changed. Remounted (key) when the room's values change. */
 function Profile({ room, topic, editable }: { room: Room; topic: string; editable: boolean }) {
   // the explicit name, not room.name: that one is computed from members when there's none
   const current: string = room.currentState.getStateEvents(EventType.RoomName, "")?.getContent().name ?? "";

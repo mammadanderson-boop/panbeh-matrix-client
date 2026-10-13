@@ -152,7 +152,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
       if (anchor) { setUnreadAfter(anchor); setView({ win: tl === room.getLiveTimeline() ? null : tl, n: 0 }); }
       setOpened(true); // not found: the live end, as before
     })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Virtuoso keeps the view still only if the row on screen keeps its absolute index (firstItemIndex + position):
   // older pages prepend, and undecrypted rows above vanish once they turn out to be reactions or call signalling.
@@ -165,7 +165,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     const first = pos >= 0 ? prev.get(rows[pos].key)! - pos : START;
     absOf.current = new Map(rows.map((r, i) => [r.key, first + i]));
     return first;
-  }, [rows.map((r) => r.key).join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows.map((r) => r.key).join()]);
 
   const paging = useRef(false); // a ref, not `loading`: prefetch and startReached can both ask within one render
   // Virtuoso keeps re-applying initialTopMostItemIndex (a data index) for a moment after mounting: rows prepended
@@ -178,7 +178,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     return true;
   };
   const olderLater = useRef(0), newerLater = useRef(0);
-  useEffect(() => { mountedAt.current = Date.now(); }, [view.n, opened]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { mountedAt.current = Date.now(); }, [view.n, opened]);
   const loadOlder = useCallback(async () => {
     const first = chainRef.current[0];
     if (settling(olderLater, loadOlder)) return;
@@ -224,7 +224,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     if (loading || msgs.length >= 20 || triedAt.current === events.length) return;
     triedAt.current = events.length;
     loadOlder();
-  }, [view.n, events.length, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view.n, events.length, loading]);
 
   // read receipt for the newest event while someone is looking at it (re-checked when they're back)
   const attentive = useAttentive();
@@ -235,7 +235,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     client.sendReadReceipt(lastEv).catch(() => {});
     // fully-read marker (where the divider goes next time) only; the receipt above keeps its thread semantics
     if (!thread) client.setRoomReadMarkers(room.roomId, lastEv.getId()!).catch(() => {});
-  }, [atBottom, atLive, lastEv, room, attentive]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [atBottom, atLive, lastEv, room, attentive]);
 
   // jump to an event (pinned messages): page back until it's loaded, then scroll once its row renders
   const [target, setTarget] = useState<string | null>(null);
@@ -280,7 +280,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     [150, 400, 800].forEach((ms) => setTimeout(go, ms));
     setFlash(target);
     setTarget(null);
-  }, [target, rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [target, rows.length]);
   useEffect(() => {
     if (!flash) return;
     const t = setTimeout(() => setFlash(null), 1600);
@@ -305,7 +305,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     setEnterKey(lastKey);
     const t = setTimeout(() => setEnterKey(null), 600);
     return () => clearTimeout(t);
-  }, [lastKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lastKey]);
   const wasLive = useRef(atLive);
   useEffect(() => { wasLive.current = atLive; });
   const toBottom = () => {
@@ -313,9 +313,9 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     if (atLive) list.current?.scrollToIndex({ index: "LAST", align: "end" });
     else setView((v) => ({ win: null, n: v.n + 1 })); // a window far back: open the live timeline at its end instead of scrolling through
   };
-  // sending from a window (Telegram): go to the message just sent
+  // sending from a window: go to the message just sent
   const liveLast = live.getEvents().at(-1);
-  useEffect(() => { if (!atLive && liveLast?.status && liveLast.getSender() === me()) toBottom(); }, [liveLast]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!atLive && liveLast?.status && liveLast.getSender() === me()) toBottom(); }, [liveLast]);
   const unread = thread ? 0 : room.getUnreadNotificationCount();
   // Virtuoso mounted with no data stays hidden waiting for its initial "LAST" scroll, so wait for rows
   if (!rows.length || !opened) return (

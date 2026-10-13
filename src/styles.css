@@ -147,7 +147,7 @@ button:disabled { opacity: 0.6; cursor: default; }
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   /* both panes share the cell and slide like a navigation stack; the hidden one is inert (visibility) once the slide ends */
   .sidebar, .main { grid-area: 1 / 1; transition: transform var(--dur-slow) var(--ease-out), opacity var(--dur-slow) var(--ease-out), visibility 0s linear var(--dur-slow); }
-  /* the chat comes in from the right and leaves to the right in RTL too, like Telegram (not mirrored) */
+  /* the chat comes in from the right and leaves to the right in RTL too (not mirrored) */
   .main { z-index: 1; box-shadow: -6px 0 24px rgba(0, 0, 0, 0.12); }
   .app.room-open .sidebar { transform: translateX(-28%); opacity: 0.6; visibility: hidden; }
   .app:not(.room-open) .main { transform: translateX(100%); visibility: hidden; }
@@ -296,7 +296,7 @@ div.msg-text pre { padding: 8px; border-radius: 8px; background: rgba(127, 127, 
 div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inline-start: 3px solid var(--accent); }
 .msg-text.jumbo { font-size: 40px; line-height: 1.15; }
 .msg-text.muted { display: flex; align-items: center; gap: 6px; font-style: italic; }
-/* reserve room so the time sits on the last line, Telegram-style */
+/* reserve room so the time sits on the last line */
 .msg-text::after { content: ""; display: inline-block; width: 52px; }
 .msg.mine .msg-text::after { width: 70px; }
 .bubble.edited .msg-text::after { width: 120px; }
@@ -322,7 +322,7 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .msg.mine .tick.read { color: var(--out-meta); } }
 
 .bubble.media, .msg.mine .bubble.media { padding: 0; overflow: hidden; background: transparent; box-shadow: none; }
-/* a name / reply / forward header frames the media in a normal bubble, Telegram-style */
+/* a name / reply / forward header frames the media in a normal bubble */
 .bubble.media:has(> .msg-sender, > .reply-quote, > .fwd-from) { padding: 4px; background: var(--bubble-in); box-shadow: var(--shadow); }
 .msg.mine .bubble.media:has(> .msg-sender, > .reply-quote, > .fwd-from) { background: var(--bubble-out); }
 .bubble.media > .msg-sender, .bubble.media > .fwd-from { padding: 2px 6px 0; }
@@ -413,7 +413,7 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
 .composer-mode div { flex: 1; min-width: 0; display: grid; border-inline-start: 2px solid var(--accent); padding-inline-start: 8px; }
 .composer-mode span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-row { display: flex; align-items: flex-end; gap: 8px; }
-.composer-field { /* Telegram pill: emoji | text | attach */
+.composer-field { /* pill: emoji | text | attach */
   flex: 1; min-width: 0; display: grid; grid-template-columns: auto 1fr auto; align-items: end; padding-inline: 4px;
   background: var(--panel); border-radius: 18px; box-shadow: var(--shadow);
 }
@@ -1355,7 +1355,7 @@ span.emote[data-mxc] { cursor: pointer; }
 .pin-keys button:disabled { opacity: 0.4; cursor: default; }
 .pin-keys .pin-del, .pin-keys .pin-bio { background: transparent; backdrop-filter: none; color: var(--muted); }
 .pin-keys .pin-bio { color: var(--accent); }
-.pin-keys .pin-del:disabled { opacity: 0; } /* nothing to erase: the key steps aside like Telegram's */
+.pin-keys .pin-del:disabled { opacity: 0; } /* nothing to erase: the key steps aside */
 .pin-keys .pin-ok { background: var(--accent); color: #fff; }
 .lock-forgot { color: var(--muted); font-size: 14px; }
 .lock-forget { width: min(380px, 100%); display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 16px; background: var(--panel); text-align: start; }

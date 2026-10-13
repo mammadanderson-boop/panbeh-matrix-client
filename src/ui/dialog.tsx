@@ -18,7 +18,7 @@ function Dialog({ text, ok, danger, cancel, input, done }: Opts & { text: string
     setClosing(true);
     setTimeout(() => done(v, value), 150);
   };
-  useEffect(() => pushBack(() => { finish(false); }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => pushBack(() => { finish(false); }), []);
   return (
     <div className={"modal-backdrop" + (closing ? " closing" : "")} onClick={() => finish(false)}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={text} onClick={(e) => e.stopPropagation()}

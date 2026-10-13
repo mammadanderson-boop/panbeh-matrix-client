@@ -24,7 +24,7 @@ function callsIn(rooms: Room[]): Row[] {
   })).sort((x, y) => y.ev.getTs() - x.ev.getTs());
 }
 
-/** Telegram's Calls list: tap opens the chat, the button calls back. */
+/** Tap opens the chat, the button calls back. */
 export function CallsList({ rooms, onSelect }: { rooms: Room[]; onSelect: (roomId: string) => void }) {
   const [missedOnly, setMissedOnly] = useState(false);
   const rows = callsIn(rooms).filter((r) => !missedOnly || r.missed);

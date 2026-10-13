@@ -7,14 +7,14 @@ import { Icon } from "../icons.tsx";
 import { Avatar, errText, me, previewText, senderMember, senderName, Sheet } from "./common.tsx";
 import { alertDialog } from "./dialog.tsx";
 
-/** Telegram-style bar under the header: shows one pin; a click jumps to it and moves on to the next older one. */
+/** Bar under the header: shows one pin; a click jumps to it and moves on to the next older one. */
 export function PinnedBar({ room, onJump }: { room: Room; onJump: (id: string) => Promise<boolean> }) {
   useTick(client, [RoomStateEvent.Events]);
   const ids = pinnedIds(room);
   const [idx, setIdx] = useState<number | null>(null); // null = the newest
   const [list, setList] = useState(false);
   const i = idx == null || idx >= ids.length ? ids.length - 1 : idx;
-  const ev = usePromise(useMemo(() => (ids[i] ? loadEvent(room, ids[i]) : null), [room, ids[i]])); // eslint-disable-line react-hooks/exhaustive-deps
+  const ev = usePromise(useMemo(() => (ids[i] ? loadEvent(room, ids[i]) : null), [room, ids[i]]));
   if (!ids.length) return null;
 
   const jump = async (id: string) => { if (!(await onJump(id))) setList(true); };

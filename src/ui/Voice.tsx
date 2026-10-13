@@ -11,7 +11,7 @@ import { loadPrefs } from "./Settings.tsx";
 
 const BARS = 40;
 const SPEEDS = [1, 1.5, 2, 0.5];
-// global like Telegram: the speed you picked last applies to every voice message
+// global: the speed you picked last applies to every voice message
 let speed = SPEEDS.includes(Number(localStorage.getItem("panbeh.voiceSpeed"))) ? Number(localStorage.getItem("panbeh.voiceSpeed")) : 1;
 
 export type Track = { id: string; ev?: MatrixEvent; title?: string; load: () => Promise<string> | null; duration: number; waveform?: unknown };
@@ -246,7 +246,7 @@ export function VoiceRecorder({ onDone, locked, dx, control }: RecProps) {
       r.start();
     })();
     return () => { live = false; stop.current(false); if (snap.track?.id === "preview:" + url) stopPlayer(); if (url) URL.revokeObjectURL(url); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   control.current = { finish: (send) => { if (send) { sendOnStop.current = true; stop.current(true); } else { stop.current(false); onDone(); } } };
 
   if (!locked && !rec) return <HeldRow elapsed={elapsed} dx={dx} icon="mic" />;
@@ -281,7 +281,7 @@ const NOTE_BPS: Record<number, number> = { 384: 1_000_000, 480: 1_500_000, 640: 
 const NOTE_TYPES = ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4;codecs=avc1.42E01E,opus", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
 const R = 47, C = 2 * Math.PI * R;
 
-/** A playing round video's progress ring, moved every frame: timeupdate fires only ~4 times a second, so it stepped. */
+/** A playing round video's progress ring, moved every frame: timeupdate fires only ~4 times a second. */
 export function NoteRing({ video, duration, className }: { video: RefObject<HTMLVideoElement | null>; duration: number; className?: string }) {
   const arc = useRef<SVGCircleElement>(null);
   useEffect(() => {
@@ -393,7 +393,7 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
       r.start(1000);
     })();
     return () => { live = false; stop.current(false); if (url) URL.revokeObjectURL(url); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   control.current = { finish: (send) => { if (send) { sendOnStop.current = true; stop.current(true); } else { stop.current(false); onDone(); } } };
 
   const toggle = () => {

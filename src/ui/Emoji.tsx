@@ -23,7 +23,7 @@ const strip = (s: string) => s.replace(/️/g, ""); // CLDR keys drop the emoji 
 let data: Promise<Map<number, Emoji[]>> | null = null;
 
 function loadEmoji() {
-  data ??= Promise.all([fetch(enUrl).then((r) => r.json()), fetch(faUrl).then((r) => r.json())]).then(([en, fa]: [Raw[], any]) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+  data ??= Promise.all([fetch(enUrl).then((r) => r.json()), fetch(faUrl).then((r) => r.json())]).then(([en, fa]: [Raw[], any]) => {
     const names = new Map<string, { default?: string[]; tts?: string[] }>();
     for (const [k, v] of Object.entries(fa.annotations.annotations)) names.set(strip(k), v as never);
     const groups = new Map<number, Emoji[]>();

@@ -11,7 +11,7 @@ export type Row =
   | { type: "album"; key: string; id: string; ids: string[]; first: boolean; last: boolean };
 
 const LOCALE = "fa-IR"; // Jalali calendar + Persian digits
-// formatters built once: toLocale*String builds a new one per call, which made every message re-render slow
+// formatters built once: toLocale*String builds a new one per call
 const fmt = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(LOCALE, o);
 const NUM = new Intl.NumberFormat(LOCALE), TIME = fmt({ hour: "2-digit", minute: "2-digit" }), YEAR = fmt({ year: "numeric" }),
   DAY_MONTH = fmt({ month: "long", day: "numeric" }), DAY_MONTH_YEAR = fmt({ month: "long", day: "numeric", year: "numeric" }),
@@ -156,7 +156,6 @@ export function roomName(s: NameState, inviter?: string): string | null {
 export const aliasLocalpart = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-/** "امروز، ۱۴:۰۵" — day plus time, for read receipts. */
 /** Search-term folding: case, Arabic/Persian ي ك, and ZWNJ don't matter. */
 export const normalize = (s: string) => s.toLowerCase().replace(/ي/g, "ی").replace(/ك/g, "ک").replace(/\u200c/g, "");
 
@@ -177,7 +176,7 @@ export function matchRange(text: string, term: string): [number, number] | null 
 
 export const stamp = (ts: number, now = Date.now()) => `${dayLabel(ts, now)}، ${clock(ts)}`;
 
-/** Telegram-style last seen from m.presence; null when the server told us nothing. */
+/** Last-seen text from m.presence; null when the server told us nothing. */
 export function lastSeen(online: boolean, activeTs: number | undefined, now = Date.now()) {
   if (online) return "آنلاین";
   if (!activeTs || activeTs <= 0) return null;
@@ -233,7 +232,7 @@ export function tallyPoll(votes: Vote[], answerIds: string[], max: number) {
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 export const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Telegram-style Markdown subset + "@Name" mentions as matrix.to links + ":code:" custom emoji (code → mxc).
+/** Markdown subset + "@Name" mentions as matrix.to links + ":code:" custom emoji (code → mxc).
  *  Everything that must not be re-parsed (code, links, mentions, emoji) is stashed behind \0N\0 placeholders until the end.
  *  null when nothing got formatted, so plain messages send no formatted_body. */
 export function formatMessage(text: string, mentions: { name: string; id: string }[], emotes: ReadonlyMap<string, string> = new Map()): { html: string; ids: string[] } | null {
@@ -340,7 +339,7 @@ export function mediaKind(type: string, c: Record<string, unknown>): MediaKind |
 }
 export const isUnread = (r: RoomInfo) => r.unread > 0 || !!r.marked;
 
-/** Telegram-style: an unmuted archived chat with new messages shows in the main list until it's read again. */
+/** An unmuted archived chat with new messages shows in the main list until it's read again. */
 export const inArchive = (r: RoomInfo) => !!r.archived && !(r.unread > 0 && !r.muted);
 
 /** Chat list order: invites, then pinned, then newest. */

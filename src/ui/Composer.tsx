@@ -113,7 +113,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     // opening a chat must not pop the keyboard on touch devices; reply/edit always focuses
     if (!mounted.current && !matchMedia("(pointer: fine)").matches) mounted.current = true;
     else { mounted.current = true; ta.current?.focus(); }
-  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   useEffect(() => () => { // left the room mid-typing
     if (typingAt.current) client.sendTyping(room.roomId, false, 0).catch(() => {});
@@ -140,7 +140,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       .slice(0, 6).map((m) => ({ id: m.userId, name: m.name, mxc: m.getMxcAvatarUrl() })));
     if ("room".startsWith(q) && room.currentState.mayTriggerNotifOfType("room", me())) suggestions.push({ id: "@room", name: "room" });
   }
-  useEffect(() => { if (at) room.loadMembersIfNeeded().catch(() => {}); }, [!!at, room]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (at) room.loadMembersIfNeeded().catch(() => {}); }, [!!at, room]);
 
   function pick(s: Suggestion) {
     const insert = s.emote ? s.id + " " : "@" + s.name + " ";
@@ -161,7 +161,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
 
   /** body + optional HTML with mention links, and the m.mentions that decides who gets pinged. */
   function compose(body: string) {
-    // "@Name" / "@user:server" typed out without picking from the list counts too (Telegram habit)
+    // "@Name" / "@user:server" typed out without picking from the list counts too
     const typed = room.getJoinedMembers().filter((m) => m.userId !== me())
       .flatMap((m) => [{ name: m.name, id: m.userId }, { name: m.userId.slice(1), id: m.userId }])
       .filter((m) => new RegExp("@" + escRe(m.name) + "(?![\\p{L}\\p{N}_])", "u").test(body));
@@ -279,7 +279,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     }
     if (isSendKey(e)) { e.preventDefault(); send(); }
     else if (e.key === "Escape" && mode) setMode(null);
-    else if (e.key === "ArrowUp" && !text && !mode) { // Telegram: ↑ edits your last message
+    else if (e.key === "ArrowUp" && !text && !mode) { // ↑ edits your last message
       const tl = threadId ? room.getThread(threadId)?.liveTimeline : room.getLiveTimeline();
       const mine = tl?.getEvents().findLast((ev) => ev.getSender() === me() && !ev.status && isMessage(ev) && EDITABLE.includes(ev.getContent().msgtype ?? ""));
       if (mine) { e.preventDefault(); setMode({ kind: "edit", ev: mine }); }
@@ -325,7 +325,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     setMode(null);
   }
 
-  /** Telegram's mic button: a tap switches voice ↔ video; holding records, up to lock, sideways (toward the text) to cancel. */
+  /** Mic button: a tap switches voice ↔ video; holding records, up to lock, sideways (toward the text) to cancel. */
   function holdRecord(e: ReactPointerEvent) {
     if (e.button !== 0) return;
     e.preventDefault(); // no focus change, no text selection, no long-press menu
@@ -405,7 +405,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
               <Icon key={mode?.kind === "edit" ? "check" : "send"} name={mode?.kind === "edit" ? "check" : "send"} />
             </button>
           )}
-          {/* Telegram: one pill — attach, text, emoji (attach slides away while typing) */}
+          {/* one pill — attach, text, emoji (attach slides away while typing) */}
           <div className="composer-field">
             {bar}
             <div className={"attach" + (attachAway ? " away" : "")}>

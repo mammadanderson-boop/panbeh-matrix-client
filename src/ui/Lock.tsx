@@ -55,7 +55,7 @@ function PinPad({ title, sub, len, disabled, shake, extra, onDone }:
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <div className="pinpad">
       <span className="pin-badge"><Icon name="lock" size={28} /></span>{/* the lock screen shows the logo instead */}
@@ -97,7 +97,7 @@ export function LockScreen() {
   useEffect(() => {
     if (!c.bio) return;
     biometricAvailable().then((a) => { setBio(a); if (a) tryBio(); });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   // asked here, not with confirmDialog: dialogs sit under the lock screen, and lifting them would show the app's over it
   const [forgetting, setForgetting] = useState<"ask" | "busy" | null>(null);
   const forget = () => { setForgetting("busy"); removeLock(true); void logoutAll(); }; // logout reloads

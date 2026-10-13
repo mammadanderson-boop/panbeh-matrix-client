@@ -83,13 +83,13 @@ export function useSortableTabs(bar: RefObject<HTMLElement | null>, ids: string[
     el.addEventListener("touchmove", block, { passive: false });
     return () => el.removeEventListener("touchmove", block);
   });
-  useEffect(() => () => { const s = d.current; if (s) { stop(); clear(s); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { const s = d.current; if (s) { stop(); clear(s); } }, []);
   useEffect(() => {
     if (!dragging) return;
     const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") end(false); };
     addEventListener("keydown", esc);
     return () => removeEventListener("keydown", esc);
-  }, [dragging]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dragging]);
 
   return {
     dragging,

@@ -59,7 +59,7 @@ function useResults(term: string, run: (t: string, failed: () => void) => Promis
     setRes(null);
     const h = setTimeout(async () => { const evs = await run(t, () => { failed = true; }); if (live) setRes({ evs, failed }); }, 300);
     return () => { live = false; clearTimeout(h); };
-  }, [term, ...deps]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [term, ...deps]);
   return res;
 }
 

@@ -26,7 +26,7 @@ export function LinkPreview({ ev }: { ev: MatrixEvent }) {
     let q = cache.get(url);
     if (!q) cache.set(url, (q = client.getUrlPreview(url, ev.getTs()).catch(() => null))); // no previews on this server: stays null
     return q;
-  }, [url]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [url]);
   const data = usePromise(p);
   const mxc = data?.["og:image"];
   const img = usePromise(useMemo(() => (mxc?.startsWith("mxc://") ? mediaUrl({ url: mxc }, { w: 640, h: 640 }) : null), [mxc]));

@@ -3,9 +3,9 @@ import { EventType, type Room } from "matrix-js-sdk";
 import { MatrixRTCSessionEvent } from "matrix-js-sdk/lib/matrixrtc/index.js";
 import { CallState } from "matrix-js-sdk/lib/webrtc/call.js";
 import type { CallFeed } from "matrix-js-sdk/lib/webrtc/callFeed.js";
-import { ConnectionQuality, ConnectionState, Track, type VideoTrack } from "livekit-client";
+import type { ConnectionQuality, Track, VideoTrack } from "livekit-client";
 import { allowCalls, client, isDirect } from "../matrix.ts";
-import { answer, call, decline, flipCam, getCall, handOf, hangup, loadDevices, membershipOf, minimize, myMedia, ourTransport, react, reactionOf, REACTIONS, setAudioRoute, setDevice, setLowData, setNoiseSuppression, toggleCam, toggleHand, toggleMic, toggleScreen, toggleSpeaker, useCall, type Active, type Incoming } from "../call.ts";
+import { LK, answer, call, decline, flipCam, getCall, handOf, hangup, loadDevices, membershipOf, minimize, myMedia, ourTransport, react, reactionOf, REACTIONS, setAudioRoute, setDevice, setLowData, setNoiseSuppression, toggleCam, toggleHand, toggleMic, toggleScreen, toggleSpeaker, useCall, type Active, type Incoming } from "../call.ts";
 import { usePromise, useTick } from "../hooks.ts";
 import { useExit } from "./useDismiss.ts";
 import { fmtDuration, fmtStats, num, parseStats, type Stats } from "../logic.ts";
@@ -167,7 +167,7 @@ function CallScreen({ a, closing }: { a: Active; closing?: boolean }) {
   const m = myMedia(a);
   const status = a.held ? "در انتظار (تماس تلفنی)" : a.reconnecting ? "در حال اتصال دوباره…" : a.notice ? a.notice : a.kind === "legacy"
     ? (a.since ? fmtDuration(now - a.since) : a.mc.state === CallState.InviteSent ? "در حال زنگ زدن…" : "در حال اتصال…")
-    : a.lk.state !== ConnectionState.Connected ? "در حال اتصال…"
+    : a.lk.state !== LK.ConnectionState.Connected ? "در حال اتصال…"
     : !a.since ? (isDirect(a.room) ? "در حال زنگ زدن…" : "در انتظار دیگران…")
     : !others ? "تنها هستید" : fmtDuration(now - a.since);
   const [stats, setStats] = useState(false); // tap the status line: numbers on every feed
@@ -372,9 +372,9 @@ function tilesOf(a: Active): { tiles: TileData[]; others: number } {
     const userId = m?.userId ?? p.identity.slice(0, p.identity.lastIndexOf(":"));
     const video = (src: Track.Source) => { const pub = p.getTrackPublication(src); return pub && !pub.isMuted ? pub.videoTrack : undefined; };
     const t = { userId, local: p.isLocal, micOff: !p.isMicrophoneEnabled, speaking: p.isSpeaking, hand: handOf(m?.eventId), reaction: reactionOf(m?.eventId), quality: p.connectionQuality };
-    const cam = video(Track.Source.Camera), mic = p.getTrackPublication(Track.Source.Microphone)?.audioTrack, screen = video(Track.Source.ScreenShare);
-    return [{ ...t, key: p.identity + Track.Source.Camera, screen: false, video: cam, stats: async () => (cam ?? mic)?.getRTCStatsReport() }]
-      .concat(p.isScreenShareEnabled ? [{ ...t, key: p.identity + Track.Source.ScreenShare, screen: true, video: screen, stats: async () => screen?.getRTCStatsReport() }] : []);
+    const cam = video(LK.Track.Source.Camera), mic = p.getTrackPublication(LK.Track.Source.Microphone)?.audioTrack, screen = video(LK.Track.Source.ScreenShare);
+    return [{ ...t, key: p.identity + LK.Track.Source.Camera, screen: false, video: cam, stats: async () => (cam ?? mic)?.getRTCStatsReport() }]
+      .concat(p.isScreenShareEnabled ? [{ ...t, key: p.identity + LK.Track.Source.ScreenShare, screen: true, video: screen, stats: async () => screen?.getRTCStatsReport() }] : []);
   });
   return { tiles, others: others.length };
 }
@@ -398,7 +398,7 @@ function Tile({ room, t, mirror, focused, stats, onFocus }: { room: Room; t: Til
       {video ? <video ref={ref} autoPlay playsInline muted className={(t.screen || focused ? "contain" : "") + (mirror ? " mirror" : "")} />
         : <Avatar mxc={m?.getMxcAvatarUrl()} name={m?.name ?? t.userId} id={t.userId} size={88} />}
       <span className="call-name">
-        {(t.quality === ConnectionQuality.Poor || t.quality === ConnectionQuality.Lost) && <i className={"call-quality " + t.quality} title={QUALITY[t.quality]} />}
+        {t.quality && QUALITY[t.quality] && <i className={"call-quality " + t.quality} title={QUALITY[t.quality]} />}
         {t.local ? "شما" : m?.name ?? t.userId}{t.micOff && <Icon name="micOff" size={14} />}
       </span>
       {stats && t.stats && <StatsBox get={t.stats} local={t.local} />}

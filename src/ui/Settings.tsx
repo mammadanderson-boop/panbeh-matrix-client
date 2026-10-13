@@ -39,7 +39,7 @@ const LOW_DATA: [Prefs["lowData"], string][] = [["off", "خاموش"], ["auto", 
 // the Android app defaults to notifying: it asks for permission on first start. The desktop app needs no permission.
 export const loadPrefs = (): Prefs => migrate({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, notifyPreview: "all", previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, recordMode: "voice", noteQuality: "640", ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
 const migrate = (p: Prefs): Prefs => ({ ...p, autoDl: mergeAutoDl(p.autoDl), // nested: kinds added later get their defaults
-  accent: p.accent === "#3390ec" ? ACCENTS[0] : p.accent }); // the old default blue, before the new logo
+  accent: p.accent === "#3390ec" ? ACCENTS[0] : p.accent }); // the old default blue
 
 /** Enter (or Ctrl/⌘+Enter when Enter is set to a new line) sends. */
 export const isSendKey = (e: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; nativeEvent: { isComposing: boolean } }) =>
