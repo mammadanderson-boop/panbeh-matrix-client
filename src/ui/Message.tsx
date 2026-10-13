@@ -89,6 +89,7 @@ const EMOTES_ONLY = /^(\s*<span class="emote"[^>]*>[^<]*<\/span>){1,3}\s*$/;
 
 /** Someone's custom emoji or sticker into mine. */
 function grab(code: string, url: string, use: Usage, info?: Record<string, unknown>) {
+  if (inMyPack(url, use)) return toast(use === "sticker" ? "در استیکرهای شما هست" : "در اموجی‌های شما هست");
   void confirmDialog(`«${code}» به ${use === "sticker" ? "استیکرهای" : "اموجی‌های"} شما اضافه شود؟`, { ok: "افزودن" }).then((y) => {
     if (y) addToMyPack(code, { url, info }, use).then(() => toast(use === "sticker" ? "به استیکرها اضافه شد" : "به اموجی‌ها اضافه شد"), (e) => alertDialog(errText(e)));
   });

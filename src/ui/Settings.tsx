@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { SystemBars, SystemBarsStyle } from "@capacitor/core";
 import { ClientEvent, PushRuleActionName, PushRuleKind, RuleId, TweakName, type PushRuleAction } from "matrix-js-sdk";
 import { CryptoEvent, type DeviceVerificationStatus } from "matrix-js-sdk/lib/crypto-api/index.js";
@@ -63,16 +63,26 @@ export function applyPrefs(p = loadPrefs()) {
   if (isNative) SystemBars.setStyle({ style: { system: SystemBarsStyle.Default, light: SystemBarsStyle.Light, dark: SystemBarsStyle.Dark }[p.theme] }).catch(() => {});
 }
 
-type View = "main" | "devices" | "password" | "keys" | "blocked" | "deactivate" | "link" | "lock" | "autodl" | "emoji";
+export type View = "main" | "chats" | "notify" | "privacy" | "data" | "account" | "app"
+  | "devices" | "password" | "keys" | "blocked" | "deactivate" | "link" | "lock" | "autodl" | "emoji";
+/** Where a sub-page's back goes; the rest go to the main page. */
+const PARENT: Partial<Record<View, View>> = { lock: "privacy", blocked: "privacy", keys: "privacy", devices: "privacy", autodl: "data", emoji: "chats", link: "account", password: "account", deactivate: "account" };
 const ACCOUNT: [View, IconName, string, string][] = [
   ["link", "link", "پیوند و کد QR من", "تا دیگران با یک اسکن به شما پیام بدهند"],
   ["password", "lock", "تغییر رمز عبور", ""],
-  ["keys", "file", "کلیدهای رمزنگاری", "ذخیره در فایل یا وارد کردن از فایل"],
-  ["blocked", "user", "کاربران مسدود", ""],
   ["deactivate", "trash", "غیرفعال‌سازی حساب", "حذف همیشگی حساب"],
 ];
 
-export function Settings({ onClose, onSecurityChange }: { onClose: () => void; onSecurityChange: () => void }) {
+/** A row that opens another page of settings. */
+const Row = ({ icon, label, hint, onClick }: { icon: IconName; label: string; hint?: string; onClick: () => void }) => (
+  <button className="user-row" onClick={onClick}>
+    <span className="device-box"><Icon name={icon} /></span><span><b>{label}</b>{hint && <small>{hint}</small>}</span>
+  </button>
+);
+
+const VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
+
+export function Settings({ start = "main", security, onClose, onSecurityChange }: { start?: View; security: string; onClose: () => void; onSecurityChange: () => void }) {
   const [prefs, setPrefs] = useState(loadPrefs);
   const set = (patch: Partial<Prefs>) => {
     const next = { ...prefs, ...patch };
@@ -81,34 +91,24 @@ export function Settings({ onClose, onSecurityChange }: { onClose: () => void; o
     applyPrefs(next);
   };
 
-  const [view, setView] = useState<View>("main");
+  const [view, setView] = useState<View>(start);
   const pill = useSlider<HTMLDivElement>();
-  const back = () => setView("main");
-  if (view === "lock") return <LockSettings onClose={back} />;
-  if (view === "link") return <LinkSheet title="پیوند من" link={matrixToLink(me())} onClose={back} />;
-  if (view === "autodl") return <Sheet title="دانلود خودکار رسانه" onClose={back}><AutoDownload prefs={prefs} set={set} /></Sheet>;
-  if (view === "emoji") return <Sheet title="اموجی و استیکر" onClose={back}><MyPacks /></Sheet>;
-  if (view === "devices") return <Sheet title="دستگاه‌ها" onClose={back}><Devices /></Sheet>;
-  if (view === "password") return <Sheet title="تغییر رمز عبور" onClose={back}>{isOAuth() ? <AccountPage action="org.matrix.profile" /> : <ChangePassword />}</Sheet>;
-  if (view === "keys") return <Sheet title="کلیدهای رمزنگاری" onClose={back}><Keys /></Sheet>;
-  if (view === "blocked") return <Sheet title="کاربران مسدود" onClose={back}><Blocked /></Sheet>;
-  if (view === "deactivate") return <Sheet title="غیرفعال‌سازی حساب" onClose={back}>{isOAuth() ? <AccountPage action="org.matrix.account_deactivate" /> : <Deactivate />}</Sheet>;
+  const u = useUpdate();
+  // the open pages, each stacked inside its parent's sheet, so going in or back only slides the top one
+  const render = (v: View, child: ReactNode): ReactNode => {
+    const up = () => setView(PARENT[v] ?? "main");
+    const page = (title: string, body: ReactNode) => <Sheet key={v} title={title} onClose={v === "main" ? onClose : up}>{body}{child}</Sheet>;
+    if (v === "lock") return <LockSettings key={v} onClose={up} />;
+    if (v === "link") return <LinkSheet key={v} title="پیوند من" link={matrixToLink(me())} onClose={up} />;
+    if (v === "autodl") return page("دانلود خودکار رسانه", <AutoDownload prefs={prefs} set={set} />);
+    if (v === "emoji") return page("اموجی و استیکر", <MyPacks />);
+    if (v === "devices") return page("دستگاه‌ها", <Devices />);
+    if (v === "password") return page("تغییر رمز عبور", isOAuth() ? <AccountPage action="org.matrix.profile" /> : <ChangePassword />);
+    if (v === "keys") return page("کلیدهای رمزنگاری", <Keys />);
+    if (v === "blocked") return page("کاربران مسدود", <Blocked />);
+    if (v === "deactivate") return page("غیرفعال‌سازی حساب", isOAuth() ? <AccountPage action="org.matrix.account_deactivate" /> : <Deactivate />);
 
-  return (
-    <Sheet key="main" title="تنظیمات" onClose={onClose}>{/* key: a sub-page's Sheet sits in this same slot; reusing it would keep its "closing" state and leave settings stuck invisible */}
-      <MyProfile />
-
-      <h3>حساب‌ها</h3>
-      {sessions().map((a) => (
-        <button key={a.userId} className="user-row" disabled={a.userId === client.getUserId()} onClick={() => switchAccount(a.userId)}>
-          <span className="device-box"><Icon name={a.userId === client.getUserId() ? "check" : "user"} /></span>
-          <span><b dir="ltr">{a.userId}</b><small dir="ltr">{new URL(a.baseUrl).host}</small></span>
-        </button>
-      ))}
-      <button className="user-row" onClick={addAccount}>
-        <span className="device-box"><Icon name="plus" /></span><span><b>افزودن حساب</b></span>
-      </button>
-
+    if (v === "chats") return page("گفتگوها و ظاهر", <>
       <h3>ظاهر</h3>
       <div className="segmented" data-pill ref={pill}>
         {(Object.keys(THEMES) as Prefs["theme"][]).map((t) => (
@@ -127,30 +127,40 @@ export function Settings({ onClose, onSecurityChange }: { onClose: () => void; o
           </button>
         ))}
       </div>
+      <h3>گفتگوها</h3>
       <label className="switch-row"><span>پیش‌نمایش پیوندها<small>سرور شما پیوندها را برای ساختن پیش‌نمایش باز می‌کند</small></span>
         <input type="checkbox" role="switch" checked={prefs.previews} onChange={(e) => set({ previews: e.target.checked })} /></label>
       <label className="switch-row"><span>ارسال با Enter<small>خاموش: Enter خط جدید می‌زند و Ctrl+Enter ارسال می‌کند</small></span>
         <input type="checkbox" role="switch" checked={prefs.enterSends} onChange={(e) => set({ enterSends: e.target.checked })} /></label>
       {isNative && <label className="switch-row"><span>پرسیدن محل ذخیره<small>خاموش: فایل‌ها در پوشه‌ی دانلودها ذخیره می‌شوند</small></span>
         <input type="checkbox" role="switch" checked={prefs.askSave} onChange={(e) => set({ askSave: e.target.checked })} /></label>}
+      <h3>اموجی و استیکر</h3>
+      <Row icon="smile" label="اموجی و استیکر" hint="اموجی‌ها و استیکرهای خودتان" onClick={() => setView("emoji")} />
+    </>);
 
-      <button className="user-row" onClick={() => setView("emoji")}>
-        <span className="device-box"><Icon name="smile" /></span><span><b>اموجی و استیکر</b><small>اموجی‌ها و استیکرهای خودتان</small></span>
-      </button>
+    if (v === "notify") return page("اعلان‌ها", <>
+      <Notifications prefs={prefs} set={set} />
+      <PushRules />
+    </>);
 
+    if (v === "privacy") return page("حریم خصوصی و امنیت", <>
       <h3>حریم خصوصی</h3>
-      <button className="user-row" onClick={() => setView("lock")}>
-        <span className="device-box"><Icon name="lock" /></span><span><b>قفل برنامه</b><small>{lockConf() ? "روشن" : "خاموش؛ با رمز عددی و اثر انگشت"}</small></span>
-      </button>
+      <Row icon="lock" label="قفل برنامه" hint={lockConf() ? "روشن" : "خاموش؛ با رمز عددی و اثر انگشت"} onClick={() => setView("lock")} />
       <label className="switch-row"><span>نمایش آخرین بازدید<small>فقط وضعیت خودتان پنهان می‌شود؛ وضعیت دیگران را همچنان می‌بینید</small></span>
         <input type="checkbox" role="switch" checked={prefs.shareLastSeen} onChange={(e) => { set({ shareLastSeen: e.target.checked }); void setShareLastSeen(e.target.checked); }} /></label>
       <label className="switch-row"><span>جستجوی کامل در گفتگوهای رمزنگاری‌شده<small>متن پیام‌های رمزگشایی‌شده روی همین دستگاه نگه داشته می‌شود تا جستجو شوند؛ خاموش کردن آن را پاک می‌کند</small></span>
         <input type="checkbox" role="switch" checked={prefs.searchIndex} onChange={(e) => { set({ searchIndex: e.target.checked }); if (e.target.checked) indexLoaded(); else void dropIndex(); }} /></label>
+      <Row icon="user" label="کاربران مسدود" onClick={() => setView("blocked")} />
+      <h3>رمزنگاری</h3>
+      <Encryption onChange={onSecurityChange} />
+      <Row icon="file" label="کلیدهای رمزنگاری" hint="ذخیره در فایل یا وارد کردن از فایل" onClick={() => setView("keys")} />
+      <Row icon="screen" label="دستگاه‌های وارد‌شده" hint="مشاهده، تأیید و خروج از دستگاه‌های دیگر" onClick={() => setView("devices")} />
+    </>);
 
-      <h3>اعلان‌ها</h3>
-      <Notifications prefs={prefs} set={set} />
-      <PushRules />
-
+    if (v === "data") return page("داده و حافظه", <>
+      <h3>حافظه</h3>
+      <Row icon="download" label="دانلود خودکار رسانه" hint="جدا برای داده‌ی همراه و وای‌فای" onClick={() => setView("autodl")} />
+      <Storage prefs={prefs} set={set} />
       <h3>کیفیت ارسال</h3>
       <label className="select-row">دوربین در تماس
         <Select value={prefs.camQuality} options={CAM_Q} onChange={(v) => set({ camQuality: v })} /></label>
@@ -163,30 +173,13 @@ export function Settings({ onClose, onSecurityChange }: { onClose: () => void; o
       <label className="select-row">تصویر کم‌مصرف در تماس
         <Select value={prefs.lowData} options={LOW_DATA} onChange={(v) => set({ lowData: v })} /></label>
       <p className="muted">کیفیت بالاتر اینترنت بیشتری مصرف می‌کند. تغییر از تماس یا ضبط بعدی اعمال می‌شود. تصویر کم‌مصرف، ویدیوی همه را با کمترین کیفیت می‌گیرد و می‌فرستد.</p>
+    </>);
 
-      <h3>حافظه</h3>
-      <button className="user-row" onClick={() => setView("autodl")}>
-        <span className="device-box"><Icon name="download" /></span><span><b>دانلود خودکار رسانه</b><small>جدا برای داده‌ی همراه و وای‌فای</small></span>
-      </button>
-      <Storage prefs={prefs} set={set} />
+    if (v === "account") return page("حساب", ACCOUNT.map(([v, icon, label, hint]) => <Row key={v} icon={icon} label={label} hint={hint} onClick={() => setView(v)} />));
 
-      {isDesktop && <DesktopApp />}
-
-      <h3>حساب</h3>
-      {ACCOUNT.map(([v, icon, label, hint]) => (
-        <button key={v} className="user-row" onClick={() => setView(v)}>
-          <span className="device-box"><Icon name={icon} /></span><span><b>{label}</b>{hint && <small>{hint}</small>}</span>
-        </button>
-      ))}
-
-      <h3>دستگاه‌ها</h3>
-      <button className="user-row" onClick={() => setView("devices")}>
-        <span className="device-box"><Icon name="lock" /></span><span><b>دستگاه‌های وارد‌شده</b><small>مشاهده، تأیید و خروج از دستگاه‌های دیگر</small></span>
-      </button>
-
-      <h3>رمزنگاری</h3>
-      <Encryption onChange={onSecurityChange} />
-
+    if (v === "app") return page("برنامه", <>
+      {isDesktop && <Autostart />}
+      {canUpdate ? <Updates /> : <p className="muted">پنبه <span dir="ltr">{VERSION}</span></p>}
       <h3>گزینه‌های توسعه‌دهنده</h3>
       <label className="switch-row"><span>گزینه‌های توسعه‌دهنده<small>امکانات آزمایشی و قدیمی</small></span>
         <input type="checkbox" role="switch" checked={prefs.dev} onChange={(e) => set({ dev: e.target.checked })} /></label>
@@ -194,11 +187,36 @@ export function Settings({ onClose, onSecurityChange }: { onClose: () => void; o
         <label className="switch-row"><span>دریافت تماس‌های قدیمی<small>تماس از FluffyChat، Nheko و Element قدیمی</small></span>
           <input type="checkbox" role="switch" checked={prefs.legacyCalls} onChange={(e) => set({ legacyCalls: e.target.checked })} /></label>
       )}
+    </>);
+
+    const newVersion = u.status === "available" || u.status === "ready" || u.status === "downloading";
+    return page("تنظیمات", <>
+      <MyProfile />
+
+      <h3>حساب‌ها</h3>
+      {sessions().map((a) => (
+        <button key={a.userId} className="user-row" disabled={a.userId === client.getUserId()} onClick={() => switchAccount(a.userId)}>
+          <span className="device-box"><Icon name={a.userId === client.getUserId() ? "check" : "user"} /></span>
+          <span><b dir="ltr">{a.userId}</b><small dir="ltr">{new URL(a.baseUrl).host}</small></span>
+        </button>
+      ))}
+      <Row icon="plus" label="افزودن حساب" onClick={addAccount} />
+
+      <h3>تنظیمات</h3>
+      <Row icon="thread" label="گفتگوها و ظاهر" hint={`پوسته‌ی ${THEMES[prefs.theme]}، اموجی و استیکر`} onClick={() => setView("chats")} />
+      <Row icon="bell" label="اعلان‌ها" hint={prefs.notify ? "روشن" : "خاموش"} onClick={() => setView("notify")} />
+      <Row icon="lock" label="حریم خصوصی و امنیت"
+        hint={security === "unlock" ? "این دستگاه تأیید نشده است" : security === "setup" ? "بازیابی رمزنگاری راه‌اندازی نشده است" : "قفل برنامه، رمزنگاری، دستگاه‌ها"} onClick={() => setView("privacy")} />
+      <Row icon="download" label="داده و حافظه" hint="دانلود خودکار، حافظه، کیفیت ارسال" onClick={() => setView("data")} />
+      <Row icon="user" label="حساب" hint="پیوند من، رمز عبور" onClick={() => setView("account")} />
+      <Row icon="info" label="برنامه" hint={newVersion ? `نسخه‌ی تازه‌ی ${ver(u.version)} آمده است` : `پنبه ${ver(VERSION.replace(/^v/, ""))}`} onClick={() => setView("app")} />
 
       <button className="danger" onClick={() => confirmDialog("از این دستگاه خارج می‌شوید؟", { danger: true }).then((y) => y && void logout())}>خروج از این حساب</button>
-      <p className="muted">پنبه <span dir="ltr">{import.meta.env.VITE_APP_VERSION ?? "dev"}</span></p>
-    </Sheet>
-  );
+    </>);
+  };
+  const chain: View[] = [view];
+  while (chain[0] !== "main") chain.unshift(PARENT[chain[0]] ?? "main");
+  return <>{chain.reduceRight<ReactNode>((child, v) => render(v, child), null)}</>;
 }
 
 function Notifications(props: { prefs: Prefs; set: (p: Partial<Prefs>) => void }) {
@@ -351,19 +369,13 @@ function AutoDownload({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) =
   );
 }
 
-/** The desktop app: start with the system (into the tray), updates. */
-function DesktopApp() {
-  const [autostart, setOn] = useState<boolean>();
+/** The desktop app starts with the system, into the tray. */
+function Autostart() {
+  const [on, setOn] = useState<boolean>();
   useEffect(() => { getAutostart().then(setOn, () => {}); }, []);
-  return (
-    <>
-      <h3>برنامه</h3>
-      {autostart !== undefined && (
-        <label className="switch-row"><span>اجرا هنگام ورود به سیستم<small>پنبه در سینی سیستم باز می‌شود تا اعلان‌ها برسند</small></span>
-          <input type="checkbox" role="switch" checked={autostart} onChange={(e) => setAutostart(e.target.checked).then(setOn, (err) => alertDialog(errText(err)))} /></label>
-      )}
-      {canUpdate && <Updates />}
-    </>
+  return on !== undefined && (
+    <label className="switch-row"><span>اجرا هنگام ورود به سیستم<small>پنبه در سینی سیستم باز می‌شود تا اعلان‌ها برسند</small></span>
+      <input type="checkbox" role="switch" checked={on} onChange={(e) => setAutostart(e.target.checked).then(setOn, (err) => alertDialog(errText(err)))} /></label>
   );
 }
 

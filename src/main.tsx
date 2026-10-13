@@ -18,7 +18,7 @@ import { Room } from "./ui/Room.tsx";
 import { ShareSheet } from "./ui/Forward.tsx";
 import { shareInto } from "./ui/Composer.tsx";
 import { NowPlaying } from "./ui/Voice.tsx";
-import { Settings, UpdateBanner, applyPrefs, loadPrefs } from "./ui/Settings.tsx";
+import { Settings, UpdateBanner, applyPrefs, loadPrefs, type View } from "./ui/Settings.tsx";
 import { VerificationListener } from "./ui/Verify.tsx";
 import { CallBar, CallLayer } from "./ui/Call.tsx";
 import { alertDialog } from "./ui/dialog.tsx";
@@ -70,7 +70,7 @@ function App() {
 function Shell() {
   useTick(client, [ClientEvent.Sync]);
   const [roomId, setRoomId] = useState<string | undefined>(() => location.hash.slice(1) || undefined);
-  const [settings, setSettings] = useState(false);
+  const [settings, setSettings] = useState<View | null>(null);
   const [share, setShare] = useState<{ text: string; files: File[] } | null>(null);
   const [shareN, setShareN] = useState(0); // remounts an already-open chat so it picks up what was shared
   const [security, setSecurity] = useState<string>("ok");
@@ -131,12 +131,12 @@ function Shell() {
   return (
     <>
     <div className={"app" + (room ? " room-open" : "")} inert={locked}>
-      <Sidebar loading={!synced} selected={roomId} onSelect={open} onSettings={() => setSettings(true)}
+      <Sidebar loading={!synced} selected={roomId} onSelect={open} onSettings={() => setSettings("main")}
         banner={<>
           {(sync === SyncState.Error || sync === SyncState.Reconnecting) && <div className="banner warn">در حال اتصال…</div>}
           <UpdateBanner />
           {security !== "ok" && (
-            <button className="banner" onClick={() => setSettings(true)}>
+            <button className="banner" onClick={() => setSettings("privacy")}>
               <Icon name="lock" size={16} /> {security === "unlock" ? "برای خواندن پیام‌های رمزنگاری‌شده‌ی قبلی، این دستگاه را تأیید کنید" : "بازیابی رمزنگاری را راه‌اندازی کنید"}
             </button>
           )}
@@ -147,7 +147,7 @@ function Shell() {
         {shown ? <Room key={shown.roomId + ":" + shareN} room={shown} onBack={() => open()} /> : <div className="pill center">برای شروع پیام‌رسانی یک گفتگو را انتخاب کنید</div>}
       </main>
       {share && <ShareSheet onClose={() => setShare(null)} onPick={(id) => { shareInto(id, share.text, share.files); setShare(null); setShareN((n) => n + 1); open(id); }} />}
-      {settings && <Settings onClose={() => setSettings(false)} onSecurityChange={refreshSecurity} />}
+      {settings && <Settings start={settings} security={security} onClose={() => setSettings(null)} onSecurityChange={refreshSecurity} />}
       <VerificationListener onTrustChange={refreshSecurity} />
       <CallLayer />
     </div>
