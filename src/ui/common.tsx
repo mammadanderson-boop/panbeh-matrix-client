@@ -32,7 +32,7 @@ export const RoomAvatar = ({ room, size }: { room: Room; size?: number }) => (
   <Avatar mxc={roomAvatarMxc(room)} name={room.name} id={room.roomId} size={size} />
 );
 
-/** The sender's *current* profile (Telegram-style); ev.sender is a snapshot from when it was sent. */
+/** The sender's *current* profile; ev.sender is a snapshot from when it was sent. */
 export const senderMember = (ev: MatrixEvent) => client.getRoom(ev.getRoomId())?.getMember(ev.getSender()!) ?? ev.sender;
 export const senderName = (ev: MatrixEvent) => senderMember(ev)?.name ?? ev.getSender() ?? "";
 
@@ -92,7 +92,7 @@ export function errText(e: unknown): string {
   return /fetch|network/i.test(m) ? "به سرور دسترسی نیست. نشانی و پورت را بررسی کنید." : m;
 }
 
-const cap = (c: Record<string, any>): string | undefined => (c.filename && c.body !== c.filename ? c.body : undefined); // eslint-disable-line @typescript-eslint/no-explicit-any
+const cap = (c: Record<string, any>): string | undefined => (c.filename && c.body !== c.filename ? c.body : undefined);
 
 /** One-line text for list previews and reply quotes. */
 export function previewText(ev: MatrixEvent): string {
@@ -113,7 +113,6 @@ export function previewText(ev: MatrixEvent): string {
   return stripReplyFallback(String(c.body ?? ""));
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Content = Record<string, any>;
 export const isVoice = (c: Content) => !!(c["org.matrix.msc3245.voice"] ?? c["m.voice"]);
 /** ms; 0 if unknown */
@@ -126,10 +125,10 @@ export function parsePoll(ev: MatrixEvent) {
 
 export const stripReplyFallback = (body: string) => body.replace(/^(> .*\n)+\n?/, "");
 
-/** Text for state events worth showing as a centered pill; null = hide. */
 /** In-chat verification starts with an m.room.message whose body is an English "your client doesn't support" fallback. */
 export const VERIFY_REQUEST = "m.key.verification.request";
 
+/** Text for state events worth showing as a centered pill; null = hide. */
 export function noticeText(ev: MatrixEvent): string | null {
   const who = bdi(senderName(ev));
   const c = ev.getContent(), prev = ev.getPrevContent();
@@ -200,7 +199,6 @@ export function noticeText(ev: MatrixEvent): string | null {
 }
 
 const callEv = (e: MatrixEvent): CallEv => ({ id: e.getId(), type: e.getType(), sender: e.getSender()!, ts: e.getTs(), content: e.getContent() });
-/** The loaded events after `ev`, to see how its call went. */
 /** A 1:1 ring (MatrixRTC or legacy): video or not, and how it went. Null for a group call's "started" alert. */
 export function callInfo(ev: MatrixEvent): { video: boolean; outcome: CallOutcome } | null {
   const c = ev.getContent();
@@ -209,6 +207,7 @@ export function callInfo(ev: MatrixEvent): { video: boolean; outcome: CallOutcom
   return { video: c["m.call.intent"] === "video", outcome: rtcOutcome(callEv(ev), getCallNotificationExpiry(c as IRTCNotificationContent, ev.getTs()), eventsAfter(ev)) };
 }
 
+/** The loaded events after `ev`, to see how its call went. */
 function eventsAfter(ev: MatrixEvent) {
   const evs = client.getRoom(ev.getRoomId())?.getTimelineForEvent(ev.getId()!)?.getEvents() ?? [];
   return evs.slice(evs.indexOf(ev) + 1).map(callEv);

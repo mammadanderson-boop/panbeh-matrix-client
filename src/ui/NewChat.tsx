@@ -17,8 +17,8 @@ const MENU: [Kind, IconName, string][] = [
 ];
 const TITLES = Object.fromEntries(MENU.map(([k, , t]) => [k, t])) as Record<Kind, string>;
 
-/** Floating pencil button + menu; each item opens its own sheet. */
-/** `onOpen(id, true)` = a space: shown as a folder, not opened as a chat. */
+/** Floating pencil button + menu; each item opens its own sheet.
+ *  `onOpen(id, true)` = a space: shown as a folder, not opened as a chat. */
 export function NewChat({ activeSpace, onOpen }: { activeSpace?: string; onOpen: (roomId: string, space: boolean) => void }) {
   const [menu, setMenu] = useState(false);
   const [menuShown, menuClosing] = useExit(menu);

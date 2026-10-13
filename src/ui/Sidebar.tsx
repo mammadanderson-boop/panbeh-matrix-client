@@ -61,7 +61,7 @@ export function Sidebar({ loading, selected, onSelect, onSettings, banner }: Pro
     const ro = new ResizeObserver(() => { ind.classList.remove("ready"); place(); requestAnimationFrame(() => ind.classList.add("ready")); });
     ro.observe(tab);
     return () => ro.disconnect();
-  }, [active, tabsKey, !q && !inArchiveView && !inCalls]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, tabsKey, !q && !inArchiveView && !inCalls]);
   const { dragging, barProps } = useSortableTabs(nav, folders.map((f) => f.id), (from, to) => setOrder(moveFolder(folders.map((f) => f.id), from, to)));
   // keep the active tab visible (e.g. a remembered space folder past the edge)
   useEffect(() => { nav.current?.querySelector(".on")?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [active, q]);
@@ -90,7 +90,7 @@ export function Sidebar({ loading, selected, onSelect, onSettings, banner }: Pro
 
   const activeSpace = spaces.find((s) => s.roomId === active);
   const pick = (id: string) => { setFolder(id); localStorage.setItem(FOLDER_KEY(), id); setArchive(false); };
-  // touch: swipe the chat list sideways to change folder, like Telegram. RTL: the next tab sits to the left,
+  // touch: swipe the chat list sideways to change folder. RTL: the next tab sits to the left,
   // so a swipe to the right brings it in
   const touch = useRef<{ x: number; y: number } | null>(null);
   const swipe = {

@@ -14,7 +14,7 @@ import { growFrom, takeOrigin, useDismiss } from "./useDismiss.ts";
 import { useSlider } from "./useSlider.ts";
 import { alertDialog } from "./dialog.tsx";
 
-type Content = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+type Content = Record<string, any>;
 
 const isVisual = (e: MatrixEvent) => !e.isRedacted() && ["m.image", "m.video"].includes(e.getContent().msgtype ?? "");
 
@@ -117,7 +117,7 @@ export function MediaViewer({ items, start, onClose, onJump }: { items: MatrixEv
   }, [close]);
 
   const [from] = useState(takeOrigin);
-  useLayoutEffect(() => { if (from && stage.current) growFrom(stage.current, from); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { if (from && stage.current) growFrom(stage.current, from); }, []);
 
   const download = async () => {
     try {
@@ -219,7 +219,7 @@ export function PhotoViewer({ mxc, name, onClose }: { mxc: string; name: string;
   const [closing, close] = useDismiss(onClose, 200);
   const { stage, zoom, moved, handlers } = useZoom(true);
   const [from] = useState(takeOrigin);
-  useLayoutEffect(() => { if (from && stage.current) growFrom(stage.current, from); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { if (from && stage.current) growFrom(stage.current, from); }, []);
   const download = async () => {
     try {
       const url = await mediaUrl({ url: mxc });
@@ -310,7 +310,7 @@ export function SharedMedia({ room, onClose, onJump }: { room: Room; onClose: ()
     return () => io.disconnect();
   }, []);
   // keep paging while the list doesn't reach the bottom; capped so a chat without media doesn't walk its whole history
-  useEffect(() => { if (seen && !busy && !error && token !== null && autoLeft > 0) more(); }, [seen, busy, token, autoLeft, error]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (seen && !busy && !error && token !== null && autoLeft > 0) more(); }, [seen, busy, token, autoLeft, error]);
 
   const shown = items.filter((x) => x.kind === tab).map((x) => x.ev);
   const jump = (ev: MatrixEvent) => { requestJump(room.roomId, ev.getId()!); onJump(); };

@@ -64,7 +64,7 @@ export function ScheduledList({ room, list, onClose }: { room: Room; list: Sched
   const [editing, setEditing] = useState<Scheduled | null>(null);
   const [busy, setBusy] = useState(false);
   const act = (fn: () => Promise<unknown>) => { setBusy(true); fn().catch((e) => alertDialog(errText(e))).finally(() => setBusy(false)); };
-  useEffect(() => { if (!list.length && !editing) onClose(); }, [list.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!list.length && !editing) onClose(); }, [list.length]);
   if (editing) return <EditScheduled room={room} s={editing} onDone={() => setEditing(null)} />;
   return (
     <Sheet title={`پیام‌های زمان‌بندی‌شده (${num(list.length)})`} onClose={onClose}>

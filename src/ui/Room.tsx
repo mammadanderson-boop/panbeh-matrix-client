@@ -51,7 +51,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); setSel(null); } };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [!!sel, !!forwarding]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [!!sel, !!forwarding]);
 
   const actions: Actions = useMemo(() => ({
     reply: (ev: MatrixEvent) => setMode({ kind: "reply", ev }),
@@ -72,7 +72,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
       return n.size ? n : null;
     }),
     selection: sel ?? undefined,
-  }), [room, sel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [room, sel]);
 
   const picked = sel ? [...sel].map((id) => room.findEventById(id)).filter((e) => !!e).sort((a, b) => a.getTs() - b.getTs()) : []; // timeline order
   const copySel = () => {

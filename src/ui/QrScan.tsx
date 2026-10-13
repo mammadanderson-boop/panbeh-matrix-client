@@ -38,7 +38,7 @@ export function QrScan({ onCode, onClose }: { onCode: (bytes: Uint8ClampedArray)
       scan();
     })();
     return () => { live = false; clearTimeout(timer); stream?.getTracks().forEach((t) => t.stop()); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <div className="qr-scan">
       {error ? <p className="error">{error}</p> : <><video ref={video} muted playsInline /><span className="qr-frame" aria-hidden /></>}

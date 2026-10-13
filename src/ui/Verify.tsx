@@ -85,7 +85,7 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
       autoStarted.current = true;
       run(() => req.startVerification("m.sas.v1"));
     }
-  }, [req.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [req.phase]);
 
   const close = () => {
     if (!finished(req)) req.cancel().catch(() => {});

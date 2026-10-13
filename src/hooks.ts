@@ -41,7 +41,7 @@ export function useTick(emitter: Emitter | undefined, events: string[]) {
     events.forEach((e) => emitter.on(e, bump));
     set((n) => n + 1); // catch anything that fired between render and subscribe
     return () => { events.forEach((e) => emitter.off(e, bump)); cancel?.(); };
-  }, [emitter, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [emitter, key]);
 }
 
 type Seen = { online: boolean; ts: number; at: number };
@@ -170,7 +170,7 @@ export function useFolderOrder(): [string[], (order: string[]) => void] {
   useEffect(() => {
     setMine(null); // the server's copy caught up (or another device changed it)
     if (remote) localStorage.setItem(orderKey(), key);
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key]);
   const set = (order: string[]) => {
     setMine(order);
     localStorage.setItem(orderKey(), JSON.stringify(order));

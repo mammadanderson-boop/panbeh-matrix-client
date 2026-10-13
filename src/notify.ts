@@ -179,7 +179,6 @@ function beep(freq: number, len: number, after = 0) {
   } catch { /* no audio: the notification is enough */ }
 }
 
-/** Incoming-call ring (two tones every 2s) until the returned stop is called. */
 /** Call waiting: a soft double beep every 3s, over the call we're in. */
 export function waitingTone() {
   const ring = () => { beep(440, 0.15); beep(440, 0.15, 0.3); };
@@ -188,6 +187,7 @@ export function waitingTone() {
   return () => clearInterval(t);
 }
 
+/** Incoming-call ring (two tones every 2s) until the returned stop is called. */
 export function ringtone() {
   const ring = () => { beep(440, 0.4); beep(480, 0.4, 0.5); };
   ring();

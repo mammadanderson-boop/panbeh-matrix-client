@@ -65,7 +65,7 @@ DOMPurify.addHook("afterSanitizeAttributes", (n) => {
   n.className = "mention" + (id === me() ? " me" : "");
   n.setAttribute("data-mxid", id);
   n.setAttribute("data-name", name ?? id);
-  n.textContent = name ?? id; // current name, Telegram-style, whatever the sender typed
+  n.textContent = name ?? id; // current name, whatever the sender typed
 });
 
 // custom emoji (MSC2545) become spans the Html effect fills from authenticated media; any other image, its alt text.
@@ -158,7 +158,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
       if (!cancel && s.px >= SWIPE_AT) actions.reply(ev);
     }
   };
-  // swipe LEFT to reply (Telegram's direction) for both own and others' messages; rows stay physically LTR so -x is left
+  // swipe LEFT to reply for both own and others' messages; rows stay physically LTR so -x is left
   const inside = (e: { target: EventTarget }) => row.current!.contains(e.target as Node); // portals (menu, picker) bubble through React
   const down = (e: PointerEvent) => {
     if (!inside(e) || e.pointerType !== "touch" || !live || selecting || (e.target as HTMLElement).closest("input,video,audio")) return;
@@ -294,7 +294,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
 
 type MenuItem = { icon: IconName; label: string; run: () => unknown; danger?: boolean };
 
-/** Telegram-style message menu: quick reactions + actions. A popup at the touch point, a bottom sheet on narrow screens (CSS). */
+/** Message menu: quick reactions + actions. A popup at the touch point, a bottom sheet on narrow screens (CSS). */
 function MsgMenu({ x, y, items, onReact, onMore, onClose }: { x: number; y: number; items: (MenuItem | false | "" | undefined)[];
   onReact: (k: string) => void; onMore: () => void; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -452,7 +452,7 @@ function linkify(text: string) {
   });
 }
 
-type Content = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+type Content = Record<string, any>;
 
 function fit(info: Content | undefined, max = 320) {
   const w = info?.w ?? max, h = info?.h ?? max * 0.75;
@@ -466,13 +466,13 @@ function useMedia(c: Content, thumb: { w: number; h: number } | undefined, auto:
   const [go, setGo] = useState(auto);
   const [prog, setProg] = useState<number | null>(null);
   const ac = useRef<AbortController | null>(null);
-  useEffect(() => { if (!go) void isCached(c, thumb).then((y) => { if (y) setGo(true); }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!go) void isCached(c, thumb).then((y) => { if (y) setGo(true); }); }, []);
   const p = useMemo(() => {
     if (!go) return null;
     if (auto) return mediaUrl(c, thumb);
     ac.current = new AbortController();
     return mediaUrl(c, thumb, (loaded, total) => setProg(total ? loaded / total : 0), ac.current.signal);
-  }, [go]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [go]);
   useEffect(() => { p?.catch(() => { setGo(false); setProg(null); }); }, [p]);
   const url = usePromise(p);
   return { url, idle: !go, prog: go && !url ? prog : null, start: () => setGo(true), cancel: () => ac.current?.abort() };
@@ -587,7 +587,7 @@ function VideoNote({ c, room }: { c: Content; room: Room }) {
     void el.play().catch(() => {});
     setSound(true); setPaused(false);
   };
-  useEffect(() => { if (dl.url && wantSound.current) { wantSound.current = false; loud(); } }, [dl.url]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (dl.url && wantSound.current) { wantSound.current = false; loud(); } }, [dl.url]);
   useEffect(() => () => { if (noteWithSound?.el === v.current) noteWithSound = null; }, []);
   const tap = (e: MouseEvent) => {
     e.stopPropagation();
@@ -611,7 +611,7 @@ function VideoNote({ c, room }: { c: Content; room: Room }) {
   );
 }
 
-/** Photos and videos sent together, Telegram's grid: 2 side by side, 3 as one big and two small, 4 as 2×2, more in rows of 2 then 3. */
+/** Photos and videos sent together, as one grid: 2 side by side, 3 as one big and two small, 4 as 2×2, more in rows of 2 then 3. */
 function AlbumGrid({ evs, room, onView }: { evs: MatrixEvent[]; room: Room; onView: (ev: MatrixEvent) => void }) {
   return (
     <div className={"album n" + Math.min(evs.length, 5)}>

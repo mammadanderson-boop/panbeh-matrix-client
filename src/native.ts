@@ -3,7 +3,6 @@ import { downloadPath, openDownload, setUpdater, type Update } from "./desktop.t
 import { loadPrefs } from "./ui/Settings.tsx";
 import { toast } from "./ui/common.tsx";
 
-/** The Android app: our own WebView (Capacitor plugin) or the background service's headless one (JS interface). */
 /** body: the one-line form (older app builds); sender (in groups), text and ts make the conversation-style notification.
  *  mention: to the mentions channel; hidden: mustn't name the chat (no conversation shortcut). */
 type Payload = { roomId: string; eventId?: string; title: string; body: string; sender: string; text: string; ts: number; group: boolean; icon?: string; senderIcon?: string;
@@ -13,10 +12,10 @@ export type NotifyAction = { action: "reply" | "read" | "mute"; roomId: string; 
 /** interval: minutes between background checks, 0 = real-time. */
 type Status = { permission: "granted" | "denied" | "default"; service: boolean; batteryOptimized: boolean; fullScreen: boolean; interval: number };
 type CallPayload = { roomId: string; eventId: string; caller: string; video: boolean; timeout: number; icon?: string };
-/** A button on the incoming-call notification; "open" = the notification itself (full-screen on the lock screen). */
 /** "Share with Panbeh" from another app: text and/or content:// files. */
 export type Shared = { text?: string; files: { uri: string; name: string; type: string }[] };
-/** hangup / hold / unhold: from Android's Telecom (a headset or car button, a phone call coming in) for the call in progress. */
+/** A button on the incoming-call notification; "open" = the notification itself (full-screen on the lock screen).
+ *  hangup / hold / unhold: from Android's Telecom (a headset or car button, a phone call coming in) for the call in progress. */
 export type CallAction = { action: "answer" | "decline" | "open" | "hangup" | "hold" | "unhold"; roomId: string; eventId: string; video: boolean };
 interface PanbehPlugin {
   showNotification(p: Payload): Promise<void>;
