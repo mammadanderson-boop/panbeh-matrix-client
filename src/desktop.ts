@@ -40,24 +40,30 @@ export const openExternal = (url: string) => bridge?.openExternal(url);
 export const downloadPath = (url: string) => bridge?.downloadPath?.(url) ?? Promise.resolve(null);
 /** Opens a file downloadPath reported; false if it's gone. */
 export const openDownload = (path: string) => bridge?.openDownload?.(path) ?? Promise.resolve(false);
-/** The desktop app can update itself (and say how it's going). */
-export const canUpdate = !!bridge?.update;
+/** The desktop app's updater, or the Android app's (src/native.ts sets it). */
+export type Updater = NonNullable<Bridge["update"]>;
+let updater = bridge?.update;
+/** The app can update itself (and say how it's going). */
+export let canUpdate = false;
 let update: Update = { status: "idle" };
 const updateListeners = new Set<() => void>();
-if (bridge?.update) {
+export function setUpdater(u: Updater) {
+  updater = u;
+  canUpdate = true;
   const set = (u: Update) => { update = u; updateListeners.forEach((f) => f()); };
-  bridge.update.state().then(set, () => {});
-  bridge.update.onState(set);
+  u.state().then(set, () => {});
+  u.onState(set);
 }
+if (updater) setUpdater(updater);
 const onUpdate = (f: () => void) => { updateListeners.add(f); return () => { updateListeners.delete(f); }; };
 export const useUpdate = () => useSyncExternalStore(onUpdate, () => update);
-export const getAutoUpdate = () => bridge?.update?.auto() ?? Promise.resolve(false);
-export const setAutoUpdate = (on: boolean) => bridge?.update?.auto(on) ?? Promise.resolve(false);
-export const checkUpdate = () => void bridge?.update?.check();
-export const downloadUpdate = () => void bridge?.update?.download();
-export const installUpdate = () => void bridge?.update?.install();
-/** The app's version, "" outside the desktop app. */
-export const appVersion = () => bridge?.info().then((i) => i.version, () => "") ?? Promise.resolve("");
+export const getAutoUpdate = () => updater?.auto() ?? Promise.resolve(false);
+export const setAutoUpdate = (on: boolean) => updater?.auto(on) ?? Promise.resolve(false);
+export const checkUpdate = () => void updater?.check();
+export const downloadUpdate = () => void updater?.download();
+export const installUpdate = () => void updater?.install();
+/** The app's version: the desktop app's, else the build's ("" in dev). */
+export const appVersion = () => bridge?.info().then((i) => i.version, () => "") ?? Promise.resolve((import.meta.env.VITE_APP_VERSION ?? "").replace(/^v/, ""));
 
 export const getAutostart = () => bridge?.autostart() ?? Promise.resolve(false);
 export const setAutostart = (on: boolean) => bridge?.autostart(on) ?? Promise.resolve(false);

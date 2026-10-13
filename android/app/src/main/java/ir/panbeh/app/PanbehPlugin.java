@@ -29,6 +29,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
@@ -365,6 +367,54 @@ public class PanbehPlugin extends Plugin {
         Save sv = saves.remove(call.getString("id", ""));
         if (sv != null) drop(sv);
         call.resolve();
+    }
+
+    /** Where updateDownload puts the new APK; BootReceiver deletes it once the app is replaced. */
+    static File updateApk(Context ctx) { return new File(ctx.getCacheDir(), "update.apk"); }
+
+    /** Downloads a release APK into the cache, sending "updateProgress" { percent }. Our GitHub releases only. */
+    @PluginMethod
+    public void updateDownload(PluginCall call) {
+        String url = call.getString("url", "");
+        if (!url.startsWith("https://github.com/mhfmobin/panbe-matrix-client/releases/download/")) { call.reject("not a release"); return; }
+        new Thread(() -> {
+            File part = new File(getContext().getCacheDir(), "update.apk.part");
+            try {
+                HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection(); // follows GitHub's redirect to its download host
+                long size = c.getContentLengthLong();
+                try (InputStream in = c.getInputStream(); OutputStream out = new FileOutputStream(part)) {
+                    byte[] buf = new byte[64 * 1024];
+                    long got = 0;
+                    int n, last = -1;
+                    while ((n = in.read(buf)) > 0) {
+                        out.write(buf, 0, n);
+                        got += n;
+                        int p = size > 0 ? (int) (got * 100 / size) : 0;
+                        if (p != last) notifyListeners("updateProgress", new JSObject().put("percent", last = p));
+                    }
+                }
+                if (!part.renameTo(updateApk(getContext()))) throw new IOException("can't save the update");
+                call.resolve();
+            } catch (IOException | RuntimeException e) {
+                part.delete();
+                call.reject(e.getMessage());
+            }
+        }).start();
+    }
+
+    /** Hands the downloaded APK to Android's installer, which asks the user (and, the first time, to allow installs from Panbeh). */
+    @PluginMethod
+    public void updateInstall(PluginCall call) {
+        File f = updateApk(getContext());
+        if (!f.exists()) { call.reject("gone"); return; }
+        Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f);
+        try {
+            getContext().startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK));
+            call.resolve();
+        } catch (ActivityNotFoundException e) {
+            call.reject("no installer");
+        }
     }
 
     private SharedPreferences savedPrefs() { return getContext().getSharedPreferences("panbeh.saved", Context.MODE_PRIVATE); }
