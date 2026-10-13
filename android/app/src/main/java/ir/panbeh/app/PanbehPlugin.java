@@ -376,7 +376,7 @@ public class PanbehPlugin extends Plugin {
     @PluginMethod
     public void updateDownload(PluginCall call) {
         String url = call.getString("url", "");
-        if (!url.startsWith("https://github.com/mhfmobin/panbe-matrix-client/releases/download/")) { call.reject("not a release"); return; }
+        if (!url.startsWith("https://github.com/mhfmobin/panbeh-matrix-client/releases/download/")) { call.reject("not a release"); return; }
         new Thread(() -> {
             File part = new File(getContext().getCacheDir(), "update.apk.part");
             try {

@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { downloadPath, openDownload, setUpdater, type Update } from "./desktop.ts";
 import { loadPrefs } from "./ui/Settings.tsx";
+import { toast } from "./ui/common.tsx";
 
 /** The Android app: our own WebView (Capacitor plugin) or the background service's headless one (JS interface). */
 /** body: the one-line form (older app builds); sender (in groups), text and ts make the conversation-style notification.
@@ -302,7 +303,7 @@ export function onShare(f: (text: string, files: File[]) => void) {
 }
 
 // ---------- updates: the newest v* GitHub release's APK, handed to Android's installer (it asks; no silent install) ----------
-const RELEASE = "https://api.github.com/repos/mhfmobin/panbe-matrix-client/releases/latest"; // "latest" skips the rolling pre-release
+const RELEASE = "https://api.github.com/repos/mhfmobin/panbeh-matrix-client/releases/latest"; // "latest" skips the rolling pre-release
 const version = (import.meta.env.VITE_APP_VERSION ?? "").replace(/^v/, "");
 const AUTO_UPDATE = "panbeh.autoUpdate";
 const autoUpdate = () => { try { return localStorage.getItem(AUTO_UPDATE) !== "0"; } catch { return true; } };
@@ -332,7 +333,7 @@ function downloadUpdate() {
   setUpd({ status: "downloading", version: v, percent: 0 });
   const h = plugin.addListener("updateProgress", (d) => setUpd({ status: "downloading", version: v, percent: d.percent }));
   plugin.updateDownload({ url: apk })
-    .then(() => setUpd({ status: "ready", version: v }), () => setUpd({ status: "available", version: v }))
+    .then(() => setUpd({ status: "ready", version: v }), () => { setUpd({ status: "available", version: v }); toast("دریافت نسخه‌ی تازه نشد؛ دوباره تلاش کنید"); })
     .finally(() => h.then((x) => x.remove()));
 }
 

@@ -19,7 +19,7 @@ protocols:
 publish:
   provider: github
   owner: mhfmobin
-  repo: panbe-matrix-client
+  repo: panbeh-matrix-client
   releaseType: release
 # no version in the names: the rolling `latest` release replaces same-named files (latest*.yml carry the version)
 artifactName: Panbeh-${os}-${arch}.${ext}
