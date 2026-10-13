@@ -1,5 +1,5 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
-import { downloadPath, openDownload } from "./desktop.ts";
+import { downloadPath, openDownload, setUpdater, type Update } from "./desktop.ts";
 import { loadPrefs } from "./ui/Settings.tsx";
 
 /** The Android app: our own WebView (Capacitor plugin) or the background service's headless one (JS interface). */
@@ -51,12 +51,15 @@ interface PanbehPlugin {
   biometricAvailable(): Promise<{ available: boolean }>;
   biometricUnlock(p: { title: string; cancel: string }): Promise<{ ok: boolean }>;
   metered(): Promise<{ metered: boolean }>;
+  updateDownload(p: { url: string }): Promise<void>;
+  updateInstall(): Promise<void>;
   addListener(e: "openRoom", f: (d: { roomId: string }) => void): Promise<PluginListenerHandle>;
   addListener(e: "openLink", f: (d: { link: string }) => void): Promise<PluginListenerHandle>;
   addListener(e: "callAction", f: (d: CallAction) => void): Promise<PluginListenerHandle>;
   addListener(e: "notifyAction", f: (d: NotifyAction) => void): Promise<PluginListenerHandle>;
   addListener(e: "share", f: (d: Shared) => void): Promise<PluginListenerHandle>;
   addListener(e: "audioRoutes", f: (d: Routes) => void): Promise<PluginListenerHandle>;
+  addListener(e: "updateProgress", f: (d: { percent: number }) => void): Promise<PluginListenerHandle>;
 }
 type Headless = { showNotification(json: string): void; cancel(roomId: string): void; unnotify?(roomId: string, eventId: string): void; stopService(): void; showCall(json: string): void; cancelCall(roomId: string): void; syncState(state: string): void };
 
@@ -296,4 +299,59 @@ export function onShare(f: (text: string, files: File[]) => void) {
   plugin.takeLaunchShare().then(take).catch(fail);
   const h = plugin.addListener("share", (d) => void take(d).catch(fail));
   return () => { h.then((x) => x.remove()); };
+}
+
+// ---------- updates: the newest v* GitHub release's APK, handed to Android's installer (it asks; no silent install) ----------
+const RELEASE = "https://api.github.com/repos/mhfmobin/panbe-matrix-client/releases/latest"; // "latest" skips the rolling pre-release
+const version = (import.meta.env.VITE_APP_VERSION ?? "").replace(/^v/, "");
+const AUTO_UPDATE = "panbeh.autoUpdate";
+const autoUpdate = () => { try { return localStorage.getItem(AUTO_UPDATE) !== "0"; } catch { return true; } };
+let upd: Update = { status: "idle" }, apk = "";
+const updSubs = new Set<(u: Update) => void>();
+const setUpd = (u: Update) => { upd = u; updSubs.forEach((f) => f(u)); };
+
+async function checkUpdate() {
+  if (upd.status === "checking" || upd.status === "downloading" || upd.status === "ready") return;
+  if (!upd.version) setUpd({ status: "checking" }); // a version already found stays on show
+  try {
+    const r = await fetch(RELEASE);
+    if (!r.ok) throw new Error(`${r.status}`);
+    const rel = await r.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] };
+    const v = rel.tag_name.replace(/^v/, "");
+    apk = rel.assets.find((a) => a.name.endsWith(".apk"))?.browser_download_url ?? "";
+    if (!apk || v.localeCompare(version, undefined, { numeric: true }) <= 0) return setUpd({ status: "none" });
+    setUpd({ status: "available", version: v });
+    if (autoUpdate() && !isMetered()) downloadUpdate(); // on mobile data it only says so
+  } catch {
+    setUpd(upd.version ? { status: "available", version: upd.version } : { status: "error" });
+  }
+}
+function downloadUpdate() {
+  if (upd.status !== "available") return;
+  const v = upd.version;
+  setUpd({ status: "downloading", version: v, percent: 0 });
+  const h = plugin.addListener("updateProgress", (d) => setUpd({ status: "downloading", version: v, percent: d.percent }));
+  plugin.updateDownload({ url: apk })
+    .then(() => setUpd({ status: "ready", version: v }), () => setUpd({ status: "available", version: v }))
+    .finally(() => h.then((x) => x.remove()));
+}
+
+// Release builds only: a rolling main build (0.1.0-N) has a newer versionCode than any release, so Android would refuse it
+if (isNative && !headless && /^\d+\.\d+\.\d+$/.test(version)) {
+  setUpdater({
+    state: async () => upd,
+    onState: (cb) => { updSubs.add(cb); return () => { updSubs.delete(cb); }; },
+    auto: async (on) => {
+      if (typeof on === "boolean") {
+        try { localStorage.setItem(AUTO_UPDATE, on ? "1" : "0"); } catch { /* stays as it was */ }
+        if (on) downloadUpdate();
+      }
+      return autoUpdate();
+    },
+    check: async () => void checkUpdate(),
+    download: async () => downloadUpdate(),
+    install: async () => { if (upd.status === "ready") await plugin.updateInstall().catch(() => setUpd({ status: "available", version: upd.version })); },
+  });
+  void checkUpdate();
+  setInterval(() => void checkUpdate(), 6 * 60 * 60 * 1000);
 }

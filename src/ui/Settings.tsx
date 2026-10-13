@@ -367,6 +367,7 @@ const ver = (v = "") => v.replace(/\d+/g, (d) => num(+d));
 /** What clicking an update offer does: download, or restart into the new version, each asked first. False if declined. */
 async function actOnUpdate(u: Update) {
   const yes = u.status === "available" ? await confirmDialog(`نسخه‌ی تازه‌ی پنبه (${ver(u.version)}) آمده است. دریافت شود؟`, { ok: "دریافت" })
+    : !isDesktop ? await confirmDialog(`نسخه‌ی ${ver(u.version)} نصب شود؟`, { ok: "نصب" })
     : await confirmDialog(`برای نصب نسخه‌ی ${ver(u.version)}، پنبه دوباره راه‌اندازی شود؟ با بستن پنبه هم نصب می‌شود.`, { ok: "راه‌اندازی دوباره" });
   if (yes) (u.status === "available" ? downloadUpdate : installUpdate)();
   return yes;
@@ -380,7 +381,7 @@ function Updates() {
   const status: Record<Update["status"], string> = {
     idle: "بررسی به‌روزرسانی", checking: "در حال بررسی…", none: "پنبه به‌روز است؛ دوباره بررسی شود",
     available: `نسخه‌ی ${ver(u.version)} آمده است؛ دریافت`, downloading: `در حال دریافت نسخه‌ی ${ver(u.version)}… ${num(u.percent ?? 0)}٪`,
-    ready: `نسخه‌ی ${ver(u.version)} آماده است؛ راه‌اندازی دوباره`, error: "بررسی نشد؛ دوباره تلاش کنید",
+    ready: `نسخه‌ی ${ver(u.version)} آماده است؛ ${isDesktop ? "راه‌اندازی دوباره" : "نصب"}`, error: "بررسی نشد؛ دوباره تلاش کنید",
   };
   const click = () => (u.status === "available" || u.status === "ready" ? void actOnUpdate(u) : checkUpdate());
   return (
