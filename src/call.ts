@@ -5,7 +5,7 @@ import { CallEventHandlerEvent } from "matrix-js-sdk/lib/webrtc/callEventHandler
 import type { CallFeed } from "matrix-js-sdk/lib/webrtc/callFeed.js";
 import type { MCallInviteNegotiate } from "matrix-js-sdk/lib/webrtc/callEventTypes.js";
 import { getCallNotificationExpiry, isLivekitTransportConfig, MatrixRTCSessionEvent, type IRTCNotificationContent, type LivekitTransportConfig, type MatrixRTCSession } from "matrix-js-sdk/lib/matrixrtc/index.js";
-import { BaseKeyProvider, ConnectionQuality, createKeyMaterialFromBuffer, AudioPresets, createLocalTracks, Room as LkRoom, ScreenSharePresets, VideoPresets, VideoQuality, RoomEvent as LkEvent, Track, type LocalAudioTrack, type LocalVideoTrack, type Participant, type RemoteTrack } from "livekit-client";
+import type { ConnectionQuality, LocalAudioTrack, LocalVideoTrack, Participant, RemoteTrack, Room as LkRoom } from "livekit-client";
 import { avatarUrl, client, isDirect, isEncrypted, loadEvent, pastFirstSync } from "./matrix.ts";
 import { callNotice, isMuted, ringtone, waitingTone } from "./notify.ts";
 import { senderName } from "./ui/common.tsx";
@@ -72,13 +72,17 @@ async function sfuToken(t: LivekitTransportConfig, roomId: string): Promise<{ ur
   return r.json();
 }
 
+/** LiveKit, fetched by the first group call: most sessions never place one, and it's a big share of the bundle.
+ *  Everything that touches it runs inside a group call, i.e. after call() loaded it. */
+export let LK!: typeof import("livekit-client");
+
 /** Per-participant media keys handed out by the SDK's MatrixRTC encryption manager. */
-class Keys extends BaseKeyProvider {
+const newKeys = () => new (class extends LK.BaseKeyProvider {
   constructor() { super({ ratchetWindowSize: 0, keyringSize: 256 }); }
   async set(key: Uint8Array, index: number, identity: string) {
-    this.onSetEncryptionKey(await createKeyMaterialFromBuffer(key.slice().buffer), identity, index);
+    this.onSetEncryptionKey(await LK.createKeyMaterialFromBuffer(key.slice().buffer), identity, index);
   }
-}
+})();
 
 // ---------- devices (desktop/web) ----------
 
@@ -90,10 +94,11 @@ const saveDevices = (p: Devices) => { try { localStorage.setItem(DEVICES_KEY, JS
 const audioCapture = (d = loadDevices()) => ({ deviceId: d.audioinput, noiseSuppression: d.noiseSuppression ?? true, echoCancellation: true, autoGainControl: true });
 
 /** What we send, picked in settings: camera, screen share and audio (calls and voice messages). */
-const CAM_PRESETS = { "360": VideoPresets.h360, "540": VideoPresets.h540, "720": VideoPresets.h720, "1080": VideoPresets.h1080 };
-const SCREEN_PRESETS = { "720": ScreenSharePresets.h720fps15, "1080": ScreenSharePresets.h1080fps15, "1080hi": ScreenSharePresets.h1080fps30 };
-export const AUDIO_BPS = { low: AudioPresets.speech.maxBitrate, normal: AudioPresets.music.maxBitrate, high: AudioPresets.musicHighQuality.maxBitrate };
-const cam = () => ({ resolution: CAM_PRESETS[loadPrefs().camQuality].resolution });
+const camPreset = () => ({ "360": LK.VideoPresets.h360, "540": LK.VideoPresets.h540, "720": LK.VideoPresets.h720, "1080": LK.VideoPresets.h1080 })[loadPrefs().camQuality];
+const screenPreset = () => ({ "720": LK.ScreenSharePresets.h720fps15, "1080": LK.ScreenSharePresets.h1080fps15, "1080hi": LK.ScreenSharePresets.h1080fps30 })[loadPrefs().screenQuality];
+/** LiveKit's AudioPresets speech, music and musicHighQuality; spelled out so voice messages don't pull LiveKit in. */
+export const AUDIO_BPS = { low: 24_000, normal: 48_000, high: 96_000 };
+const cam = () => ({ resolution: camPreset().resolution });
 
 /** Switches a device now and for later calls. */
 export async function setDevice(kind: MediaDeviceKind, deviceId: string) {
@@ -109,7 +114,7 @@ export async function setDevice(kind: MediaDeviceKind, deviceId: string) {
 export async function setNoiseSuppression(on: boolean) {
   saveDevices({ noiseSuppression: on });
   const a = snap.active;
-  if (a?.kind === "rtc") await (a.lk.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack as LocalAudioTrack | undefined)?.restartTrack(audioCapture());
+  if (a?.kind === "rtc") await (a.lk.localParticipant.getTrackPublication(LK.Track.Source.Microphone)?.audioTrack as LocalAudioTrack | undefined)?.restartTrack(audioCapture());
   else if (a) await client.getMediaHandler().setAudioSettings(audioCapture());
   bump();
 }
@@ -133,9 +138,10 @@ export async function call(room: Room, video: boolean, ring = true, legacy = fal
   }
   stopRinging();
   if (legacy) return placeLegacy(room, video);
+  LK ??= await import("livekit-client");
   // mic (and camera) first: if they're refused, nobody gets rung for nothing
   const d = loadDevices();
-  const media = await createLocalTracks({ audio: audioCapture(d), video: video ? { ...cam(), facingMode: "user", deviceId: d.videoinput } : false });
+  const media = await LK.createLocalTracks({ audio: audioCapture(d), video: video ? { ...cam(), facingMode: "user", deviceId: d.videoinput } : false });
   const mine = await ourTransport();
   const session = client.matrixRTC.getRoomSession(room);
   // everyone meets on the SFU of whoever was in the call first
@@ -144,14 +150,14 @@ export async function call(room: Room, video: boolean, ring = true, legacy = fal
   const sfu = theirs && isLivekitTransportConfig(theirs) ? theirs : mine;
   if (!sfu) { media.forEach((t) => t.stop()); throw new Error("سرور شما از تماس پشتیبانی نمی‌کند"); }
   const e2ee = isEncrypted(room);
-  const keys = new Keys();
+  const keys = newKeys();
   const p = loadPrefs();
-  const lk = new LkRoom({
+  const lk = new LK.Room({
     adaptiveStream: true, dynacast: true,
     publishDefaults: {
       audioPreset: { maxBitrate: AUDIO_BPS[p.audioQuality] }, dtx: false,
-      videoEncoding: CAM_PRESETS[p.camQuality].encoding,
-      screenShareEncoding: SCREEN_PRESETS[p.screenQuality].encoding, screenShareSimulcastLayers: [],
+      videoEncoding: camPreset().encoding,
+      screenShareEncoding: screenPreset().encoding, screenShareSimulcastLayers: [],
     },
     audioCaptureDefaults: audioCapture(d), videoCaptureDefaults: { ...cam(), deviceId: d.videoinput }, audioOutput: { deviceId: d.audiooutput },
     e2ee: e2ee ? { keyProvider: keys, worker: new Worker(new URL("livekit-client/e2ee-worker", import.meta.url), { type: "module" }) } : undefined,
@@ -169,7 +175,7 @@ export async function call(room: Room, video: boolean, ring = true, legacy = fal
   session.on(MatrixRTCSessionEvent.MembershipsChanged, onMembers);
   session.on(MatrixRTCSessionEvent.MembershipsChanged, scanHands);
   const onTrack = (t: RemoteTrack) => { // plays even with the call screen minimized
-    if (t.kind === Track.Kind.Audio) document.body.append(Object.assign(t.attach(), { className: "call-audio" }));
+    if (t.kind === LK.Track.Kind.Audio) document.body.append(Object.assign(t.attach(), { className: "call-audio" }));
   };
   const offTrack = (t: RemoteTrack) => t.detach().forEach((el) => el.remove());
   const onPeople = () => {
@@ -177,25 +183,25 @@ export async function call(room: Room, video: boolean, ring = true, legacy = fal
     else bump();
   };
   const said = (verb: string) => (p: Participant) => { if (!isDirect(room)) notice(`${nameOf(room, userOf(session, p.identity))} ${verb}`); };
-  lk.on(LkEvent.TrackSubscribed, onTrack).on(LkEvent.TrackUnsubscribed, offTrack)
-    .on(LkEvent.ParticipantConnected, onPeople).on(LkEvent.ParticipantDisconnected, bump)
-    .on(LkEvent.ParticipantConnected, said("پیوست")).on(LkEvent.ParticipantDisconnected, said("رفت"))
-    .on(LkEvent.Reconnecting, () => patch({ reconnecting: true })).on(LkEvent.SignalReconnecting, () => patch({ reconnecting: true }))
-    .on(LkEvent.Reconnected, () => patch({ reconnecting: false })).on(LkEvent.ConnectionQualityChanged, bump)
-    .on(LkEvent.TrackMuted, bump).on(LkEvent.TrackUnmuted, bump).on(LkEvent.ActiveSpeakersChanged, bump)
-    .on(LkEvent.LocalTrackPublished, bump).on(LkEvent.LocalTrackUnpublished, bump)
-    .on(LkEvent.ConnectionStateChanged, bump).on(LkEvent.Disconnected, () => void hangup())
-    .on(LkEvent.AudioPlaybackStatusChanged, () => { if (!lk.canPlaybackAudio) void lk.startAudio(); });
+  lk.on(LK.RoomEvent.TrackSubscribed, onTrack).on(LK.RoomEvent.TrackUnsubscribed, offTrack)
+    .on(LK.RoomEvent.ParticipantConnected, onPeople).on(LK.RoomEvent.ParticipantDisconnected, bump)
+    .on(LK.RoomEvent.ParticipantConnected, said("پیوست")).on(LK.RoomEvent.ParticipantDisconnected, said("رفت"))
+    .on(LK.RoomEvent.Reconnecting, () => patch({ reconnecting: true })).on(LK.RoomEvent.SignalReconnecting, () => patch({ reconnecting: true }))
+    .on(LK.RoomEvent.Reconnected, () => patch({ reconnecting: false })).on(LK.RoomEvent.ConnectionQualityChanged, bump)
+    .on(LK.RoomEvent.TrackMuted, bump).on(LK.RoomEvent.TrackUnmuted, bump).on(LK.RoomEvent.ActiveSpeakersChanged, bump)
+    .on(LK.RoomEvent.LocalTrackPublished, bump).on(LK.RoomEvent.LocalTrackUnpublished, bump)
+    .on(LK.RoomEvent.ConnectionStateChanged, bump).on(LK.RoomEvent.Disconnected, () => void hangup())
+    .on(LK.RoomEvent.AudioPlaybackStatusChanged, () => { if (!lk.canPlaybackAudio) void lk.startAudio(); });
   // low-data mode: tracks that show up later get it too; "auto" follows our own connection (on after 5s poor, off after 15s fine)
   let lowTimer: ReturnType<typeof setTimeout> | undefined;
   const onQuality = (q: ConnectionQuality, p: Participant) => {
     if (!p.isLocal || loadPrefs().lowData !== "auto" || snap.active?.lowDataOff) return;
-    const poor = q === ConnectionQuality.Poor || q === ConnectionQuality.Lost;
+    const poor = q === LK.ConnectionQuality.Poor || q === LK.ConnectionQuality.Lost;
     clearTimeout(lowTimer);
     if (poor !== !!snap.active?.lowData) lowTimer = setTimeout(() => void setLowData(poor), poor ? 5000 : 15000);
   };
   const reapply = () => { if (snap.active?.lowData) void setLowData(true); };
-  lk.on(LkEvent.ConnectionQualityChanged, onQuality).on(LkEvent.TrackSubscribed, reapply).on(LkEvent.LocalTrackPublished, reapply);
+  lk.on(LK.RoomEvent.ConnectionQualityChanged, onQuality).on(LK.RoomEvent.TrackSubscribed, reapply).on(LK.RoomEvent.LocalTrackPublished, reapply);
   // 1:1 nobody picks up: give up when our ring would have expired anyway
   const noAnswer = ring && isDirect(room) ? setTimeout(() => { if (!snap.active?.since) void hangup(); }, 90_000) : undefined;
   cleanup = [
@@ -297,7 +303,7 @@ export async function flipCam() {
   // every camera in turn (front, back, the other back ones…), by device id
   // ponytail: only the cameras Android's WebView lists; some phones hide ultra-wide/tele behind one logical camera
   const track = () => a.kind === "legacy" ? a.mc.localUsermediaStream?.getVideoTracks()[0]
-    : a.lk.localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack?.mediaStreamTrack;
+    : a.lk.localParticipant.getTrackPublication(LK.Track.Source.Camera)?.videoTrack?.mediaStreamTrack;
   const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput" && d.deviceId);
   const next = cams[(cams.findIndex((d) => d.deviceId === track()?.getSettings().deviceId) + 1) % cams.length];
   if (!next) return;
@@ -318,7 +324,7 @@ export const setAudioRoute = (id: number) => nativeSetAudioRoute(id);
 export async function setLowData(on: boolean, byUser = false) {
   const a = snap.active;
   if (a?.kind !== "rtc") return;
-  const q = on ? VideoQuality.LOW : VideoQuality.HIGH;
+  const q = on ? LK.VideoQuality.LOW : LK.VideoQuality.HIGH;
   for (const p of a.lk.remoteParticipants.values()) for (const pub of p.videoTrackPublications.values()) pub.setVideoQuality(q);
   for (const pub of a.lk.localParticipant.videoTrackPublications.values()) (pub.videoTrack as LocalVideoTrack | undefined)?.setPublishingQuality(q);
   patch({ lowData: on, ...(byUser ? { lowDataOff: !on } : {}) });
