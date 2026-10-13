@@ -94,122 +94,129 @@ export function Settings({ start = "main", security, onClose, onSecurityChange }
   const [view, setView] = useState<View>(start);
   const pill = useSlider<HTMLDivElement>();
   const u = useUpdate();
-  const back = () => setView(PARENT[view] ?? "main");
-  const page = (title: string, body: ReactNode) => <Sheet key={view} title={title} onClose={view === "main" ? onClose : back}>{body}</Sheet>; // key: pages share this slot; reusing one would keep its "closing" state and leave settings stuck invisible
-  if (view === "lock") return <LockSettings key={view} onClose={back} />;
-  if (view === "link") return <LinkSheet key={view} title="پیوند من" link={matrixToLink(me())} onClose={back} />;
-  if (view === "autodl") return page("دانلود خودکار رسانه", <AutoDownload prefs={prefs} set={set} />);
-  if (view === "emoji") return page("اموجی و استیکر", <MyPacks />);
-  if (view === "devices") return page("دستگاه‌ها", <Devices />);
-  if (view === "password") return page("تغییر رمز عبور", isOAuth() ? <AccountPage action="org.matrix.profile" /> : <ChangePassword />);
-  if (view === "keys") return page("کلیدهای رمزنگاری", <Keys />);
-  if (view === "blocked") return page("کاربران مسدود", <Blocked />);
-  if (view === "deactivate") return page("غیرفعال‌سازی حساب", isOAuth() ? <AccountPage action="org.matrix.account_deactivate" /> : <Deactivate />);
+  // the open pages, each stacked inside its parent's sheet, so going in or back only slides the top one
+  const render = (v: View, child: ReactNode): ReactNode => {
+    const up = () => setView(PARENT[v] ?? "main");
+    const page = (title: string, body: ReactNode) => <Sheet key={v} title={title} onClose={v === "main" ? onClose : up}>{body}{child}</Sheet>;
+    if (v === "lock") return <LockSettings key={v} onClose={up} />;
+    if (v === "link") return <LinkSheet key={v} title="پیوند من" link={matrixToLink(me())} onClose={up} />;
+    if (v === "autodl") return page("دانلود خودکار رسانه", <AutoDownload prefs={prefs} set={set} />);
+    if (v === "emoji") return page("اموجی و استیکر", <MyPacks />);
+    if (v === "devices") return page("دستگاه‌ها", <Devices />);
+    if (v === "password") return page("تغییر رمز عبور", isOAuth() ? <AccountPage action="org.matrix.profile" /> : <ChangePassword />);
+    if (v === "keys") return page("کلیدهای رمزنگاری", <Keys />);
+    if (v === "blocked") return page("کاربران مسدود", <Blocked />);
+    if (v === "deactivate") return page("غیرفعال‌سازی حساب", isOAuth() ? <AccountPage action="org.matrix.account_deactivate" /> : <Deactivate />);
 
-  if (view === "chats") return page("گفتگوها و ظاهر", <>
-    <h3>ظاهر</h3>
-    <div className="segmented" data-pill ref={pill}>
-      {(Object.keys(THEMES) as Prefs["theme"][]).map((t) => (
-        <button key={t} className={prefs.theme === t ? "on" : ""} onClick={() => set({ theme: t })}>{THEMES[t]}</button>
-      ))}
-    </div>
-    <div className="swatches" role="radiogroup" aria-label="رنگ اصلی">
-      {ACCENTS.map((a) => (
-        <button key={a} role="radio" aria-checked={prefs.accent === a} aria-label={a} className={prefs.accent === a ? "on" : ""} style={{ background: a }} onClick={() => set({ accent: a })} />
-      ))}
-    </div>
-    <div className="wallpapers">
-      {Object.entries(WALLPAPERS).map(([w, label]) => (
-        <button key={w} data-wallpaper={w} className={"wallpaper-thumb" + (prefs.wallpaper === w ? " on" : "")} onClick={() => set({ wallpaper: w })}>
-          <span>{label}</span>
+    if (v === "chats") return page("گفتگوها و ظاهر", <>
+      <h3>ظاهر</h3>
+      <div className="segmented" data-pill ref={pill}>
+        {(Object.keys(THEMES) as Prefs["theme"][]).map((t) => (
+          <button key={t} className={prefs.theme === t ? "on" : ""} onClick={() => set({ theme: t })}>{THEMES[t]}</button>
+        ))}
+      </div>
+      <div className="swatches" role="radiogroup" aria-label="رنگ اصلی">
+        {ACCENTS.map((a) => (
+          <button key={a} role="radio" aria-checked={prefs.accent === a} aria-label={a} className={prefs.accent === a ? "on" : ""} style={{ background: a }} onClick={() => set({ accent: a })} />
+        ))}
+      </div>
+      <div className="wallpapers">
+        {Object.entries(WALLPAPERS).map(([w, label]) => (
+          <button key={w} data-wallpaper={w} className={"wallpaper-thumb" + (prefs.wallpaper === w ? " on" : "")} onClick={() => set({ wallpaper: w })}>
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+      <h3>گفتگوها</h3>
+      <label className="switch-row"><span>پیش‌نمایش پیوندها<small>سرور شما پیوندها را برای ساختن پیش‌نمایش باز می‌کند</small></span>
+        <input type="checkbox" role="switch" checked={prefs.previews} onChange={(e) => set({ previews: e.target.checked })} /></label>
+      <label className="switch-row"><span>ارسال با Enter<small>خاموش: Enter خط جدید می‌زند و Ctrl+Enter ارسال می‌کند</small></span>
+        <input type="checkbox" role="switch" checked={prefs.enterSends} onChange={(e) => set({ enterSends: e.target.checked })} /></label>
+      {isNative && <label className="switch-row"><span>پرسیدن محل ذخیره<small>خاموش: فایل‌ها در پوشه‌ی دانلودها ذخیره می‌شوند</small></span>
+        <input type="checkbox" role="switch" checked={prefs.askSave} onChange={(e) => set({ askSave: e.target.checked })} /></label>}
+      <h3>اموجی و استیکر</h3>
+      <Row icon="smile" label="اموجی و استیکر" hint="اموجی‌ها و استیکرهای خودتان" onClick={() => setView("emoji")} />
+    </>);
+
+    if (v === "notify") return page("اعلان‌ها", <>
+      <Notifications prefs={prefs} set={set} />
+      <PushRules />
+    </>);
+
+    if (v === "privacy") return page("حریم خصوصی و امنیت", <>
+      <h3>حریم خصوصی</h3>
+      <Row icon="lock" label="قفل برنامه" hint={lockConf() ? "روشن" : "خاموش؛ با رمز عددی و اثر انگشت"} onClick={() => setView("lock")} />
+      <label className="switch-row"><span>نمایش آخرین بازدید<small>فقط وضعیت خودتان پنهان می‌شود؛ وضعیت دیگران را همچنان می‌بینید</small></span>
+        <input type="checkbox" role="switch" checked={prefs.shareLastSeen} onChange={(e) => { set({ shareLastSeen: e.target.checked }); void setShareLastSeen(e.target.checked); }} /></label>
+      <label className="switch-row"><span>جستجوی کامل در گفتگوهای رمزنگاری‌شده<small>متن پیام‌های رمزگشایی‌شده روی همین دستگاه نگه داشته می‌شود تا جستجو شوند؛ خاموش کردن آن را پاک می‌کند</small></span>
+        <input type="checkbox" role="switch" checked={prefs.searchIndex} onChange={(e) => { set({ searchIndex: e.target.checked }); if (e.target.checked) indexLoaded(); else void dropIndex(); }} /></label>
+      <Row icon="user" label="کاربران مسدود" onClick={() => setView("blocked")} />
+      <h3>رمزنگاری</h3>
+      <Encryption onChange={onSecurityChange} />
+      <Row icon="file" label="کلیدهای رمزنگاری" hint="ذخیره در فایل یا وارد کردن از فایل" onClick={() => setView("keys")} />
+      <Row icon="screen" label="دستگاه‌های وارد‌شده" hint="مشاهده، تأیید و خروج از دستگاه‌های دیگر" onClick={() => setView("devices")} />
+    </>);
+
+    if (v === "data") return page("داده و حافظه", <>
+      <h3>حافظه</h3>
+      <Row icon="download" label="دانلود خودکار رسانه" hint="جدا برای داده‌ی همراه و وای‌فای" onClick={() => setView("autodl")} />
+      <Storage prefs={prefs} set={set} />
+      <h3>کیفیت ارسال</h3>
+      <label className="select-row">دوربین در تماس
+        <Select value={prefs.camQuality} options={CAM_Q} onChange={(v) => set({ camQuality: v })} /></label>
+      {!isNative && <label className="select-row">اشتراک صفحه
+        <Select value={prefs.screenQuality} options={SCREEN_Q} onChange={(v) => set({ screenQuality: v })} /></label>}
+      <label className="select-row">پیام ویدیویی
+        <Select value={prefs.noteQuality} options={NOTE_Q} onChange={(v) => set({ noteQuality: v })} /></label>
+      <label className="select-row">صدا (تماس و پیام صوتی)
+        <Select value={prefs.audioQuality} options={AUDIO_Q} onChange={(v) => set({ audioQuality: v })} /></label>
+      <label className="select-row">تصویر کم‌مصرف در تماس
+        <Select value={prefs.lowData} options={LOW_DATA} onChange={(v) => set({ lowData: v })} /></label>
+      <p className="muted">کیفیت بالاتر اینترنت بیشتری مصرف می‌کند. تغییر از تماس یا ضبط بعدی اعمال می‌شود. تصویر کم‌مصرف، ویدیوی همه را با کمترین کیفیت می‌گیرد و می‌فرستد.</p>
+    </>);
+
+    if (v === "account") return page("حساب", ACCOUNT.map(([v, icon, label, hint]) => <Row key={v} icon={icon} label={label} hint={hint} onClick={() => setView(v)} />));
+
+    if (v === "app") return page("برنامه", <>
+      {isDesktop && <Autostart />}
+      {canUpdate ? <Updates /> : <p className="muted">پنبه <span dir="ltr">{VERSION}</span></p>}
+      <h3>گزینه‌های توسعه‌دهنده</h3>
+      <label className="switch-row"><span>گزینه‌های توسعه‌دهنده<small>امکانات آزمایشی و قدیمی</small></span>
+        <input type="checkbox" role="switch" checked={prefs.dev} onChange={(e) => set({ dev: e.target.checked })} /></label>
+      {prefs.dev && (
+        <label className="switch-row"><span>دریافت تماس‌های قدیمی<small>تماس از FluffyChat، Nheko و Element قدیمی</small></span>
+          <input type="checkbox" role="switch" checked={prefs.legacyCalls} onChange={(e) => set({ legacyCalls: e.target.checked })} /></label>
+      )}
+    </>);
+
+    const newVersion = u.status === "available" || u.status === "ready" || u.status === "downloading";
+    return page("تنظیمات", <>
+      <MyProfile />
+
+      <h3>حساب‌ها</h3>
+      {sessions().map((a) => (
+        <button key={a.userId} className="user-row" disabled={a.userId === client.getUserId()} onClick={() => switchAccount(a.userId)}>
+          <span className="device-box"><Icon name={a.userId === client.getUserId() ? "check" : "user"} /></span>
+          <span><b dir="ltr">{a.userId}</b><small dir="ltr">{new URL(a.baseUrl).host}</small></span>
         </button>
       ))}
-    </div>
-    <h3>گفتگوها</h3>
-    <label className="switch-row"><span>پیش‌نمایش پیوندها<small>سرور شما پیوندها را برای ساختن پیش‌نمایش باز می‌کند</small></span>
-      <input type="checkbox" role="switch" checked={prefs.previews} onChange={(e) => set({ previews: e.target.checked })} /></label>
-    <label className="switch-row"><span>ارسال با Enter<small>خاموش: Enter خط جدید می‌زند و Ctrl+Enter ارسال می‌کند</small></span>
-      <input type="checkbox" role="switch" checked={prefs.enterSends} onChange={(e) => set({ enterSends: e.target.checked })} /></label>
-    {isNative && <label className="switch-row"><span>پرسیدن محل ذخیره<small>خاموش: فایل‌ها در پوشه‌ی دانلودها ذخیره می‌شوند</small></span>
-      <input type="checkbox" role="switch" checked={prefs.askSave} onChange={(e) => set({ askSave: e.target.checked })} /></label>}
-    <Row icon="smile" label="اموجی و استیکر" hint="اموجی‌ها و استیکرهای خودتان" onClick={() => setView("emoji")} />
-  </>);
+      <Row icon="plus" label="افزودن حساب" onClick={addAccount} />
 
-  if (view === "notify") return page("اعلان‌ها", <>
-    <Notifications prefs={prefs} set={set} />
-    <PushRules />
-  </>);
+      <h3>تنظیمات</h3>
+      <Row icon="thread" label="گفتگوها و ظاهر" hint={`پوسته‌ی ${THEMES[prefs.theme]}، اموجی و استیکر`} onClick={() => setView("chats")} />
+      <Row icon="bell" label="اعلان‌ها" hint={prefs.notify ? "روشن" : "خاموش"} onClick={() => setView("notify")} />
+      <Row icon="lock" label="حریم خصوصی و امنیت"
+        hint={security === "unlock" ? "این دستگاه تأیید نشده است" : security === "setup" ? "بازیابی رمزنگاری راه‌اندازی نشده است" : "قفل برنامه، رمزنگاری، دستگاه‌ها"} onClick={() => setView("privacy")} />
+      <Row icon="download" label="داده و حافظه" hint="دانلود خودکار، حافظه، کیفیت ارسال" onClick={() => setView("data")} />
+      <Row icon="user" label="حساب" hint="پیوند من، رمز عبور" onClick={() => setView("account")} />
+      <Row icon="info" label="برنامه" hint={newVersion ? `نسخه‌ی تازه‌ی ${ver(u.version)} آمده است` : `پنبه ${ver(VERSION.replace(/^v/, ""))}`} onClick={() => setView("app")} />
 
-  if (view === "privacy") return page("حریم خصوصی و امنیت", <>
-    <h3>حریم خصوصی</h3>
-    <Row icon="lock" label="قفل برنامه" hint={lockConf() ? "روشن" : "خاموش؛ با رمز عددی و اثر انگشت"} onClick={() => setView("lock")} />
-    <label className="switch-row"><span>نمایش آخرین بازدید<small>فقط وضعیت خودتان پنهان می‌شود؛ وضعیت دیگران را همچنان می‌بینید</small></span>
-      <input type="checkbox" role="switch" checked={prefs.shareLastSeen} onChange={(e) => { set({ shareLastSeen: e.target.checked }); void setShareLastSeen(e.target.checked); }} /></label>
-    <label className="switch-row"><span>جستجوی کامل در گفتگوهای رمزنگاری‌شده<small>متن پیام‌های رمزگشایی‌شده روی همین دستگاه نگه داشته می‌شود تا جستجو شوند؛ خاموش کردن آن را پاک می‌کند</small></span>
-      <input type="checkbox" role="switch" checked={prefs.searchIndex} onChange={(e) => { set({ searchIndex: e.target.checked }); if (e.target.checked) indexLoaded(); else void dropIndex(); }} /></label>
-    <Row icon="user" label="کاربران مسدود" onClick={() => setView("blocked")} />
-    <h3>رمزنگاری</h3>
-    <Encryption onChange={onSecurityChange} />
-    <Row icon="file" label="کلیدهای رمزنگاری" hint="ذخیره در فایل یا وارد کردن از فایل" onClick={() => setView("keys")} />
-    <Row icon="screen" label="دستگاه‌های وارد‌شده" hint="مشاهده، تأیید و خروج از دستگاه‌های دیگر" onClick={() => setView("devices")} />
-  </>);
-
-  if (view === "data") return page("داده و حافظه", <>
-    <h3>حافظه</h3>
-    <Row icon="download" label="دانلود خودکار رسانه" hint="جدا برای داده‌ی همراه و وای‌فای" onClick={() => setView("autodl")} />
-    <Storage prefs={prefs} set={set} />
-    <h3>کیفیت ارسال</h3>
-    <label className="select-row">دوربین در تماس
-      <Select value={prefs.camQuality} options={CAM_Q} onChange={(v) => set({ camQuality: v })} /></label>
-    {!isNative && <label className="select-row">اشتراک صفحه
-      <Select value={prefs.screenQuality} options={SCREEN_Q} onChange={(v) => set({ screenQuality: v })} /></label>}
-    <label className="select-row">پیام ویدیویی
-      <Select value={prefs.noteQuality} options={NOTE_Q} onChange={(v) => set({ noteQuality: v })} /></label>
-    <label className="select-row">صدا (تماس و پیام صوتی)
-      <Select value={prefs.audioQuality} options={AUDIO_Q} onChange={(v) => set({ audioQuality: v })} /></label>
-    <label className="select-row">تصویر کم‌مصرف در تماس
-      <Select value={prefs.lowData} options={LOW_DATA} onChange={(v) => set({ lowData: v })} /></label>
-    <p className="muted">کیفیت بالاتر اینترنت بیشتری مصرف می‌کند. تغییر از تماس یا ضبط بعدی اعمال می‌شود. تصویر کم‌مصرف، ویدیوی همه را با کمترین کیفیت می‌گیرد و می‌فرستد.</p>
-  </>);
-
-  if (view === "account") return page("حساب", ACCOUNT.map(([v, icon, label, hint]) => <Row key={v} icon={icon} label={label} hint={hint} onClick={() => setView(v)} />));
-
-  if (view === "app") return page("برنامه", <>
-    {isDesktop && <Autostart />}
-    {canUpdate ? <Updates /> : <p className="muted">پنبه <span dir="ltr">{VERSION}</span></p>}
-    <h3>گزینه‌های توسعه‌دهنده</h3>
-    <label className="switch-row"><span>گزینه‌های توسعه‌دهنده<small>امکانات آزمایشی و قدیمی</small></span>
-      <input type="checkbox" role="switch" checked={prefs.dev} onChange={(e) => set({ dev: e.target.checked })} /></label>
-    {prefs.dev && (
-      <label className="switch-row"><span>دریافت تماس‌های قدیمی<small>تماس از FluffyChat، Nheko و Element قدیمی</small></span>
-        <input type="checkbox" role="switch" checked={prefs.legacyCalls} onChange={(e) => set({ legacyCalls: e.target.checked })} /></label>
-    )}
-  </>);
-
-  const newVersion = u.status === "available" || u.status === "ready" || u.status === "downloading";
-  return page("تنظیمات", <>
-    <MyProfile />
-
-    <h3>حساب‌ها</h3>
-    {sessions().map((a) => (
-      <button key={a.userId} className="user-row" disabled={a.userId === client.getUserId()} onClick={() => switchAccount(a.userId)}>
-        <span className="device-box"><Icon name={a.userId === client.getUserId() ? "check" : "user"} /></span>
-        <span><b dir="ltr">{a.userId}</b><small dir="ltr">{new URL(a.baseUrl).host}</small></span>
-      </button>
-    ))}
-    <Row icon="plus" label="افزودن حساب" onClick={addAccount} />
-
-    <h3>تنظیمات</h3>
-    <Row icon="thread" label="گفتگوها و ظاهر" hint={`پوسته‌ی ${THEMES[prefs.theme]}، اموجی و استیکر`} onClick={() => setView("chats")} />
-    <Row icon="bell" label="اعلان‌ها" hint={prefs.notify ? "روشن" : "خاموش"} onClick={() => setView("notify")} />
-    <Row icon="lock" label="حریم خصوصی و امنیت"
-      hint={security === "unlock" ? "این دستگاه تأیید نشده است" : security === "setup" ? "بازیابی رمزنگاری راه‌اندازی نشده است" : "قفل برنامه، رمزنگاری، دستگاه‌ها"} onClick={() => setView("privacy")} />
-    <Row icon="download" label="داده و حافظه" hint="دانلود خودکار، حافظه، کیفیت ارسال" onClick={() => setView("data")} />
-    <Row icon="user" label="حساب" hint="پیوند من، رمز عبور" onClick={() => setView("account")} />
-    <Row icon="info" label="برنامه" hint={newVersion ? `نسخه‌ی تازه‌ی ${ver(u.version)} آمده است` : `پنبه ${ver(VERSION.replace(/^v/, ""))}`} onClick={() => setView("app")} />
-
-    <button className="danger" onClick={() => confirmDialog("از این دستگاه خارج می‌شوید؟", { danger: true }).then((y) => y && void logout())}>خروج از این حساب</button>
-  </>);
+      <button className="danger" onClick={() => confirmDialog("از این دستگاه خارج می‌شوید؟", { danger: true }).then((y) => y && void logout())}>خروج از این حساب</button>
+    </>);
+  };
+  const chain: View[] = [view];
+  while (chain[0] !== "main") chain.unshift(PARENT[chain[0]] ?? "main");
+  return <>{chain.reduceRight<ReactNode>((child, v) => render(v, child), null)}</>;
 }
 
 function Notifications(props: { prefs: Prefs; set: (p: Partial<Prefs>) => void }) {

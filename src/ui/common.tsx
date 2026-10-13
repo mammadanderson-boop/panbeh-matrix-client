@@ -239,9 +239,21 @@ export function formatSize(n: number) {
 /** Side sheet: settings, chat info, new chat, seen-by. */
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const [closing, close] = useDismiss(onClose, 220);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { // Esc closes the topmost sheet only (sheets stack: a sub-page opens inside its parent), wherever focus is
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const open = [...document.querySelectorAll("[role=dialog], [role=menu], [role=listbox]")].filter((el) => !el.closest(".closing"));
+      if (open[open.length - 1] !== ref.current) return; // a menu, dialog or sheet above this one handles it
+      e.preventDefault();
+      close();
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, [close]);
   return (
-    <div className={"sheet-backdrop" + (closing ? " closing" : "")} onClick={close} onKeyDown={(e) => e.key === "Escape" && close()}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
+    <div className={"sheet-backdrop" + (closing ? " closing" : "")} onClick={close}>
+      <div className="sheet" ref={ref} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
         <header className="sheet-head">
           <h2>{title}</h2>
           <button className="icon-btn" onClick={close} aria-label="بستن"><Icon name="close" /></button>
