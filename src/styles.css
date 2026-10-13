@@ -171,6 +171,8 @@ button:disabled { opacity: 0.6; cursor: default; }
   background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-size: 14px; font-weight: 500; text-align: start;
 }
 .banner.warn { background: color-mix(in srgb, #f5a623 18%, transparent); color: #c77700; }
+.banner.live-loc span { flex: 1; }
+.banner.live-loc button { color: inherit; font-weight: 600; }
 .banner.update { position: relative; overflow: hidden; }
 .banner.update i { position: absolute; inset-inline-start: 0; bottom: 0; height: 3px; background: var(--accent); transition: width 0.3s; }
 
