@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClientEvent, EventType, RelationType, RoomEvent, RoomStateEvent, type HierarchyRoom, type MatrixEvent, type Room } from "matrix-js-sdk";
-import { addToSpace, client, isDirect, removeFromSpace, seenBy, setRoomAvatar, spaceChildren } from "../matrix.ts";
+import { addToSpace, canEditPacks, client, isDirect, roomPacks, removeFromSpace, seenBy, setRoomAvatar, spaceChildren } from "../matrix.ts";
 import { matrixToLink, viaServers } from "../uri.ts";
 import { usePresence, usePromise, useTick } from "../hooks.ts";
 import { JOIN_RULES, normalize, num, spaceRooms, stamp } from "../logic.ts";
@@ -14,6 +14,8 @@ import { PhotoViewer, SharedMedia } from "./Media.tsx";
 import { BannedList, canManage, GroupSettings, KnockRequests, MemberRow, RoomDetails } from "./Admin.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { LinkSheet } from "./LinkSheet.tsx";
+import { ReactionKey } from "./Emoji.tsx";
+import { RoomPacks } from "./Packs.tsx";
 
 /** Who the link actually lets in, by join rule (public needs no note). */
 const JOIN_HINTS: Record<string, string> = {
@@ -23,7 +25,7 @@ const JOIN_HINTS: Record<string, string> = {
   knock_restricted: "اعضای فضای مربوط با این پیوند می‌پیوندند؛ بقیه درخواست عضویت می‌دهند.",
 };
 
-type View = "main" | "invite" | "add" | "new-group" | "settings" | "details";
+type View = "main" | "invite" | "add" | "new-group" | "settings" | "details" | "packs";
 
 /** Chat/space info: profile, members, invite, space contents, leave. */
 export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void }) {
@@ -75,6 +77,11 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
   if (view === "details") return (
     <Sheet title="اطلاعات فنی" onClose={() => setView("main")}>
       <RoomDetails room={room} onLeave={onClose} />
+    </Sheet>
+  );
+  if (view === "packs") return (
+    <Sheet title="اموجی و استیکر گفتگو" onClose={() => setView("main")}>
+      <RoomPacks room={room} />
     </Sheet>
   );
   if (view === "new-group") return (
@@ -129,6 +136,12 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
         // an alias needs no via; a bare room id does, or people outside it can't join over federation
         <button className="user-row" onClick={() => setQr(true)}>
           <span className="device-box"><Icon name="link" /></span><span><b>{space ? "پیوند فضا" : "پیوند گفتگو"}</b><small>کپی، اشتراک‌گذاری و کد QR</small></span>
+        </button>
+      )}
+      {(roomPacks(room).length > 0 || canEditPacks(room)) && (
+        <button className="user-row" onClick={() => setView("packs")}>
+          <span className="device-box"><Icon name="smile" /></span>
+          <span><b>اموجی و استیکر گفتگو</b><small>{roomPacks(room).length ? `${num(roomPacks(room).length)} بسته` : "ساختن بسته برای اعضا"}</small></span>
         </button>
       )}
       {canManage(room) && (
@@ -279,7 +292,7 @@ export function ReactedBy({ room, ev, onClose }: { room: Room; ev: MatrixEvent; 
       {groups.length > 1 && (
         <div className="segmented reacted-tabs" data-pill ref={pill}>
           <button className={key === null ? "on" : ""} onClick={() => setKey(null)}>همه {num(groups.reduce((n, [, set]) => n + set.size, 0))}</button>
-          {groups.map(([k, set]) => <button key={k} className={key === k ? "on" : ""} onClick={() => setKey(k)}>{k} {num(set.size)}</button>)}
+          {groups.map(([k, set]) => <button key={k} className={key === k ? "on" : ""} onClick={() => setKey(k)}><ReactionKey k={k} ev={[...set][0]} /> {num(set.size)}</button>)}
         </div>
       )}
       {rows.length === 0 && <p className="muted">واکنشی نیست</p>}
@@ -289,7 +302,7 @@ export function ReactedBy({ room, ev, onClose }: { room: Room; ev: MatrixEvent; 
           <button key={e.getId()} className="user-row" onClick={() => setProfile(id)}>
             <Avatar mxc={m?.getMxcAvatarUrl()} name={m?.name ?? id} id={id} size={42} />
             <span><b>{m?.name ?? id}</b><small>{stamp(e.getTs())}</small></span>
-            <span className="reacted-key">{k}</span>
+            <span className="reacted-key"><ReactionKey k={k} ev={e} /></span>
           </button>
         );
       })}

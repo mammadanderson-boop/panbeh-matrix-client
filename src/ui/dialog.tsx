@@ -4,11 +4,11 @@ import { pushBack } from "../back.ts";
 import { reducedMotion } from "./useDismiss.ts";
 
 type Opts = { ok?: string; danger?: boolean };
-type Input = { placeholder?: string };
+type Input = { placeholder?: string; value?: string };
 
 function Dialog({ text, ok, danger, cancel, input, done }: Opts & { text: string; cancel: boolean; input?: Input; done: (v: boolean, value: string) => void }) {
   const [closing, setClosing] = useState(false);
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(input?.value ?? "");
   const left = useRef(false);
   const finish = (v: boolean) => { // let the exit animation play before the root unmounts
     if (left.current) return;

@@ -1,15 +1,15 @@
 import { useSlider } from "./useSlider.ts";
-import { useEffect, useMemo, useState } from "react";
-import { ClientEvent } from "matrix-js-sdk";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ClientEvent, RoomStateEvent, type MatrixEvent, type Room } from "matrix-js-sdk";
 // fetched as files, not bundled as JS: separate chunks, loaded the first time the panel opens
 import enUrl from "emojibase-data/en/compact.json?url";
 import faUrl from "cldr-annotations-modern/annotations/fa/annotations.json?url";
-import { client, mediaUrl, savedGifs, toggleGif } from "../matrix.ts";
+import { client, emotesFor, mediaUrl, savedGifs, toggleGif, type Emote } from "../matrix.ts";
 import { usePromise, useTick } from "../hooks.ts";
 import { normalize, type Gif } from "../logic.ts";
 import { confirmDialog } from "./dialog.tsx";
 
-type Emoji = { u: string; name: string; search: string };
+type Emoji = { u: string; name: string; search: string; custom?: Emote };
 type Raw = { unicode: string; label: string; tags?: string[]; group?: number; order?: number };
 
 // emojibase group ids; 2 = skin-tone/hair components
@@ -48,11 +48,13 @@ function remember(u: string) {
   try { localStorage.setItem(RECENT, JSON.stringify([u, ...recent().filter((x) => x !== u)].slice(0, 24))); } catch { /* storage blocked */ }
 }
 
-type Props = { onEmoji: (e: string) => void; onClose: () => void; gifs?: { onPick: (g: Gif) => void } };
+/** `custom`: a custom emoji was picked; `e` is then its ":code:". `room`: whose packs are offered besides mine. */
+type Props = { onEmoji: (e: string, custom?: Emote) => void; onClose: () => void; room?: Room;
+  gifs?: { onPick: (g: Gif) => void }; stickers?: { onPick: (s: Emote) => void } };
 
-/** Emoji (+ optional saved gifs) popover; closes on outside click / Esc. Picking doesn't close it. */
-export function EmojiPanel({ onEmoji, onClose, gifs, closing }: Props & { closing?: boolean }) {
-  const [tab, setTab] = useState<"emoji" | "gif">("emoji");
+/** Emoji (+ optional stickers and saved gifs) popover; closes on outside click / Esc. Picking doesn't close it. */
+export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, closing }: Props & { closing?: boolean }) {
+  const [tab, setTab] = useState<"emoji" | "sticker" | "gif">("emoji");
   const pill = useSlider<HTMLDivElement>();
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -63,29 +65,44 @@ export function EmojiPanel({ onEmoji, onClose, gifs, closing }: Props & { closin
     <>
       <div className="menu-backdrop" onClick={onClose} />
       <div className={"emoji-panel" + (closing ? " closing" : "")} role="dialog" aria-label="اموجی">
-        {gifs && (
+        {(gifs || stickers) && (
           <div className="segmented" data-pill ref={pill}>
             <button className={tab === "emoji" ? "on" : ""} onClick={() => setTab("emoji")}>اموجی</button>
-            <button className={tab === "gif" ? "on" : ""} onClick={() => setTab("gif")}>گیف</button>
+            {stickers && <button className={tab === "sticker" ? "on" : ""} onClick={() => setTab("sticker")}>استیکر</button>}
+            {gifs && <button className={tab === "gif" ? "on" : ""} onClick={() => setTab("gif")}>گیف</button>}
           </div>
         )}
-        {tab === "emoji" || !gifs ? <EmojiGrid onPick={(u) => { remember(u); onEmoji(u); }} /> : <GifGrid {...gifs} />}
+        {tab === "sticker" && stickers ? <StickerGrid room={room} {...stickers} />
+          : tab === "gif" && gifs ? <GifGrid {...gifs} />
+          : <EmojiGrid room={room} onPick={(e) => { if (e.custom) onEmoji(e.name, e.custom); else { remember(e.u); onEmoji(e.u); } }} />}
       </div>
     </>
   );
 }
 
-function EmojiGrid({ onPick }: { onPick: (u: string) => void }) {
+// ponytail: recents are unicode only; custom emoji sit in their packs' tabs
+function EmojiGrid({ room, onPick }: { room?: Room; onPick: (e: Emoji) => void }) {
+  useTick(client, [ClientEvent.AccountData, RoomStateEvent.Events]);
   const groups = usePromise(useMemo(loadEmoji, []));
   const [rec] = useState(recent);
-  const [group, setGroup] = useState(rec.length ? -1 : 0);
+  const [group, setGroup] = useState<number | string>(rec.length ? -1 : 0);
   const [q, setQ] = useState("");
   const all = useMemo(() => [...(groups?.values() ?? [])].flat(), [groups]);
   const byU = useMemo(() => new Map(all.map((e) => [e.u, e])), [all]);
+  const custom = new Map<string, Emoji[]>(); // pack key → its emoji
+  for (const e of emotesFor(room, "emoticon")) {
+    if (!custom.has(e.pack.key)) custom.set(e.pack.key, []);
+    custom.get(e.pack.key)!.push({ u: e.pack.key + ":" + e.code, name: `:${e.code}:`, search: normalize(e.code), custom: e });
+  }
   const term = normalize(q.trim());
-  const list = !groups ? [] : term ? all.filter((e) => e.search.includes(term)).slice(0, 240)
-    : group === -1 ? rec.map((u) => byU.get(u) ?? { u, name: u, search: "" }) : groups.get(group) ?? [];
-  const cats: [number, string, string][] = rec.length ? [[-1, "🕘", "اخیر"], ...GROUPS] : GROUPS;
+  const list = !groups ? [] : term ? [...[...custom.values()].flat(), ...all].filter((e) => e.search.includes(term)).slice(0, 240)
+    : group === -1 ? rec.map((u) => byU.get(u) ?? { u, name: u, search: "" })
+    : typeof group === "string" ? custom.get(group) ?? [] : groups.get(group) ?? [];
+  const packCats = [...custom.values()].map(([e]) => {
+    const p = e.custom!.pack;
+    return [p.key, <EmoteImg key={p.key} url={p.avatar ?? e.custom!.img.url} alt="" />, p.name] as const;
+  });
+  const cats: (readonly [number | string, ReactNode, string])[] = [...(rec.length ? [[-1, "🕘", "اخیر"] as const] : []), ...packCats, ...GROUPS];
   return (
     <>
       <input className="emoji-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی اموجی" aria-label="جستجوی اموجی" />
@@ -100,9 +117,38 @@ function EmojiGrid({ onPick }: { onPick: (u: string) => void }) {
         {!groups ? <span className="spinner" />
           : !list.length ? <p className="muted">اموجی‌ای پیدا نشد</p>
           // mousedown default would move focus off the composer: keep its caret where the emoji goes
-          : list.map((e) => <button key={e.u} title={e.name} aria-label={e.name} onMouseDown={(ev) => ev.preventDefault()} onClick={() => onPick(e.u)}>{e.u}</button>)}
+          : list.map((e) => <button key={e.u} title={e.name} aria-label={e.name} onMouseDown={(ev) => ev.preventDefault()} onClick={() => onPick(e)}>
+            {e.custom ? <EmoteImg url={e.custom.img.url} alt={e.name} /> : e.u}</button>)}
       </div>
     </>
+  );
+}
+
+/** A custom emoji or sticker: the whole file, not a server thumbnail, so animated ones play. */
+export function EmoteImg({ url, alt, className = "emote" }: { url: string; alt: string; className?: string }) {
+  const src = usePromise(mediaUrl({ url }));
+  return src ? <img className={className} src={src} alt={alt} title={alt || undefined} draggable={false} /> : <span className={className + " shimmer"} />;
+}
+
+/** A reaction's key: a custom emoji's is its mxc, named by com.beeper.reaction.shortcode on the reaction `ev`. */
+export function ReactionKey({ k, ev }: { k: string; ev?: MatrixEvent }) {
+  if (!k.startsWith("mxc://")) return <>{k}</>;
+  return <EmoteImg url={k} alt={String(ev?.getContent()["com.beeper.reaction.shortcode"] ?? "")} />;
+}
+
+function StickerGrid({ room, onPick }: { room?: Room; onPick: (s: Emote) => void }) {
+  useTick(client, [ClientEvent.AccountData, RoomStateEvent.Events]);
+  const list = emotesFor(room, "sticker");
+  if (!list.length) return <p className="muted">استیکری ندارید. در تنظیمات ← اموجی و استیکر بسازید یا استیکر دیگران را ذخیره کنید.</p>;
+  return (
+    <div className="gif-grid sticker-grid">
+      {list.map((s, i) => (
+        <Fragment key={s.pack.key + ":" + s.code}>
+          {s.pack !== list[i - 1]?.pack && <h4>{s.pack.name}</h4>}
+          <button title={`:${s.code}:`} aria-label={s.img.body || s.code} onClick={() => onPick(s)}><EmoteImg url={s.img.url} alt="" className="" /></button>
+        </Fragment>
+      ))}
+    </div>
   );
 }
 
