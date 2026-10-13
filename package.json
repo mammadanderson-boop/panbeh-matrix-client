@@ -8,7 +8,7 @@
     "name": "Panbeh",
     "email": "mhfmobin@gmail.com"
   },
-  "homepage": "https://github.com/mhfmobin/panbe-matrix-client",
+  "homepage": "https://github.com/mhfmobin/panbeh-matrix-client",
   "type": "module",
   "main": "desktop/main.cjs",
   "desktopName": "panbeh.desktop",

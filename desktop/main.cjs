@@ -10,7 +10,7 @@ const OAUTH_SCHEME = "ir.panbeh.app";
 // `npm run desktop:dev`: the vite server instead of dist/
 const DEV_URL = process.env.PANBEH_DEV_URL ?? (process.argv.includes("--dev") ? "http://localhost:5173/" : undefined);
 const DIST = path.join(__dirname, "..", "dist");
-const RELEASES = "https://github.com/mhfmobin/panbe-matrix-client/releases/latest";
+const RELEASES = "https://github.com/mhfmobin/panbeh-matrix-client/releases/latest";
 const isMac = process.platform === "darwin", isWin = process.platform === "win32";
 
 // a stable, secure origin: IndexedDB, WebCrypto and the crypto .wasm behave as on https (file:// doesn't)
