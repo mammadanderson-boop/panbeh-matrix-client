@@ -5,7 +5,7 @@ import { handleIncomingLink } from "../openTarget.ts";
 import { matrixToLink, parseMatrixLink, viaServers } from "../uri.ts";
 import { EventStatus, EventType, M_POLL_START, RelationType, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { addToMyPack, avatarUrl, inMyPack, BLURHASH, client, isCached, isSavedGif, loadEvent, mediaUrl, pinnedIds, prefetch, seenBy, toggleGif, togglePin } from "../matrix.ts";
-import { abortSave, isMetered, openSave, openSaved, rememberSave, writeSave, type SaveTarget } from "../native.ts";
+import { abortSave, geoClick, isMetered, isNative, openSave, openSaved, rememberSave, writeSave, type SaveTarget } from "../native.ts";
 import { usePromise } from "../hooks.ts";
 import { LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, neshanUrl, num, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind, type Usage } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
@@ -702,8 +702,10 @@ function LocationCard({ c }: { c: Content }) {
         <b dir="auto">{loc?.description || "موقعیت مکانی"}</b>
         <small><bdi dir="ltr">{g.lat.toFixed(5)}, {g.lon.toFixed(5)}</bdi>{g.acc ? ` · دقت ${num(Math.round(g.acc))} متر` : ""}</small>
         <span className="location-links">
-          <a href={neshanUrl(g.lat, g.lon)} target="_blank" rel="noreferrer noopener">نشان</a>
-          <a href={`https://www.google.com/maps?q=${g.lat},${g.lon}`} target="_blank" rel="noreferrer noopener">Google Maps</a>
+          {isNative ? <a href={neshanUrl(g.lat, g.lon)} onClick={geoClick(g.lat, g.lon, loc?.description)}>باز کردن در نقشه</a> : <>
+            <a href={neshanUrl(g.lat, g.lon)} target="_blank" rel="noreferrer noopener">نشان</a>
+            <a href={`https://www.google.com/maps?q=${g.lat},${g.lon}`} target="_blank" rel="noreferrer noopener">Google Maps</a>
+          </>}
         </span>
       </span>
     </div>

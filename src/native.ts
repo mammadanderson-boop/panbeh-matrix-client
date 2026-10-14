@@ -46,6 +46,7 @@ interface PanbehPlugin {
   saveChunk(p: { id: string; data: string }): Promise<void>;
   saveClose(p: { id: string }): Promise<{ uri?: string }>; // older app builds resolve nothing
   openFile(p: { uri: string; mime: string }): Promise<void>;
+  openGeo(p: { lat: number; lon: number; label?: string }): Promise<void>;
   saveAbort(p: { id: string }): Promise<void>;
   takeLaunchShare(): Promise<Partial<Shared>>;
   pickImages(p: { multiple: boolean }): Promise<{ files: { uri: string; name: string; type: string }[] }>;
@@ -264,6 +265,14 @@ export function rememberSave(key: string, t: SaveTarget, url: string) {
   if (t.uri) setSaved(key, t.uri);
   else if (t.where === "browser") void downloadPath(url).then((p) => p && setSaved(key, p), () => {});
 }
+
+/** A map link's click: on Android the system "open with" chooser (any map app) instead of the website, which stays the
+ *  fallback (an app build without openGeo); elsewhere undefined, the link stays a link. */
+export const geoClick = (lat: number, lon: number, label?: string) => isNative ? (e: { preventDefault(): void; currentTarget: HTMLAnchorElement }) => {
+  e.preventDefault();
+  const href = e.currentTarget.href;
+  plugin.openGeo({ lat, lon, label }).catch(() => window.open(href, "_blank"));
+} : undefined;
 
 /** Opens the saved copy of `key`. false: not saved here, or deleted/moved since (then forgotten, so it downloads again). */
 export async function openSaved(key: string, mime: string): Promise<boolean> {
