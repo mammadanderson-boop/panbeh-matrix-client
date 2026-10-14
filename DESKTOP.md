@@ -22,9 +22,9 @@ and shows new messages as system notifications. Quit from the tray icon's menu (
 
 ## Getting it
 
-Every push builds the installers (Actions tab → *Desktop apps* run → artifacts). Every build of `main` also
-goes to the rolling [latest](../../releases/tag/latest) pre-release, next to the APK. Pushing a tag `v1.0.0`
-attaches them to that release:
+Pushing a tag `v1.0.0` builds the installers and attaches them to that release. To build a branch without
+a tag: Actions tab → *Desktop apps* → *Run workflow*, pick the branch, and download the run's artifacts.
+Release files carry the tag before the extension (`Panbeh-windows-setup-v1.0.0.exe`); manual builds don't:
 
 | System | File |
 | --- | --- |
@@ -43,7 +43,7 @@ The apps aren't code-signed yet, so the first launch shows a warning:
 ## Updates
 
 The app checks for a new version at start and every 6 hours, against GitHub releases made from `v*` tags
-(the rolling `latest` builds are for manual download and never auto-update anyone).
+(manual builds from the Actions tab never auto-update anyone).
 
 - **Windows, Linux AppImage/deb**: the update downloads in the background (a banner above the chat list shows
   the progress) and installs when you restart Panbeh from that banner, or the next time Panbeh quits.

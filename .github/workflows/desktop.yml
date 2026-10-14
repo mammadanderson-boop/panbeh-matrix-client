@@ -2,7 +2,6 @@ name: Desktop apps
 
 on:
   push:
-    branches: ["**"]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -17,7 +16,7 @@ jobs:
         include:
           - os: windows-latest
             target: --win
-          # macOS disabled: uncomment to build it again (and the .dmg line in the rolling release below)
+          # macOS disabled: uncomment to build it again
           # - os: macos-latest
           #   target: --mac
           - os: ubuntu-latest
@@ -81,7 +80,7 @@ jobs:
   # one job uploads everything, so the three builds don't race to create the release
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v5
@@ -89,25 +88,22 @@ jobs:
           path: out
           merge-multiple: true
 
+      # Panbeh-windows-setup.exe -> Panbeh-windows-setup-v1.2.3.exe, like the APK. The blockmaps follow
+      # their installer and latest*.yml is rewritten to the new names, so the updater still finds them.
+      - name: Version the installers
+        working-directory: out
+        run: |
+          for f in Panbeh-*; do
+            case "$f" in *.exe|*.dmg|*.zip|*.AppImage|*.deb) ;; *) continue ;; esac
+            v="${f%.*}-$GITHUB_REF_NAME.${f##*.}"
+            mv "$f" "$v"
+            [ -f "$f.blockmap" ] && mv "$f.blockmap" "$v.blockmap"
+            sed -i "s|$f|$v|g" latest*.yml
+          done
+
       # the auto-update channel: latest*.yml and the blockmaps must sit next to the installers
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: out/*
 
-      # rolling pre-release shared with the APK (android.yml moves the tag). The update metadata stays out:
-      # installed apps only follow v* releases.
-      - name: Rolling release
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Panbeh (latest build)
-          prerelease: true
-          make_latest: false
-          files: |
-            out/Panbeh-windows-setup.exe
-            # out/Panbeh-mac.dmg
-            out/Panbeh-linux-*.AppImage
-            out/Panbeh-linux-*.deb

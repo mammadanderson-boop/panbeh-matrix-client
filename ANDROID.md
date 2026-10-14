@@ -54,8 +54,9 @@ proxy, or `gzip_compression = true` on Conduwuit/Tuwunel/Continuwuity.
 
 ## Getting the APK
 
-Every push builds `panbeh.apk`. Download it from the workflow run's artifacts (Actions tab → run →
-*panbeh-apk*). Pushing a tag `v1.0.0` also attaches it to a GitHub release.
+Pushing a tag `v1.0.0` builds `Panbeh-v1.0.0.apk` and attaches it to a GitHub release. To build a branch
+(e.g. a PR's): Actions tab → *Android APK* → *Run workflow*, pick the branch, and download `Panbeh.apk`
+from the run's artifacts.
 
 ### Signing key (do this once)
 
