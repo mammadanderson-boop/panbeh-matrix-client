@@ -6,6 +6,7 @@ import { isHeadless, isNative, nativeCancelAll, nativeLog, nativeSyncState, onKi
 import { isDesktop, isWindowVisible, onWindowVisibility, openExternal } from "./desktop.ts";
 import { confirmDialog } from "./ui/dialog.tsx";
 import { CACHE_MAX_FILE, cacheClear, cacheGet, cacheHas, cachePut } from "./mediaCache.ts";
+import { clearStaleBeacons, stopAll } from "./liveLocation.ts";
 
 type Session = { baseUrl: string; userId: string; deviceId: string; accessToken: string; refreshToken?: string; oauthClientId?: string; legacy?: boolean };
 // several accounts, one running client at a time; switching reloads the page so every cache starts clean
@@ -29,8 +30,10 @@ let current: Session | undefined; // the account the running client belongs to
 export const isAdding = () => !!sessionStorage.getItem(ADDING_KEY);
 export const addAccount = () => { sessionStorage.setItem(ADDING_KEY, "1"); location.reload(); };
 export const cancelAdd = () => { sessionStorage.removeItem(ADDING_KEY); location.reload(); };
-export function switchAccount(userId: string) {
+export async function switchAccount(userId: string) {
   localStorage.setItem(ACTIVE_KEY, userId);
+  // the old account's live-location shares must not outlive its page
+  if (client) await Promise.race([stopAll(client), new Promise((r) => setTimeout(r, 3000))]);
   location.hash = "";
   location.reload();
 }
@@ -144,6 +147,9 @@ export async function start(s: Session) {
     onKick(kick);
   }
   await c.startClient({ threadSupport: true, lazyLoadMembers: true, initialSyncLimit: 30, filter: isHeadless ? headlessFilter(s.userId) : undefined });
+  // a reload leaves our live-location beacons live with nothing watching or stopping them: turn them off
+  // (not in the headless page: it shares the device with the app page, which may be sharing right now)
+  if (!isHeadless) clearStaleBeacons(c);
   if (!shareLastSeen()) await setShareLastSeen(false);
   if (isNative) { // the app syncs in the background too: that mustn't show the user as online
     const away = () => { if (shareLastSeen()) void c.setSyncPresence(isHeadless || document.visibilityState === "hidden" ? SetPresence.Unavailable : undefined); };
@@ -243,6 +249,8 @@ export async function logout() {
   setSessions(left);
   if (left.length) localStorage.setItem(ACTIVE_KEY, left[0].userId); else localStorage.removeItem(ACTIVE_KEY);
   if (isNative) { nativeCancelAll(); if (!left.length) setBackgroundService(false); }
+  // our live-location shares must not outlive this page: stop the GPS watch and timer, turn the beacons non-live
+  if (client) await Promise.race([stopAll(client), new Promise((r) => setTimeout(r, 3000))]);
   // client is unset if start() failed before creating it (boot error screen)
   await client?.logout(true).catch(() => {});
   // also wipes the rust crypto IndexedDB

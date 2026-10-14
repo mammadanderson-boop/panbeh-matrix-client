@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ContentHelpers, LocationAssetType, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
+import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, emotesFor, GIF_INFO, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
-import { escRe, formatMessage, normalize, num, osmUrl, scheduleLabel, type Gif } from "../logic.ts";
+import { clock, escRe, formatMessage, normalize, num, osmUrl, scheduleLabel, type Gif } from "../logic.ts";
 import { isMessage } from "../hooks.ts";
 import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
@@ -13,6 +13,7 @@ import { isSendKey, loadPrefs } from "./Settings.tsx";
 import { reducedMotion, useExit } from "./useDismiss.ts";
 import { useLongPress } from "./useLongPress.ts";
 import { SchedulePicker, ScheduledList, useScheduled } from "./Scheduled.tsx";
+import { DURATIONS, sharingIn, startSharing, stopSharing } from "../liveLocation.ts";
 
 export type Mode = { kind: "reply" | "edit"; ev: MatrixEvent } | null;
 const MEDIA = ["m.image", "m.video", "m.file"];
@@ -64,6 +65,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const recControl = useRef<RecControl | null>(null);
   const [recordMode, setRecordMode] = useState(() => loadPrefs().recordMode);
   const [locating, setLocating] = useState(false);
+  const [livePick, setLivePick] = useState(false);
   const [emoji, setEmoji] = useState(false);
   const [emojiShown, emojiClosing] = useExit(emoji && !recording);
   const [caret, setCaret] = useState(0);
@@ -419,6 +421,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                     <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل یا عکس</button>
                     <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
                     <button role="menuitem" onClick={shareLocation}><Icon name="location" /> موقعیت مکانی</button>
+                    {room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) && <button role="menuitem" onClick={() => setLivePick(true)}><Icon name="location" /> اشتراک موقعیت زنده</button>}
                   </div>
                 </>
               )}
@@ -445,6 +448,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       {picking && <SchedulePicker onPick={(ts) => { setPicking(false); schedule(ts); }} onClose={() => setPicking(false)} />}
       {schedList && <ScheduledList room={room} list={sched.list} onClose={() => setSchedList(false)} />}
       {pollForm && <PollForm room={room} threadId={threadId} onClose={() => setPollForm(false)} />}
+      {livePick && <LiveLocationPicker room={room} onClose={() => setLivePick(false)} />}
     </div>
   );
 }
@@ -531,6 +535,34 @@ export function DropZone({ onFiles, children }: { onFiles: (f: File[]) => void; 
       onDrop={(e) => { if (!has(e)) return; e.preventDefault(); depth.current = 0; setOver(false); onFiles([...e.dataTransfer.files]); }}>
       {children}
       {over && <div className="drop-overlay"><Icon name="attach" size={40} />فایل‌ها را اینجا رها کنید</div>}
+    </div>
+  );
+}
+
+/** Live location: pick how long to share this device's position into the room. */
+function LiveLocationPicker({ room, onClose }: { room: Room; onClose: () => void }) {
+  const active = sharingIn(room.roomId);
+  const pick = (ms: number) => {
+    onClose();
+    startSharing(client, room, ms).then(
+      () => toast(active ? "اشتراک موقعیت زنده تمدید شد" : "اشتراک موقعیت زنده آغاز شد"),
+      (e) => alertDialog(errText(e)),
+    );
+  };
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-label="اشتراک موقعیت زنده" onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.key === "Escape" && onClose()}>
+        <h2>اشتراک موقعیت زنده</h2>
+        <p className="muted">موقعیت شما هر ۳۰ ثانیه به‌روزرسانی می‌شود و تا پایان مهلت انتخابی دیده می‌شود.</p>
+        {active && <p className="card">اشتراک فعلی تا {clock(active.until)} ادامه دارد؛ انتخاب مهلت جدید آن را جایگزین می‌کند.</p>}
+        <div className="modal-actions">
+          {active && <button className="danger" onClick={() => { onClose(); stopSharing(client, room.roomId).then(() => toast("اشتراک موقعیت زنده قطع شد"), (e) => alertDialog(errText(e))); }}>قطع اشتراک</button>}
+          {DURATIONS.map(([ms, label]) => (
+            <button key={ms} className="primary" onClick={() => pick(ms)}>{label}</button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

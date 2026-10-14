@@ -3,7 +3,7 @@ import { KnownMembership, type MatrixEvent, type Room as SdkRoom } from "matrix-
 import { addDirect, client, dmPeer, isDirect, loadEvent } from "../matrix.ts";
 import { usePresence, useTick, useTyping } from "../hooks.ts";
 import { Icon } from "../icons.tsx";
-import { num, stamp } from "../logic.ts";
+import { clock, num, osmUrl, stamp } from "../logic.ts";
 import { bdi, Dots, errText, me, RoomAvatar, senderName } from "./common.tsx";
 import { Timeline, type Jumper } from "./Timeline.tsx";
 import { PinnedBar } from "./Pinned.tsx";
@@ -17,6 +17,7 @@ import { ForwardSheet } from "./Forward.tsx";
 import { pendingJump, SearchSheet } from "./Search.tsx";
 import { MediaViewer, timelineMedia } from "./Media.tsx";
 import { Predecessor, Upgraded } from "./Admin.tsx";
+import { liveBeacons, onBeaconChange, sharingIn, stopSharing, useLiveLocation } from "../liveLocation.ts";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { useExit } from "./useDismiss.ts";
 
@@ -88,6 +89,12 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
     setSel(null);
   };
 
+  // live location: our sharing in this room, and other people's live beacons
+  const [, bumpLive] = useState(0);
+  useEffect(() => onBeaconChange(room, () => bumpLive((n) => n + 1)), [room]);
+  useLiveLocation();
+  const myShare = sharingIn(room.roomId);
+  const others = liveBeacons(room).filter((b) => b.userId !== me());
   const typing = useTyping(room).map((m) => bdi(m.name.split(" ")[0]));
   const subtitle = typing.length
     ? `${typing.length > 2 ? `${typing.slice(0, 2).join("، ")} و ${num(typing.length - 2)} نفر دیگر` : typing.join(" و ")} در حال نوشتن`
@@ -162,6 +169,18 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
         ) : (
           <DropZone onFiles={(f) => setFiles((x) => [...x, ...f])}>
             <Predecessor room={room} />
+            {(myShare || others.length > 0) && (
+              <div className="banner live-loc">
+                <Icon name="location" size={16} />
+                <span>
+                  {myShare && <>موقعیت زنده‌ی شما تا {clock(myShare.until)} فعال است{others.length ? " · " : ""}</>}
+                  {others.length === 1
+                    ? <><a href={osmUrl(others[0].lat, others[0].lon)} target="_blank" rel="noreferrer noopener">{bdi(others[0].name)}</a> در حال اشتراک موقعیت زنده</>
+                    : others.length > 1 ? <>{num(others.length)} نفر در حال اشتراک موقعیت زنده</> : null}
+                </span>
+                {myShare && <button onClick={() => stopSharing(client, room.roomId).catch((e) => alertDialog(errText(e)))}>قطع</button>}
+              </div>
+            )}
             <PinnedBar room={room} onJump={jump} />
             <Timeline room={room} actions={actions} jumpRef={jumper} />
             <Upgraded room={room}><Composer room={room} threadId={null} mode={mode} setMode={setMode} files={files} setFiles={setFiles} /></Upgraded>
