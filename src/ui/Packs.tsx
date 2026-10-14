@@ -19,7 +19,8 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
   const [busy, setBusy] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; code: string } | null>(null);
   const c = load();
-  const list = use ? packImages(c, use) : Object.entries(c.images ?? {}).filter(([, i]) => i?.url?.startsWith("mxc://"));
+  const listOf = (c: PackContent) => use ? packImages(c, use) : Object.entries(c.images ?? {}).filter(([, i]) => i?.url?.startsWith("mxc://"));
+  const list = listOf(c);
   const kind = use ?? (c.pack?.usage?.length === 1 ? c.pack.usage[0] : "emoticon"); // a room pack's own kind; mixed counts as emoji
   const full = list.length >= PACK_CAP[kind];
   const run = (fn: () => Promise<unknown>) => { setBusy(true); fn().catch((e) => alertDialog(errText(e))).finally(() => setBusy(false)); };
@@ -46,14 +47,23 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
     if (Object.hasOwn(cur.images ?? {}, next)) return alertDialog(`«:${next}:» در این بسته هست`);
     run(() => save({ ...cur, images: Object.fromEntries(Object.entries(cur.images ?? {}).map(([k, i]) => [k === code ? next : k, i])) }));
   };
+  const without = (cur: PackContent, codes: string[]) => {
+    const images = { ...cur.images }, other: Usage = use === "sticker" ? "emoticon" : "sticker";
+    for (const code of codes) {
+      const img = images[code];
+      // in both of my collections (no usage of its own): only leave this one
+      if (use && img && packImages({ pack: cur.pack, images: { [code]: img } }, other).length) images[code] = { ...img, usage: [other] };
+      else delete images[code];
+    }
+    return { ...cur, images };
+  };
   const remove = async (code: string) => {
     if (!await confirmDialog(`«:${code}:» حذف شود؟`, { ok: "حذف", danger: true })) return;
-    const cur = load(), images = { ...cur.images }, img = images[code];
-    const other: Usage = use === "sticker" ? "emoticon" : "sticker";
-    // in both of my collections (no usage of its own): only leave this one
-    if (use && img && packImages({ pack: cur.pack, images: { [code]: img } }, other).length) images[code] = { ...img, usage: [other] };
-    else delete images[code];
-    run(() => save({ ...cur, images }));
+    run(() => save(without(load(), [code])));
+  };
+  const removeAll = async () => {
+    if (!await confirmDialog(`همه‌ی ${num(list.length)} ${KIND[kind]} ${mine ? "شما" : "این بسته برای همه‌ی اعضا"} حذف شود؟`, { ok: "حذف همه", danger: true })) return;
+    run(async () => { const cur = load(); await save(without(cur, listOf(cur).map(([code]) => code))); });
   };
   const take = (code: string) =>
     addToMyPack(code, c.images![code], kind).then(() => toast(`به ${KIND[kind]}های شما اضافه شد`), (e) => alertDialog(errText(e)));
@@ -76,6 +86,9 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
       </div>
       {!list.length && !editable && <p className="muted">خالی است</p>}
       {editable && full && <p className="muted">بسته پر است ({num(PACK_CAP[kind])} تا). برای افزودن، چندتایی را حذف کنید.</p>}
+      {editable && list.length > 0 && (
+        <div className="row-actions"><button className="warn" disabled={busy} onClick={() => void removeAll()}><Icon name="trash" /> حذف همه</button></div>
+      )}
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} target=".pack-grid button" onClose={() => setMenu(null)}>
           {!mine && <button role="menuitem" onClick={() => { setMenu(null); take(menu.code); }}><Icon name="plus" /> افزودن به مال من</button>}
