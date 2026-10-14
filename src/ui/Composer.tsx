@@ -5,7 +5,7 @@ import { getDraft, setDraft, showingDraft } from "../drafts.ts";
 import { isNative, captureCameraPhoto, pickGalleryPhotos } from "../native.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
-import { clock, escRe, formatMessage, normalize, num, osmUrl, scheduleLabel, type Gif } from "../logic.ts";
+import { clock, escRe, formatMessage, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
 import { isMessage } from "../hooks.ts";
 import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
@@ -283,7 +283,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   /** The GPS position is the user (m.self, with its accuracy); a spot chosen on the map is a pin (m.pin). */
   function sendLocation(lat: number, lon: number, asset: LocationAssetType, acc?: number) {
     // body keeps a map link for clients that don't show locations
-    const content: Record<string, unknown> = ContentHelpers.makeLocationContent(`موقعیت مکانی ${osmUrl(lat, lon)}`, `geo:${lat},${lon}${acc ? `;u=${acc}` : ""}`, Date.now(), null, asset);
+    const content: Record<string, unknown> = ContentHelpers.makeLocationContent(`موقعیت مکانی ${neshanUrl(lat, lon)}`, `geo:${lat},${lon}${acc ? `;u=${acc}` : ""}`, Date.now(), null, asset);
     if (mode?.kind === "reply") content["m.relates_to"] = { "m.in_reply_to": { event_id: mode.ev.getId() } };
     setMode(null);
     client.sendMessage(room.roomId, threadId, content as never).catch((e) => alertDialog(errText(e)));

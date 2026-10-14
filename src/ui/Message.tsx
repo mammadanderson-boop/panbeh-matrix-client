@@ -7,7 +7,7 @@ import { EventStatus, EventType, M_POLL_START, RelationType, type MatrixEvent, t
 import { addToMyPack, avatarUrl, inMyPack, BLURHASH, client, isCached, isSavedGif, loadEvent, mediaUrl, pinnedIds, prefetch, seenBy, toggleGif, togglePin } from "../matrix.ts";
 import { abortSave, isMetered, openSave, openSaved, rememberSave, writeSave, type SaveTarget } from "../native.ts";
 import { usePromise } from "../hooks.ts";
-import { LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, num, osmUrl, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind, type Usage } from "../logic.ts";
+import { LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, neshanUrl, num, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind, type Usage } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
 import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, previewText, senderMember, senderName, stripReplyFallback, toast, useChange, isVoice } from "./common.tsx";
 import { AudioPlayer, NoteRing, stopPlayer, trackFor } from "./Voice.tsx";
@@ -702,7 +702,7 @@ function LocationCard({ c }: { c: Content }) {
         <b dir="auto">{loc?.description || "موقعیت مکانی"}</b>
         <small><bdi dir="ltr">{g.lat.toFixed(5)}, {g.lon.toFixed(5)}</bdi>{g.acc ? ` · دقت ${num(Math.round(g.acc))} متر` : ""}</small>
         <span className="location-links">
-          <a href={osmUrl(g.lat, g.lon)} target="_blank" rel="noreferrer noopener">OpenStreetMap</a>
+          <a href={neshanUrl(g.lat, g.lon)} target="_blank" rel="noreferrer noopener">نشان</a>
           <a href={`https://www.google.com/maps?q=${g.lat},${g.lon}`} target="_blank" rel="noreferrer noopener">Google Maps</a>
         </span>
       </span>
