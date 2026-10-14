@@ -9,8 +9,8 @@ import { M_BEACON, BeaconEvent, ClientEvent, ContentHelpers, LocationAssetType, 
   type MatrixClient, type Room } from "matrix-js-sdk";
 import { alertDialog } from "./ui/dialog.tsx";
 
-/** One active sharing of ours. */
-type Sharing = { roomId: string; beaconId: string; until: number; watchId: number; timer: number; lastBeat: number; lastError?: string };
+/** One active sharing of ours; `ids` is every beacon_info event id it has sent (an extension sends a new one). */
+type Sharing = { roomId: string; beaconId: string; ids: string[]; until: number; watchId: number; timer: number; lastBeat: number; lastError?: string };
 const BEAT_MS = 30_000;
 export const DURATIONS: [number, string][] = [
   [15 * 60_000, "۱۵ دقیقه"],
@@ -63,6 +63,11 @@ export async function startSharing(c: MatrixClient, room: Room, duration: number
   const existing = sharingIn(room.roomId);
   if (existing) return extendSharing(c, existing, duration);
   const roomId = room.roomId;
+  // a position first: a denied permission or no fix must fail here, not after the room was told we're sharing
+  if (!navigator.geolocation) throw new Error("این مرورگر موقعیت مکانی را پشتیبانی نمی‌کند.");
+  const first = await new Promise<GeolocationPosition>((ok, fail) => navigator.geolocation.getCurrentPosition(ok,
+    (e) => fail(new Error(e.code === e.PERMISSION_DENIED ? "اجازه‌ی دسترسی به موقعیت مکانی داده نشد." : "موقعیت مکانی پیدا نشد.")),
+    { enableHighAccuracy: true, timeout: 20_000 }));
   const until = Date.now() + duration;
 
   // the state event must exist before the first beat references it
@@ -70,7 +75,7 @@ export async function startSharing(c: MatrixClient, room: Room, duration: number
   const { event_id: beaconId } = await c.unstable_setLiveBeacon(roomId, info as never);
 
   remember(c, roomId, beaconId);
-  const s: Sharing = { roomId, beaconId, until, watchId: 0, timer: 0, lastBeat: 0 };
+  const s: Sharing = { roomId, beaconId, ids: [beaconId], until, watchId: 0, timer: 0, lastBeat: 0 };
   const beat = (pos: GeolocationPosition | null) => {
     // watchPosition fires on every move, sometimes every second: at most one beat per BEAT_MS
     if (!pos || Date.now() - s.lastBeat < BEAT_MS) return;
@@ -84,9 +89,7 @@ export async function startSharing(c: MatrixClient, room: Room, duration: number
   s.timer = window.setTimeout(() => stopSharing(c, roomId), duration);
   sharings = [...sharings, s];
   emit();
-
-  // first beat right away from a fresh read, so the map isn't empty for 30s
-  navigator.geolocation.getCurrentPosition((p) => beat(p), onError, { enableHighAccuracy: true, timeout: 20_000 });
+  beat(first); // right away, so the map isn't empty for 30s
 }
 
 /** An active share picks a new duration: the beacon_info is re-sent (the SDK swaps the beacon to the new event id) and the local timer resets; the GPS watch keeps going. */
@@ -94,6 +97,7 @@ async function extendSharing(c: MatrixClient, s: Sharing, duration: number) {
   const info = ContentHelpers.makeBeaconInfoContent(duration, true, "موقعیت زنده", LocationAssetType.Self, Date.now());
   const { event_id: beaconId } = await c.unstable_setLiveBeacon(s.roomId, info as never);
   s.beaconId = beaconId; // beats from now on reference the new state event
+  s.ids.push(beaconId);
   remember(c, s.roomId, beaconId);
   s.until = Date.now() + duration;
   clearTimeout(s.timer);
@@ -113,10 +117,11 @@ export async function stopSharing(c: MatrixClient, roomId: string) {
   clearTimeout(s.timer);
   const room = c.getRoom(roomId);
   const prev = room?.currentState.getStateEvents("m.beacon_info" as never, c.getSafeUserId());
-  if (prev) {
-    const timeout = (prev.getContent() as { timeout?: number }).timeout ?? 0;
-    await c.unstable_setLiveBeacon(roomId, ContentHelpers.makeBeaconInfoContent(timeout, false, "موقعیت زنده", LocationAssetType.Self, Date.now()) as never).catch(() => {});
-  }
+  // beacon_info is per user: one we never sent means another device of ours started sharing here since, so leave it live.
+  // No prev yet (stopped before sync echoed ours back) still turns ours off.
+  if (prev && !s.ids.includes(prev.getId()!)) return;
+  const timeout = (prev?.getContent() as { timeout?: number } | undefined)?.timeout ?? s.until - Date.now();
+  await c.unstable_setLiveBeacon(roomId, ContentHelpers.makeBeaconInfoContent(Math.max(timeout, 0), false, "موقعیت زنده", LocationAssetType.Self, Date.now()) as never).catch(() => {});
 }
 
 /** Stops everything (logout, account switch). */

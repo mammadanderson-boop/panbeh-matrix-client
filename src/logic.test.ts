@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel } from "./logic.ts";
+import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel, deriveDraftKey, sealDraft, openDraft } from "./logic.ts";
 import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
@@ -453,4 +453,12 @@ test("image packs: usage falls back image → pack → both; shortcodes from fil
   assert.deepEqual(padToRatio(200, 100), { w: 200, h: 100 });
   assert.equal(freeCode("cat", { cat: 1, cat_2: 1 }), "cat_3");
   assert.equal(freeCode("constructor", {}), "constructor");
+});
+
+test("drafts: sealed per room, readable only with the same backup key and room", async () => {
+  const key = await deriveDraftKey(new Uint8Array(32).fill(7));
+  const sealed = await sealDraft(key, "!a:x", { body: "سلام", reply: "$e" });
+  assert.deepEqual(await openDraft(key, "!a:x", sealed), { body: "سلام", reply: "$e" });
+  await assert.rejects(openDraft(key, "!b:x", sealed)); // moved to another room
+  await assert.rejects(openDraft(await deriveDraftKey(new Uint8Array(32).fill(8)), "!a:x", sealed)); // another account's backup
 });

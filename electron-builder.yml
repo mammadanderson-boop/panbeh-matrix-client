@@ -47,6 +47,8 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     NSMicrophoneUsageDescription: پنبه برای ضبط پیام صوتی به میکروفون نیاز دارد.
+    NSLocationUsageDescription: پنبه برای ارسال موقعیت مکانی شما در گفتگو به آن نیاز دارد.
+    NSLocationWhenInUseUsageDescription: پنبه برای ارسال موقعیت مکانی شما در گفتگو به آن نیاز دارد.
 
 linux:
   category: Network;InstantMessaging;Chat

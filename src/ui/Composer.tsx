@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
-import { client, emotesFor, GIF_INFO, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
+import { client, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
+import { getDraft, setDraft, showingDraft } from "../drafts.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
 import { clock, escRe, formatMessage, normalize, num, osmUrl, scheduleLabel, type Gif } from "../logic.ts";
@@ -14,37 +15,15 @@ import { reducedMotion, useExit } from "./useDismiss.ts";
 import { useLongPress } from "./useLongPress.ts";
 import { SchedulePicker, ScheduledList, useScheduled } from "./Scheduled.tsx";
 import { DURATIONS, sharingIn, startSharing, stopSharing } from "../liveLocation.ts";
+import { isDesktop } from "../desktop.ts";
 
 export type Mode = { kind: "reply" | "edit"; ev: MatrixEvent } | null;
 const MEDIA = ["m.image", "m.video", "m.file"];
+// Chromium on Linux has no system location source, only Google's network service, which needs an API key Electron doesn't ship: hide location there
+const noGeo = isDesktop && navigator.userAgent.includes("Linux");
 export const EDITABLE = ["m.text", "m.emote", "m.notice", ...MEDIA];
 /** A media message's caption (MSC2530): body differs from filename; otherwise body is just the name. */
 export const captionOf = (c: IContent): string => (c.filename && c.body !== c.filename ? c.body ?? "" : "");
-// per account, kept in localStorage so a reload or Android killing the app doesn't lose them; read once the client exists
-const draftsKey = () => `panbeh.drafts:${client.getUserId()}`;
-let drafts: Map<string, string> | null = null;
-const getDrafts = () => {
-  if (!drafts) try { drafts = new Map(Object.entries(JSON.parse(localStorage.getItem(draftsKey()) ?? "{}"))); } catch { drafts = new Map(); }
-  return drafts;
-};
-function setDraft(key: string, text: string) {
-  const d = getDrafts();
-  if ((d.get(key) ?? "") === text) return;
-  if (text) d.set(key, text); else d.delete(key);
-  try { localStorage.setItem(draftsKey(), JSON.stringify(Object.fromEntries(d))); } catch { /* full or blocked: memory only */ }
-}
-const shared = new Map<string, File[]>(); // shared from another app, waiting for the chat to open
-
-/** "Share with Panbeh": text becomes the chat's draft, files open the send dialog. */
-export function shareInto(roomId: string, text: string, files: File[]) {
-  if (text) setDraft(roomId, [getDrafts().get(roomId), text].filter(Boolean).join("\n"));
-  if (files.length) shared.set(roomId, files);
-}
-export function takeShared(roomId: string) {
-  const f = shared.get(roomId) ?? [];
-  shared.delete(roomId);
-  return f;
-}
 
 const LOCK_AT = 60, CANCEL_AT = 100; // px the held finger slides up to lock, sideways to cancel
 
@@ -54,7 +33,7 @@ type Suggestion = Mention & { mxc?: string | null; emote?: Emote };
 
 export function Composer({ room, threadId, mode, setMode, files, setFiles }: Props) {
   const draftKey = room.roomId + (threadId ?? "");
-  const [text, setText] = useState(getDrafts().get(draftKey) ?? "");
+  const [text, setText] = useState(getDraft(draftKey)?.body ?? "");
   const mediaEdit = mode?.kind === "edit" && MEDIA.includes(mode.ev.getContent().msgtype ?? "");
   const [menu, setMenu] = useState(false);
   const [menuShown, menuClosing] = useExit(menu);
@@ -91,7 +70,32 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const editing = useRef(false);
   const mentions = useRef<Mention[]>([]); // people picked from the @ list; turned into links on send
 
-  useEffect(() => { setDraft(draftKey, editing.current ? stash.current : text); }, [draftKey, text]);
+  // the main chat's draft keeps its reply target. One being restored (from storage or another device) waits here
+  // until its event loads into `mode` (null: the draft has none); any mode change ends the wait
+  const pendingReply = useRef<string | null | undefined>(threadId ? undefined : getDraft(draftKey)?.reply);
+  const lastMode = useRef(mode);
+  function restoreReply(id: string | undefined) {
+    const cur = lastMode.current;
+    if (cur?.kind === "edit" || (cur?.kind === "reply" ? cur.ev.getId() : undefined) === id) return;
+    pendingReply.current = id ?? null;
+    if (!id) return setMode(null);
+    loadEvent(room, id).then((ev) => { if (pendingReply.current === id) setMode({ kind: "reply", ev }); },
+      () => { if (pendingReply.current === id) pendingReply.current = undefined; }); // gone: just the text
+  }
+  useEffect(() => {
+    if (threadId) return;
+    if (pendingReply.current) restoreReply(pendingReply.current);
+    // another device's edit: taken unless we're typing here (then ours is newer and wins on upload)
+    return showingDraft(room.roomId, (d) => {
+      if (editing.current || document.activeElement === ta.current) return;
+      restoreReply(d.reply);
+      setText(d.body);
+    });
+  }, []);
+  useEffect(() => {
+    const reply = pendingReply.current !== undefined ? pendingReply.current ?? undefined : mode?.kind === "reply" ? mode.ev.getId() : undefined;
+    setDraft(draftKey, editing.current ? stash.current : text, threadId ? undefined : reply);
+  }, [draftKey, text, mode]);
   const mounted = useRef(false);
   useEffect(() => { // autosize
     const el = ta.current;
@@ -103,6 +107,8 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     el.style.height = to + "px";
   }, [text, recording]);
   useEffect(() => {
+    const restored = mode !== lastMode.current && pendingReply.current !== undefined; // a draft's reply coming back: no focus
+    if (mode !== lastMode.current) { lastMode.current = mode; pendingReply.current = undefined; }
     const edit = mode?.kind === "edit";
     if (edit && !editing.current) stash.current = text;
     if (edit) {
@@ -114,7 +120,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     editing.current = edit;
     // opening a chat must not pop the keyboard on touch devices; reply/edit always focuses
     if (!mounted.current && !matchMedia("(pointer: fine)").matches) mounted.current = true;
-    else { mounted.current = true; ta.current?.focus(); }
+    else if (!restored) { mounted.current = true; ta.current?.focus(); }
   }, [mode]);
 
   useEffect(() => () => { // left the room mid-typing
@@ -420,8 +426,8 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                   <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
                     <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل یا عکس</button>
                     <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
-                    <button role="menuitem" onClick={shareLocation}><Icon name="location" /> موقعیت مکانی</button>
-                    {room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) && <button role="menuitem" onClick={() => setLivePick(true)}><Icon name="location" /> اشتراک موقعیت زنده</button>}
+                    {!noGeo && <button role="menuitem" onClick={shareLocation}><Icon name="location" /> موقعیت مکانی</button>}
+                    {!noGeo && room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) && <button role="menuitem" onClick={() => setLivePick(true)}><Icon name="location" /> اشتراک موقعیت زنده</button>}
                   </div>
                 </>
               )}
@@ -544,6 +550,7 @@ function LiveLocationPicker({ room, onClose }: { room: Room; onClose: () => void
   const active = sharingIn(room.roomId);
   const pick = (ms: number) => {
     onClose();
+    if (!active) toast("در حال پیدا کردن موقعیت…"); // a first GPS fix can take a while
     startSharing(client, room, ms).then(
       () => toast(active ? "اشتراک موقعیت زنده تمدید شد" : "اشتراک موقعیت زنده آغاز شد"),
       (e) => alertDialog(errText(e)),

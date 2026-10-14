@@ -252,6 +252,8 @@ button:disabled { opacity: 0.6; cursor: default; }
 .room-head-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-head-text span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-head-text span.typing, .room-preview.typing { color: var(--accent); }
+.room-preview .draft { color: #e53935; }
+.room-item.active .room-preview .draft { color: inherit; font-weight: 600; }
 
 .timeline-wrap { position: relative; flex: 1; min-height: 0; }
 .timeline {
