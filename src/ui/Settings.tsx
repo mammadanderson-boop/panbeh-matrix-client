@@ -387,8 +387,10 @@ async function actOnUpdate(u: Update) {
   const yes = u.status === "available" ? await confirmDialog(`نسخه‌ی تازه‌ی پنبه (${ver(u.version)}) آمده است. دریافت شود؟`, { ok: "دریافت" })
     : !isDesktop ? await confirmDialog(`نسخه‌ی ${ver(u.version)} نصب شود؟`, { ok: "نصب" })
     : await confirmDialog(`برای نصب نسخه‌ی ${ver(u.version)}، پنبه دوباره راه‌اندازی شود؟ با بستن پنبه هم نصب می‌شود.`, { ok: "راه‌اندازی دوباره" });
-  if (yes) (u.status === "available" ? downloadUpdate : installUpdate)();
-  return yes;
+  if (!yes) return false;
+  if (u.status === "available") downloadUpdate();
+  else void installUpdate().then((err) => { if (err) void alertDialog(`نسخه‌ی تازه نصب نشد: ${err}\nپنبه را از منوی سینی (خروج) ببندید و دوباره باز کنید.`); });
+  return true;
 }
 
 function Updates() {
