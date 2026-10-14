@@ -149,7 +149,7 @@ export async function start(s: Session) {
   await c.startClient({ threadSupport: true, lazyLoadMembers: true, initialSyncLimit: 30, filter: isHeadless ? headlessFilter(s.userId) : undefined });
   // a reload leaves our live-location beacons live with nothing watching or stopping them: turn them off
   // (not in the headless page: it shares the device with the app page, which may be sharing right now)
-  if (!isHeadless) await clearStaleBeacons(c);
+  if (!isHeadless) clearStaleBeacons(c);
   if (!shareLastSeen()) await setShareLastSeen(false);
   if (isNative) { // the app syncs in the background too: that mustn't show the user as online
     const away = () => { if (shareLastSeen()) void c.setSyncPresence(isHeadless || document.visibilityState === "hidden" ? SetPresence.Unavailable : undefined); };

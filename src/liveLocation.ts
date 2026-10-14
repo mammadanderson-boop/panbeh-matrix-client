@@ -5,7 +5,7 @@
 // Element) clients read the beacon from room state; this file only *sends* and exposes the
 // local state.
 import { useSyncExternalStore } from "react";
-import { M_BEACON, BeaconEvent, ContentHelpers, LocationAssetType, RoomStateEvent,
+import { M_BEACON, BeaconEvent, ClientEvent, ContentHelpers, LocationAssetType, RoomStateEvent, SyncState,
   type MatrixClient, type Room } from "matrix-js-sdk";
 import { alertDialog } from "./ui/dialog.tsx";
 
@@ -22,6 +22,16 @@ let sharings: Sharing[] = [];
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
 const subscribe = (f: () => void) => (subs.add(f), () => void subs.delete(f));
+
+// beacon_info is keyed by user, not device: remember which beacons this device started (roomId → event id),
+// so a reload turns off only those and not a share running on the user's phone
+const mineKey = (c: MatrixClient) => `panbeh.liveBeacons.${c.getSafeUserId()}`;
+const mine = (c: MatrixClient): Record<string, string> => { try { return JSON.parse(localStorage.getItem(mineKey(c)) ?? "{}"); } catch { return {}; } };
+function remember(c: MatrixClient, roomId: string, beaconId?: string) {
+  const m = mine(c);
+  if (beaconId) m[roomId] = beaconId; else delete m[roomId];
+  localStorage.setItem(mineKey(c), JSON.stringify(m));
+}
 
 export const useLiveLocation = () => useSyncExternalStore(subscribe, () => sharings);
 export const sharingIn = (roomId: string) => sharings.find((s) => s.roomId === roomId) ?? null;
@@ -59,6 +69,7 @@ export async function startSharing(c: MatrixClient, room: Room, duration: number
   const info = ContentHelpers.makeBeaconInfoContent(duration, true, "موقعیت زنده", LocationAssetType.Self, Date.now());
   const { event_id: beaconId } = await c.unstable_setLiveBeacon(roomId, info as never);
 
+  remember(c, roomId, beaconId);
   const s: Sharing = { roomId, beaconId, until, watchId: 0, timer: 0, lastBeat: 0 };
   const beat = (pos: GeolocationPosition | null) => {
     // watchPosition fires on every move, sometimes every second: at most one beat per BEAT_MS
@@ -83,6 +94,7 @@ async function extendSharing(c: MatrixClient, s: Sharing, duration: number) {
   const info = ContentHelpers.makeBeaconInfoContent(duration, true, "موقعیت زنده", LocationAssetType.Self, Date.now());
   const { event_id: beaconId } = await c.unstable_setLiveBeacon(s.roomId, info as never);
   s.beaconId = beaconId; // beats from now on reference the new state event
+  remember(c, s.roomId, beaconId);
   s.until = Date.now() + duration;
   clearTimeout(s.timer);
   s.timer = window.setTimeout(() => stopSharing(c, s.roomId), duration);
@@ -96,6 +108,7 @@ export async function stopSharing(c: MatrixClient, roomId: string) {
   if (!s) return;
   sharings = sharings.filter((x) => x.roomId !== roomId);
   emit();
+  remember(c, roomId);
   navigator.geolocation.clearWatch(s.watchId);
   clearTimeout(s.timer);
   const room = c.getRoom(roomId);
@@ -111,15 +124,23 @@ export async function stopAll(c: MatrixClient) {
   for (const s of [...sharings]) await stopSharing(c, s.roomId);
 }
 
-/** On boot: our beacons from a previous page load still look live but nothing is watching (or stopping) them, so turn them off. */
-export async function clearStaleBeacons(c: MatrixClient) {
-  for (const room of c.getRooms()) {
-    if (room.getMyMembership() !== "join") continue;
-    const prev = room.currentState.getStateEvents("m.beacon_info" as never, c.getSafeUserId());
-    if (!prev || !(prev.getContent() as { live?: boolean }).live) continue;
-    const timeout = (prev.getContent() as { timeout?: number }).timeout ?? 0;
-    await c.unstable_setLiveBeacon(room.roomId, ContentHelpers.makeBeaconInfoContent(timeout, false, "موقعیت زنده", LocationAssetType.Self, Date.now()) as never).catch(() => {});
-  }
+/** On boot: this device's beacons from a previous page load still look live but nothing is watching (or stopping)
+ *  them, so turn them off. Rooms only arrive with the first sync, which startClient doesn't wait for. */
+export function clearStaleBeacons(c: MatrixClient) {
+  if (!Object.keys(mine(c)).length) return;
+  const onSync = (state: SyncState) => {
+    if (state !== SyncState.Prepared) return;
+    c.off(ClientEvent.Sync, onSync);
+    for (const [roomId, beaconId] of Object.entries(mine(c))) {
+      if (sharingIn(roomId)) continue; // started again since boot
+      remember(c, roomId);
+      const prev = c.getRoom(roomId)?.currentState.getStateEvents("m.beacon_info" as never, c.getSafeUserId());
+      if (prev?.getId() !== beaconId || !(prev.getContent() as { live?: boolean }).live) continue; // replaced or already off
+      const timeout = (prev.getContent() as { timeout?: number }).timeout ?? 0;
+      void c.unstable_setLiveBeacon(roomId, ContentHelpers.makeBeaconInfoContent(timeout, false, "موقعیت زنده", LocationAssetType.Self, Date.now()) as never).catch(() => {});
+    }
+  };
+  c.on(ClientEvent.Sync, onSync);
 }
 
 /** Another device's or person's live share in `room`, as {name, lat, lon, ts} entries for the header line. */
