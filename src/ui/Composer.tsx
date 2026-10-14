@@ -5,12 +5,12 @@ import { getDraft, setDraft, showingDraft } from "../drafts.ts";
 import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages } from "../native.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
-import { clock, escRe, formatMessage, normalize, num, osmUrl, scheduleLabel, type Gif } from "../logic.ts";
+import { clock, escRe, formatMessage, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
 import { isMessage } from "../hooks.ts";
 import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
 import { EmojiPanel, EmoteImg } from "./Emoji.tsx";
-import { alertDialog, confirmDialog } from "./dialog.tsx";
+import { alertDialog } from "./dialog.tsx";
 import { isSendKey, loadPrefs } from "./Settings.tsx";
 import { reducedMotion, useExit } from "./useDismiss.ts";
 import { useLongPress } from "./useLongPress.ts";
@@ -55,7 +55,6 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const recording = !!rec;
   const recControl = useRef<RecControl | null>(null);
   const [recordMode, setRecordMode] = useState(() => loadPrefs().recordMode);
-  const [locating, setLocating] = useState(false);
   const [livePick, setLivePick] = useState(false);
   const [mapPick, setMapPick] = useState(false);
   const [emoji, setEmoji] = useState(false);
@@ -273,31 +272,16 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       albums.length || i ? undefined : caption, asFile, sendAt));
   }
 
-  function shareLocation() {
-    if (!navigator.geolocation) return alertDialog("این مرورگر موقعیت مکانی را پشتیبانی نمی‌کند.");
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(async (p) => {
-      setLocating(false);
-      const { latitude: lat, longitude: lon, accuracy } = p.coords;
-      const acc = Math.round(accuracy);
-      if (!(await confirmDialog(`موقعیت فعلی شما (با دقت حدود ${num(acc)} متر) ارسال شود؟`))) return;
-      sendLocation(+lat.toFixed(6), +lon.toFixed(6), LocationAssetType.Self, acc);
-    }, (e) => {
-      setLocating(false);
-      alertDialog(e.code === e.PERMISSION_DENIED ? "اجازه‌ی دسترسی به موقعیت مکانی داده نشد." : "موقعیت مکانی پیدا نشد.");
-    }, { enableHighAccuracy: true, timeout: 15_000 });
-  }
-
   /** The GPS position is the user (m.self, with its accuracy); a spot chosen on the map is a pin (m.pin). */
   function sendLocation(lat: number, lon: number, asset: LocationAssetType, acc?: number) {
     // body keeps a map link for clients that don't show locations
-    const content: Record<string, unknown> = ContentHelpers.makeLocationContent(`موقعیت مکانی ${osmUrl(lat, lon)}`, `geo:${lat},${lon}${acc ? `;u=${acc}` : ""}`, Date.now(), null, asset);
+    const content: Record<string, unknown> = ContentHelpers.makeLocationContent(`موقعیت مکانی ${neshanUrl(lat, lon)}`, `geo:${lat},${lon}${acc ? `;u=${acc}` : ""}`, Date.now(), null, asset);
     if (mode?.kind === "reply") content["m.relates_to"] = { "m.in_reply_to": { event_id: mode.ev.getId() } };
     setMode(null);
     client.sendMessage(room.roomId, threadId, content as never).catch((e) => alertDialog(errText(e)));
   }
 
-  /** عکس از گالری: on Android the gallery opens straight away (the system photo picker on 13+, the gallery app before);
+  /** عکس: on Android the gallery opens straight away (the system photo picker on 13+, the gallery app before);
    *  elsewhere a file dialog filtered to images. */
   async function pickPhotos() {
     if (isNative) {
@@ -421,7 +405,6 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
           <button className="icon-btn" aria-label="لغو" onClick={() => setMode(null)}><Icon name="close" /></button>
         </div>
       )}
-      {locating && <div className="composer-mode"><span className="spinner inline" /> در حال پیدا کردن موقعیت…</div>}
     </>
   );
 
@@ -469,14 +452,13 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                 <>
                   <div className="menu-backdrop" onClick={() => setMenu(false)} />
                   <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
-                    <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس از گالری</button>
                     {canCamera && <button role="menuitem" onClick={takePhoto}><Icon name="camera" /> دوربین</button>}
+                    <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس</button>
                     {isNative && <button role="menuitem" onClick={pasteClipboard}><Icon name="clipboard" /> چسباندن از کلیپ‌بورد</button>}
                     <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل</button>
+                    {/* one location entry: the map opens first, then it's a spot chosen on it, the GPS position or live sharing */}
+                    <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="location" /> موقعیت مکانی</button>
                     <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
-                    {!noGeo && <button role="menuitem" onClick={shareLocation}><Icon name="location" /> موقعیت مکانی</button>}
-                    <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="map" /> ارسال از نقشه</button>
-                    {!noGeo && room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) && <button role="menuitem" onClick={() => setLivePick(true)}><Icon name="location" /> اشتراک موقعیت زنده</button>}
                   </div>
                 </>
               )}
@@ -507,7 +489,9 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       {mapPick && (
         <Suspense fallback={null}>
           <MapPicker canLocate={!noGeo} onClose={() => setMapPick(false)}
-            onPick={(lat, lon) => { setMapPick(false); sendLocation(lat, lon, LocationAssetType.Pin); }} />
+            onPick={(lat, lon) => { setMapPick(false); sendLocation(lat, lon, LocationAssetType.Pin); }}
+            onPickSelf={(lat, lon, acc) => { setMapPick(false); sendLocation(lat, lon, LocationAssetType.Self, acc); }}
+            onLive={!noGeo && room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) ? () => { setMapPick(false); setLivePick(true); } : undefined} />
         </Suspense>
       )}
     </div>

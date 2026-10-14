@@ -209,7 +209,7 @@ export function parseGeoUri(uri: unknown) {
   return m ? { lat: +m[1], lon: +m[2], acc: m[3] ? +m[3] : undefined } : null;
 }
 
-export const osmUrl = (lat: number, lon: number) => `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}`;
+export const neshanUrl = (lat: number, lon: number) => `https://neshan.org/maps/@${lat},${lon},16z`;
 
 export type Vote = { sender: string; ts: number; answers: unknown };
 
