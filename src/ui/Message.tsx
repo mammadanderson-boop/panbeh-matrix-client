@@ -704,7 +704,7 @@ function LocationCard({ c }: { c: Content }) {
         <span className="location-links">
           {isNative ? <a href={neshanUrl(g.lat, g.lon)} onClick={geoClick(g.lat, g.lon, loc?.description)}>باز کردن در نقشه</a> : <>
             <a href={neshanUrl(g.lat, g.lon)} target="_blank" rel="noreferrer noopener">نشان</a>
-            <a href={`https://www.google.com/maps?q=${g.lat},${g.lon}`} target="_blank" rel="noreferrer noopener">Google Maps</a>
+            <a href={`https://www.google.com/maps?q=${g.lat},${g.lon}`} target="_blank" rel="noreferrer noopener">گوگل مپ</a>
           </>}
         </span>
       </span>

@@ -739,6 +739,7 @@ input[role="switch"]:checked::before { transform: translateX(-18px); }
 /* ---------- location ---------- */
 .file-row.location { padding-bottom: 16px; }
 .file-row span.location-links { display: flex; gap: 12px; font-size: 13px; }
+.file-row span.location-links a { color: inherit; font-weight: 600; text-decoration: none; } /* the bubble's text color: white on outgoing bubbles and in dark mode */
 
 /* ---------- map picker ---------- */
 .map-modal { width: min(560px, 100%); height: min(720px, 100%); }
