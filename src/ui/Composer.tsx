@@ -444,10 +444,9 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                     {canCamera && <button role="menuitem" onClick={takePhoto}><Icon name="camera" /> دوربین</button>}
                     <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس</button>
                     <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل</button>
-                    {/* one location entry: the map opens first, then it's the GPS position or a spot chosen on it */}
+                    {/* one location entry: the map opens first, then it's a spot chosen on it, the GPS position or live sharing */}
                     <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="location" /> موقعیت مکانی</button>
                     <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
-                    {!noGeo && room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) && <button role="menuitem" onClick={() => setLivePick(true)}><Icon name="location" /> اشتراک موقعیت زنده</button>}
                   </div>
                 </>
               )}
@@ -479,7 +478,8 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
         <Suspense fallback={null}>
           <MapPicker canLocate={!noGeo} onClose={() => setMapPick(false)}
             onPick={(lat, lon) => { setMapPick(false); sendLocation(lat, lon, LocationAssetType.Pin); }}
-            onPickSelf={(lat, lon, acc) => { setMapPick(false); sendLocation(lat, lon, LocationAssetType.Self, acc); }} />
+            onPickSelf={(lat, lon, acc) => { setMapPick(false); sendLocation(lat, lon, LocationAssetType.Self, acc); }}
+            onLive={!noGeo && room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) ? () => { setMapPick(false); setLivePick(true); } : undefined} />
         </Suspense>
       )}
     </div>

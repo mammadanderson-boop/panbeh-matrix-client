@@ -2,18 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Icon } from "../icons.tsx";
-import { alertDialog, confirmDialog } from "./dialog.tsx";
+import { alertDialog } from "./dialog.tsx";
 import { num } from "../logic.ts";
 
 /** Where the map opens before a GPS fix arrives (Tehran). */
 const TEHRAN: [number, number] = [35.6892, 51.389];
 
-/** Sending a location: either the GPS fix ("ارسال موقعیت من") or any spot on a map, Telegram-style: the pin
- *  stays in the middle and the map moves under it. Opens on the user when the position comes quickly enough
- *  (`canLocate`: not where there's no location source). */
-export function MapPicker({ canLocate, onClose, onPick, onPickSelf }: {
+/** Everything location, Telegram-style: any spot on a map (the pin stays in the middle and the map moves under it),
+ *  the GPS fix itself, or live sharing (`onLive`, where it's allowed). Opens on the user when the position comes
+ *  quickly enough (`canLocate`: not where there's no location source). */
+export function MapPicker({ canLocate, onClose, onPick, onPickSelf, onLive }: {
   canLocate: boolean; onClose: () => void; onPick: (lat: number, lon: number) => void;
-  onPickSelf?: (lat: number, lon: number, acc: number) => void;
+  onPickSelf: (lat: number, lon: number, acc: number) => void; onLive?: () => void;
 }) {
   const mapEl = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -21,7 +21,7 @@ export function MapPicker({ canLocate, onClose, onPick, onPickSelf }: {
   const moved = useRef(false); // the user picked a spot: a late GPS fix mustn't take the map away from it
   const [moving, setMoving] = useState(false);
   const [center, setCenter] = useState<L.LatLng>(L.latLng(TEHRAN));
-  const [locating, setLocating] = useState(false);
+  const [locating, setLocating] = useState(canLocate); // the fix at open starts right away
   const [fix, setFix] = useState<{ lat: number; lon: number; acc: number } | null>(null); // the last GPS fix, for "ارسال موقعیت من"
 
   /** The user's position: silently at open (the map just stays where it is), with an error on the button. */
@@ -41,13 +41,6 @@ export function MapPicker({ canLocate, onClose, onPick, onPickSelf }: {
       setLocating(false);
       if (!auto) alertDialog(e.code === e.PERMISSION_DENIED ? "اجازه‌ی دسترسی به موقعیت مکانی داده نشد." : "موقعیت مکانی پیدا نشد.");
     }, { enableHighAccuracy: true, timeout: 10_000 });
-  }
-
-  /** "ارسال موقعیت من": the GPS fix itself, not the pin; the confirm keeps the accuracy in sight. */
-  async function shareSelf() {
-    if (!fix || !onPickSelf) return;
-    if (!(await confirmDialog(`موقعیت فعلی شما (با دقت حدود ${num(fix.acc)} متر) ارسال شود؟`))) return;
-    onPickSelf(+fix.lat.toFixed(6), +fix.lon.toFixed(6), fix.acc);
   }
 
   useEffect(() => {
@@ -89,10 +82,26 @@ export function MapPicker({ canLocate, onClose, onPick, onPickSelf }: {
           {locating && <div className="map-locating"><span className="spinner inline" /> در حال پیدا کردن موقعیت…</div>}
         </div>
         <p className="muted">نقشه را بکشید تا نشانگر روی جای دلخواهتان بیفتد. <bdi dir="ltr">{lat.toFixed(5)}, {lon.toFixed(5)}</bdi></p>
+        {(canLocate || onLive) && (
+          <div className="map-options">
+            {/* the GPS fix itself, not the pin; its accuracy is in sight, so no confirm */}
+            {canLocate && (
+              <button disabled={!fix} onClick={() => fix && onPickSelf(+fix.lat.toFixed(6), +fix.lon.toFixed(6), fix.acc)}>
+                <Icon name="location" />
+                <span>ارسال موقعیت فعلی من<small>{fix ? `دقت حدود ${num(fix.acc)} متر` : locating ? "در حال پیدا کردن موقعیت…" : "موقعیت پیدا نشد؛ دکمه‌ی موقعیت روی نقشه را بزنید"}</small></span>
+              </button>
+            )}
+            {onLive && (
+              <button onClick={onLive}>
+                <Icon name="clock" />
+                <span>اشتراک موقعیت زنده<small>برای مدتی که انتخاب می‌کنید</small></span>
+              </button>
+            )}
+          </div>
+        )}
         <div className="modal-actions">
           <button onClick={onClose}>لغو</button>
-          {canLocate && onPickSelf && <button disabled={!fix} onClick={shareSelf}>ارسال موقعیت من</button>}
-          <button className="primary" onClick={() => onPick(lat, lon)}>ارسال موقعیت</button>
+          <button className="primary" onClick={() => onPick(lat, lon)}>ارسال این نقطه</button>
         </div>
       </div>
     </div>

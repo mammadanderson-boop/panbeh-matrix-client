@@ -751,6 +751,13 @@ input[role="switch"]:checked::before { transform: translateX(-18px); }
 .map-pin.lifted { transform: translateY(-8px); }
 .map-locate { position: absolute; inset-inline-end: 10px; bottom: 28px; z-index: 1000; background: var(--panel); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
 .map-locate:hover { background: var(--panel); color: var(--text); }
+.map-options { display: grid; margin: -4px -8px 0; }
+.map-options button { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 10px; text-align: start; }
+.map-options button:hover:not(:disabled) { background: var(--hover); }
+.map-options button:disabled { opacity: 0.6; cursor: default; }
+.map-options svg { flex: none; color: var(--accent); }
+.map-options span { display: grid; }
+.map-options small { color: var(--muted); font-size: 13px; }
 .map-locating { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; align-items: center; padding: 6px 12px; border-radius: 999px; background: var(--panel); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); white-space: nowrap; }
 
 /* ---------- pinned ---------- */
