@@ -59,7 +59,8 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 
 /** Native side of src/native.ts for the app's own WebView. */
-@CapacitorPlugin(name = "Panbeh", permissions = @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = "notifications"))
+@CapacitorPlugin(name = "Panbeh", permissions = { @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = "notifications"),
+    @Permission(strings = { Manifest.permission.CAMERA }, alias = "camera") })
 public class PanbehPlugin extends Plugin {
     /** The app's WebView, for call actions from CallReceiver. */
     static PanbehPlugin instance;
@@ -298,6 +299,59 @@ public class PanbehPlugin extends Plugin {
             String type = cr.getType(u);
             files.put(new JSObject().put("uri", u.toString()).put("name", name == null ? "photo.jpg" : name).put("type", type == null ? "" : type));
         }
+        call.resolve(new JSObject().put("files", files));
+    }
+
+    // ---------- camera: capture a photo to send ----------
+
+    /** The full-size capture is written into the cache under a fixed name (a later capture overwrites it). */
+    private static File cameraFile(Context ctx) { return new File(ctx.getCacheDir(), "camera.jpg"); }
+
+    /** The camera app, to take a photo to send: ACTION_IMAGE_CAPTURE with a cache file as the output, so the full-size
+     *  picture comes back (a thumbnail would be all the intent gives otherwise). Resolves { files: [{ uri, name, type }] }
+     *  — empty when backed out. */
+    @PluginMethod
+    public void pickCamera(PluginCall call) {
+        // the app declares CAMERA (for calls), so the intent is only allowed once the permission is granted
+        if (getPermissionState("camera") != PermissionState.GRANTED) {
+            requestPermissionForAlias("camera", call, "cameraAllowed");
+            return;
+        }
+        startCapture(call);
+    }
+
+    @PermissionCallback
+    private void cameraAllowed(PluginCall call) {
+        if (getPermissionState("camera") == PermissionState.GRANTED) startCapture(call);
+        else call.reject("no camera");
+    }
+
+    private void startCapture(PluginCall call) {
+        Context ctx = getContext();
+        File f = cameraFile(ctx);
+        f.delete(); // a previous capture that was never sent
+        Uri uri = FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".fileprovider", f);
+        Intent i = new Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, uri)
+            .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            startActivityForResult(call, i, "cameraDone");
+        } catch (RuntimeException e) { // no camera app on the device
+            call.reject("no camera");
+        }
+    }
+
+    /** The capture: back to the page as a provider URI it reads like a picked photo (the file stays for the send). */
+    @ActivityCallback
+    private void cameraDone(PluginCall call, ActivityResult result) {
+        File f = cameraFile(getContext());
+        if (result.getResultCode() != Activity.RESULT_OK || !f.exists() || f.length() == 0) {
+            f.delete();
+            call.resolve(new JSObject().put("files", new JSArray()));
+            return;
+        }
+        JSArray files = new JSArray();
+        files.put(new JSObject().put("uri", FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f).toString())
+            .put("name", f.getName()).put("type", "image/jpeg"));
         call.resolve(new JSObject().put("files", files));
     }
 

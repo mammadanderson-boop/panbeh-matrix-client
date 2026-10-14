@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type 
 import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
 import { getDraft, setDraft, showingDraft } from "../drafts.ts";
-import { isNative, pickGalleryPhotos } from "../native.ts";
+import { isNative, captureCameraPhoto, pickGalleryPhotos } from "../native.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
 import { clock, escRe, formatMessage, normalize, num, osmUrl, scheduleLabel, type Gif } from "../logic.ts";
@@ -67,6 +67,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   }, []);
   const fileInput = useRef<HTMLInputElement>(null);
   const imgInput = useRef<HTMLInputElement>(null);
+  const camInput = useRef<HTMLInputElement>(null);
   const typingAt = useRef(0);
   const stash = useRef(""); // the draft, put aside while editing a message
   const editing = useRef(false);
@@ -290,6 +291,16 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     imgInput.current?.click();
   }
 
+  /** دوربین: on Android the camera app opens straight away and the full-size capture lands in the send dialog;
+   *  on mobile web the capture input does it (the item is hidden on desktop, which ignores capture). */
+  async function takePhoto() {
+    if (isNative) {
+      const f = await captureCameraPhoto();
+      if (f) { if (f.length) setFiles((x) => [...x, ...f]); return; }
+    }
+    camInput.current?.click();
+  }
+
   function onKey(e: KeyboardEvent) {
     if (suggestions.length) {
       const i = sel % suggestions.length;
@@ -377,6 +388,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
 
   const canRecord = !text.trim() && mode?.kind !== "edit" && "MediaRecorder" in window;
   const attachAway = !!text.trim() || mode?.kind === "edit";
+  const canCamera = isNative || matchMedia("(pointer: coarse)").matches; // a desktop file dialog can't take a photo
 
   const bar = (
     <>
@@ -432,12 +444,14 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
               {/* outside the menu: picking closes the menu, and an unmounted input never gets its change event */}
               <input ref={fileInput} type="file" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
               <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
+              <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
               <button className="icon-btn" title="پیوست" aria-label="پیوست" aria-expanded={menu} aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined} onClick={() => setMenu((m) => !m)}><Icon name="attach" /></button>
               {menuShown && (
                 <>
                   <div className="menu-backdrop" onClick={() => setMenu(false)} />
                   <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
                     <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس از گالری</button>
+                    {canCamera && <button role="menuitem" onClick={takePhoto}><Icon name="camera" /> دوربین</button>}
                     <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل</button>
                     <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
                     {!noGeo && <button role="menuitem" onClick={shareLocation}><Icon name="location" /> موقعیت مکانی</button>}

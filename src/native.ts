@@ -49,6 +49,7 @@ interface PanbehPlugin {
   saveAbort(p: { id: string }): Promise<void>;
   takeLaunchShare(): Promise<Partial<Shared>>;
   pickImages(p: { multiple: boolean }): Promise<{ files: { uri: string; name: string; type: string }[] }>;
+  pickCamera(): Promise<{ files: { uri: string; name: string; type: string }[] }>;
   biometricAvailable(): Promise<{ available: boolean }>;
   biometricUnlock(p: { title: string; cancel: string }): Promise<{ ok: boolean }>;
   metered(): Promise<{ metered: boolean }>;
@@ -302,18 +303,37 @@ export function onShare(f: (text: string, files: File[]) => void) {
   return () => { h.then((x) => x.remove()); };
 }
 
+/** A photo from native (picked from the gallery or captured by the camera): a content:// or file:// URI read through
+ *  Capacitor's bridge, like shared files. */
+const uriToFile = async (x: { uri: string; name: string; type: string }, name?: string) => {
+  const b = await (await fetch(Capacitor.convertFileSrc(x.uri))).blob();
+  return new File([b], name || x.name, { type: x.type || b.type });
+};
+
 /** The gallery, opened straight from the picker like a messenger app: the picked photos come back as content:// URIs,
  *  read through Capacitor's bridge like shared files. null = the picker couldn't be opened (the caller falls back). */
 export async function pickGalleryPhotos(multiple = true): Promise<File[] | null> {
   if (!isNative || headless) return null;
   try {
     const r = await plugin.pickImages({ multiple });
-    return await Promise.all((r.files ?? []).map(async (x) => {
-      const b = await (await fetch(Capacitor.convertFileSrc(x.uri))).blob();
-      return new File([b], x.name, { type: x.type || b.type });
-    }));
+    return await Promise.all((r.files ?? []).map((x) => uriToFile(x)));
   } catch (e) {
     console.error("gallery pick failed", e);
+    return null;
+  }
+}
+
+/** The camera, opened straight from the app like a messenger: the full-size capture comes back from the cache
+ *  (the next capture overwrites it), named like a photo from the gallery. null = the camera couldn't be opened. */
+export async function captureCameraPhoto(): Promise<File[] | null> {
+  if (!isNative || headless) return null;
+  try {
+    const r = await plugin.pickCamera();
+    const d = new Date(), p = (n: number) => String(n).padStart(2, "0");
+    const name = `IMG_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.jpg`;
+    return await Promise.all((r.files ?? []).map((x) => uriToFile(x, name)));
+  } catch (e) {
+    console.error("camera capture failed", e);
     return null;
   }
 }
