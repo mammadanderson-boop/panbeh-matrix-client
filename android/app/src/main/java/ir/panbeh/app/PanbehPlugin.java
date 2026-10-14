@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.NotificationManager;
 import android.content.ActivityNotFoundException;
+import android.content.ClipboardManager;
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -352,6 +353,40 @@ public class PanbehPlugin extends Plugin {
         JSArray files = new JSArray();
         files.put(new JSObject().put("uri", FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f).toString())
             .put("name", f.getName()).put("type", "image/jpeg"));
+        call.resolve(new JSObject().put("files", files));
+    }
+
+    // ---------- clipboard: sending a copied image ----------
+
+    /** The image on the clipboard (a screenshot, "copy image" in another app), as content:// URIs the page reads like
+     *  picked photos: the WebView carries no image on the paste event, so this is how a copied image gets sent.
+     *  Resolves { files: [{ uri, name, type }] } — empty when the clipboard holds no image. */
+    @PluginMethod
+    public void clipboardImage(PluginCall call) {
+        JSArray files = new JSArray();
+        try {
+            ClipboardManager cm = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipData clip = cm == null ? null : cm.getPrimaryClip();
+            ContentResolver cr = getContext().getContentResolver();
+            if (clip != null) for (int k = 0; k < clip.getItemCount(); k++) {
+                ClipData.Item it = clip.getItemAt(k);
+                Uri u = it.getUri();
+                if (u == null && it.getIntent() != null) u = it.getIntent().getParcelableExtra(Intent.EXTRA_STREAM); // "Copy" that carries a stream
+                if (u == null) continue;
+                String type = cr.getType(u);
+                if (type == null || !type.startsWith("image/")) continue;
+                String name = u.getLastPathSegment();
+                try (Cursor c = cr.query(u, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+                    if (c != null && c.moveToFirst() && c.getString(0) != null) name = c.getString(0);
+                } catch (RuntimeException e) {
+                    // no name column: keep the path segment
+                }
+                if (name == null || name.indexOf('.') < 0) name = "clipboard." + (type.equals("image/jpeg") ? "jpg" : type.substring(6));
+                files.put(new JSObject().put("uri", u.toString()).put("name", name).put("type", type));
+            }
+        } catch (RuntimeException e) {
+            // a URI we can't read (some providers, some OEMs): it's sent as nothing
+        }
         call.resolve(new JSObject().put("files", files));
     }
 
