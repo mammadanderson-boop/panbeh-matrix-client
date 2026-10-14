@@ -19,7 +19,7 @@ type Bridge = {
     auto(on?: boolean): Promise<boolean>;
     check(): Promise<void>;
     download(): Promise<void>;
-    install(): Promise<void>;
+    install(): Promise<string | void>; // why it didn't install, if it didn't
   };
 };
 /** The desktop updater, from desktop/main.cjs. */
@@ -61,7 +61,7 @@ export const getAutoUpdate = () => updater?.auto() ?? Promise.resolve(false);
 export const setAutoUpdate = (on: boolean) => updater?.auto(on) ?? Promise.resolve(false);
 export const checkUpdate = () => void updater?.check();
 export const downloadUpdate = () => void updater?.download();
-export const installUpdate = () => void updater?.install();
+export const installUpdate = () => updater?.install() ?? Promise.resolve();
 /** The app's version: the desktop app's, else the build's ("" in dev). */
 export const appVersion = () => bridge?.info().then((i) => i.version, () => "") ?? Promise.resolve((import.meta.env.VITE_APP_VERSION ?? "").replace(/^v/, ""));
 

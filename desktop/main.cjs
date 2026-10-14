@@ -241,7 +241,19 @@ ipcMain.handle("update-auto", (_e, on) => {
 });
 ipcMain.handle("update-check", () => { if (updater && update.status !== "downloading" && update.status !== "ready") updater.checkForUpdates().catch(() => {}); });
 ipcMain.handle("update-download", () => downloadUpdate());
-ipcMain.handle("update-install", () => { if (update.status === "ready") { quitting = true; updater?.quitAndInstall(); } });
+// quitAndInstall is sync (Linux: pkexec waits for the password); a failure only arrives as "error" and the app stays open,
+// so hand it to the page instead of doing nothing
+ipcMain.handle("update-install", () => {
+  if (update.status !== "ready" || !updater) return;
+  let failed;
+  const onError = (e) => { failed = String(e?.message ?? e); };
+  updater.once("error", onError);
+  quitting = true;
+  updater.quitAndInstall();
+  updater.off("error", onError);
+  if (failed) quitting = false; // still running: closing the window hides it again
+  return failed;
+});
 
 // ---------- app ----------
 
