@@ -334,6 +334,9 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(allowed.has(perm) && ours(wc.getURL())));
   session.defaultSession.setPermissionCheckHandler((wc, perm) => allowed.has(perm) && ours(wc?.getURL()));
   session.defaultSession.on("will-download", onDownload);
+  // OpenStreetMap's tile servers answer "Access blocked" without a Referer (osm.wiki/Blocked), and app:// pages send none
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ["https://tile.openstreetmap.org/*"] }, (d, cb) =>
+    cb({ requestHeaders: { ...d.requestHeaders, Referer: require("../package.json").homepage + "/" } }));
   // getDisplayMedia: macOS 15+ shows the system's picker (useSystemPicker) and Wayland's portal picks inside getSources;
   // elsewhere (Windows, X11, older macOS) the page shows our own picker of screens and windows
   const wayland = process.platform === "linux" && process.env.XDG_SESSION_TYPE === "wayland";
