@@ -315,9 +315,9 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(ok ? file : path.join(DIST, "index.html")).toString());
   });
 
-  // mic/camera for voice messages and calls, screen sharing, notifications; only for the app itself
+  // mic/camera for voice messages and calls, screen sharing, notifications, location; only for the app itself
   const ours = (url) => !!url && (url.startsWith(ORIGIN) || (!!DEV_URL && url.startsWith(DEV_URL)));
-  const allowed = new Set(["media", "display-capture", "notifications", "clipboard-sanitized-write", "fullscreen"]);
+  const allowed = new Set(["media", "display-capture", "notifications", "clipboard-sanitized-write", "fullscreen", "geolocation"]);
   const { session, desktopCapturer } = require("electron");
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(allowed.has(perm) && ours(wc.getURL())));
   session.defaultSession.setPermissionCheckHandler((wc, perm) => allowed.has(perm) && ours(wc?.getURL()));

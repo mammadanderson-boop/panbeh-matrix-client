@@ -14,9 +14,12 @@ import { reducedMotion, useExit } from "./useDismiss.ts";
 import { useLongPress } from "./useLongPress.ts";
 import { SchedulePicker, ScheduledList, useScheduled } from "./Scheduled.tsx";
 import { DURATIONS, sharingIn, startSharing, stopSharing } from "../liveLocation.ts";
+import { isDesktop } from "../desktop.ts";
 
 export type Mode = { kind: "reply" | "edit"; ev: MatrixEvent } | null;
 const MEDIA = ["m.image", "m.video", "m.file"];
+// Chromium on Linux has no system location source, only Google's network service, which needs an API key Electron doesn't ship: hide location there
+const noGeo = isDesktop && navigator.userAgent.includes("Linux");
 export const EDITABLE = ["m.text", "m.emote", "m.notice", ...MEDIA];
 /** A media message's caption (MSC2530): body differs from filename; otherwise body is just the name. */
 export const captionOf = (c: IContent): string => (c.filename && c.body !== c.filename ? c.body ?? "" : "");
@@ -420,8 +423,8 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                   <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
                     <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل یا عکس</button>
                     <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
-                    <button role="menuitem" onClick={shareLocation}><Icon name="location" /> موقعیت مکانی</button>
-                    {room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) && <button role="menuitem" onClick={() => setLivePick(true)}><Icon name="location" /> اشتراک موقعیت زنده</button>}
+                    {!noGeo && <button role="menuitem" onClick={shareLocation}><Icon name="location" /> موقعیت مکانی</button>}
+                    {!noGeo && room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) && <button role="menuitem" onClick={() => setLivePick(true)}><Icon name="location" /> اشتراک موقعیت زنده</button>}
                   </div>
                 </>
               )}
@@ -544,6 +547,7 @@ function LiveLocationPicker({ room, onClose }: { room: Room; onClose: () => void
   const active = sharingIn(room.roomId);
   const pick = (ms: number) => {
     onClose();
+    if (!active) toast("در حال پیدا کردن موقعیت…"); // a first GPS fix can take a while
     startSharing(client, room, ms).then(
       () => toast(active ? "اشتراک موقعیت زنده تمدید شد" : "اشتراک موقعیت زنده آغاز شد"),
       (e) => alertDialog(errText(e)),
