@@ -12,6 +12,8 @@ import { errText, me, parsePoll, Sheet } from "./common.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 
 const MAX_ANSWERS = 20;
+// ponytail: Matrix has no anonymous polls; votes stay signed events, so this only asks clients (ours) not to show names
+const ANONYMOUS = "ir.panbeh.poll.anonymous";
 
 // Poll.getResponses() resolves to undefined if a fetch is already running (e.g. the row remounted while scrolling),
 // so every PollBody for a poll shares the first call's promise
@@ -32,6 +34,7 @@ export function PollForm({ room, threadId, edit, onClose }: { room: Room; thread
   const [answers, setAnswers] = useState(old ? old.answers.map((a) => a.text) : ["", ""]);
   const [multi, setMulti] = useState((old?.maxSelections ?? 1) > 1);
   const [hidden, setHidden] = useState(!!old && M_POLL_KIND_UNDISCLOSED.matches(old.rawKind));
+  const [anonymous, setAnonymous] = useState(!!edit?.getContent()[ANONYMOUS]);
   const [busy, setBusy] = useState(false);
   const opts = answers.map((a) => a.trim()).filter(Boolean);
 
@@ -39,7 +42,7 @@ export function PollForm({ room, threadId, edit, onClose }: { room: Room; thread
     e.preventDefault();
     setBusy(true);
     const kind = (hidden ? M_POLL_KIND_UNDISCLOSED : M_POLL_KIND_DISCLOSED).name;
-    const content = PollStartEvent.from(question.trim(), opts, kind, multi ? opts.length : 1).serialize().content;
+    const content = { ...PollStartEvent.from(question.trim(), opts, kind, multi ? opts.length : 1).serialize().content, ...(anonymous && { [ANONYMOUS]: true }) };
     try {
       if (edit) await client.sendEvent(room.roomId, M_POLL_START.name as never, {
         ...content, "m.new_content": content, "m.relates_to": { rel_type: "m.replace", event_id: edit.getId()! },
@@ -73,6 +76,8 @@ export function PollForm({ room, threadId, edit, onClose }: { room: Room; thread
           <input type="checkbox" role="switch" checked={multi} onChange={(e) => setMulti(e.target.checked)} /></label>
         <label className="switch-row"><span>نتایج پس از پایان<small>تا پایان نظرسنجی، کسی نتیجه را نمی‌بیند</small></span>
           <input type="checkbox" role="switch" checked={hidden} onChange={(e) => setHidden(e.target.checked)} /></label>
+        <label className="switch-row"><span>ناشناس<small>نام رأی‌دهندگان نشان داده نمی‌شود؛ برنامه‌های دیگر ماتریکس ممکن است آن را نشان دهند</small></span>
+          <input type="checkbox" role="switch" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} /></label>
         <button className="primary" disabled={busy || !question.trim() || opts.length < 2}>{edit ? "ذخیره" : "ارسال نظرسنجی"}</button>
       </form>
     </Sheet>
@@ -100,6 +105,7 @@ export function PollBody({ ev, room }: { ev: MatrixEvent; room: Room }) {
   const mine = pending && pending.at === votes.length ? pending.answers : picks.get(me()) ?? [];
   const ended = !!poll?.isEnded;
   const undisclosed = M_POLL_KIND_UNDISCLOSED.matches(p.rawKind);
+  const anonymous = !!ev.getContent()[ANONYMOUS];
   const results = ended || (!undisclosed && mine.length > 0);
   const total = picks.size;
   const top = Math.max(...ids.map((id) => voters.get(id)!.length));
@@ -128,7 +134,7 @@ export function PollBody({ ev, room }: { ev: MatrixEvent; room: Room }) {
     <div className="poll" onClick={(e) => e.stopPropagation()}>
       <b className="poll-q" dir="auto">{p.question.text}</b>
       <small className="poll-kind">
-        {ended ? "نظرسنجی پایان‌یافته" : [undisclosed ? "نتایج پس از پایان" : "نظرسنجی", max > 1 && "چند گزینه‌ای"].filter(Boolean).join(" · ")}
+        {ended ? "نظرسنجی پایان‌یافته" : [undisclosed ? "نتایج پس از پایان" : "نظرسنجی", anonymous && "ناشناس", max > 1 && "چند گزینه‌ای"].filter(Boolean).join(" · ")}
       </small>
       {p.answers.map((a) => {
         const who = voters.get(a.id)!;
@@ -136,7 +142,7 @@ export function PollBody({ ev, room }: { ev: MatrixEvent; room: Room }) {
         const on = mine.includes(a.id);
         return (
           <button key={a.id} className={"poll-opt" + (on ? " on" : "") + (ended && who.length && who.length === top ? " win" : "")}
-            disabled={ended || !poll} onClick={() => vote(a.id)} title={results && who.length ? who.map(name).join("، ") : undefined}>
+            disabled={ended || !poll} onClick={() => vote(a.id)} title={results && !anonymous && who.length ? who.map(name).join("، ") : undefined}>
             <span className={"poll-mark" + (max > 1 ? " square" : "")}>{on && <Icon name="check" size={13} />}</span>
             <span className="poll-text" dir="auto">{a.text}</span>
             {results && <span className="poll-pct">{num(pct)}٪</span>}
