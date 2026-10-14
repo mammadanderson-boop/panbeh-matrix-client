@@ -177,7 +177,7 @@ export function Settings({ start = "main", security, onClose, onSecurityChange }
 
     if (v === "account") return page("حساب", ACCOUNT.map(([v, icon, label, hint]) => <Row key={v} icon={icon} label={label} hint={hint} onClick={() => setView(v)} />));
 
-    if (v === "app") return page("برنامه", <>
+    if (v === "app") return page("برنامه و به‌روزرسانی", <>
       {isDesktop && <Autostart />}
       {canUpdate ? <Updates /> : <p className="muted">پنبه <span dir="ltr">{VERSION}</span></p>}
       <h3>گزینه‌های توسعه‌دهنده</h3>
@@ -209,7 +209,7 @@ export function Settings({ start = "main", security, onClose, onSecurityChange }
         hint={security === "unlock" ? "این دستگاه تأیید نشده است" : security === "setup" ? "بازیابی رمزنگاری راه‌اندازی نشده است" : "قفل برنامه، رمزنگاری، دستگاه‌ها"} onClick={() => setView("privacy")} />
       <Row icon="download" label="داده و حافظه" hint="دانلود خودکار، حافظه، کیفیت ارسال" onClick={() => setView("data")} />
       <Row icon="user" label="حساب" hint="پیوند من، رمز عبور" onClick={() => setView("account")} />
-      <Row icon="info" label="برنامه" hint={newVersion ? `نسخه‌ی تازه‌ی ${ver(u.version)} آمده است` : `پنبه ${ver(VERSION.replace(/^v/, ""))}`} onClick={() => setView("app")} />
+      <Row icon="info" label="برنامه و به‌روزرسانی" hint={newVersion ? `نسخه‌ی تازه‌ی ${ver(u.version)} آمده است` : `پنبه ${ver(VERSION.replace(/^v/, ""))}`} onClick={() => setView("app")} />
 
       <button className="danger" onClick={() => confirmDialog("از این دستگاه خارج می‌شوید؟", { danger: true }).then((y) => y && void logout())}>خروج از این حساب</button>
     </>);

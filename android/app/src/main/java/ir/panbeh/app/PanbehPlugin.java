@@ -25,6 +25,7 @@ import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.Base64;
+import android.webkit.MimeTypeMap;
 import android.webkit.WebView;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -35,6 +36,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -399,6 +401,9 @@ public class PanbehPlugin extends Plugin {
     @PluginMethod
     public void saveOpen(PluginCall call) {
         String name = call.getString("name", "file"), mime = call.getString("mime", "application/octet-stream");
+        // the name's extension decides the type: given another one (a sender's wrong mimetype), Android appends its own (photo.jpg.txt)
+        String byName = MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substring(name.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT));
+        if (name.contains(".") && byName != null) mime = byName;
         if (call.getBoolean("ask", false)) {
             Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(mime).putExtra(Intent.EXTRA_TITLE, name);
             startActivityForResult(call, i, "savePicked");
