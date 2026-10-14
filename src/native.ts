@@ -48,6 +48,7 @@ interface PanbehPlugin {
   openFile(p: { uri: string; mime: string }): Promise<void>;
   saveAbort(p: { id: string }): Promise<void>;
   takeLaunchShare(): Promise<Partial<Shared>>;
+  pickImages(p: { multiple: boolean }): Promise<{ files: { uri: string; name: string; type: string }[] }>;
   biometricAvailable(): Promise<{ available: boolean }>;
   biometricUnlock(p: { title: string; cancel: string }): Promise<{ ok: boolean }>;
   metered(): Promise<{ metered: boolean }>;
@@ -299,6 +300,22 @@ export function onShare(f: (text: string, files: File[]) => void) {
   plugin.takeLaunchShare().then(take).catch(fail);
   const h = plugin.addListener("share", (d) => void take(d).catch(fail));
   return () => { h.then((x) => x.remove()); };
+}
+
+/** The gallery, opened straight from the picker like a messenger app: the picked photos come back as content:// URIs,
+ *  read through Capacitor's bridge like shared files. null = the picker couldn't be opened (the caller falls back). */
+export async function pickGalleryPhotos(multiple = true): Promise<File[] | null> {
+  if (!isNative || headless) return null;
+  try {
+    const r = await plugin.pickImages({ multiple });
+    return await Promise.all((r.files ?? []).map(async (x) => {
+      const b = await (await fetch(Capacitor.convertFileSrc(x.uri))).blob();
+      return new File([b], x.name, { type: x.type || b.type });
+    }));
+  } catch (e) {
+    console.error("gallery pick failed", e);
+    return null;
+  }
 }
 
 // ---------- updates: the newest v* GitHub release's APK, handed to Android's installer (it asks; no silent install) ----------

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type 
 import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
 import { getDraft, setDraft, showingDraft } from "../drafts.ts";
+import { isNative, pickGalleryPhotos } from "../native.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
 import { clock, escRe, formatMessage, normalize, num, osmUrl, scheduleLabel, type Gif } from "../logic.ts";
@@ -65,6 +66,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     return () => { ro.disconnect(); host.style.removeProperty("--composer-h"); };
   }, []);
   const fileInput = useRef<HTMLInputElement>(null);
+  const imgInput = useRef<HTMLInputElement>(null);
   const typingAt = useRef(0);
   const stash = useRef(""); // the draft, put aside while editing a message
   const editing = useRef(false);
@@ -278,6 +280,16 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     }, { enableHighAccuracy: true, timeout: 15_000 });
   }
 
+  /** عکس از گالری: on Android the gallery opens straight away (the system photo picker on 13+, the gallery app before);
+   *  elsewhere a file dialog filtered to images. */
+  async function pickPhotos() {
+    if (isNative) {
+      const f = await pickGalleryPhotos();
+      if (f) { if (f.length) setFiles((x) => [...x, ...f]); return; }
+    }
+    imgInput.current?.click();
+  }
+
   function onKey(e: KeyboardEvent) {
     if (suggestions.length) {
       const i = sel % suggestions.length;
@@ -419,12 +431,14 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
             <div className={"attach" + (attachAway ? " away" : "")}>
               {/* outside the menu: picking closes the menu, and an unmounted input never gets its change event */}
               <input ref={fileInput} type="file" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
+              <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
               <button className="icon-btn" title="پیوست" aria-label="پیوست" aria-expanded={menu} aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined} onClick={() => setMenu((m) => !m)}><Icon name="attach" /></button>
               {menuShown && (
                 <>
                   <div className="menu-backdrop" onClick={() => setMenu(false)} />
                   <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
-                    <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل یا عکس</button>
+                    <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس از گالری</button>
+                    <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل</button>
                     <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
                     {!noGeo && <button role="menuitem" onClick={shareLocation}><Icon name="location" /> موقعیت مکانی</button>}
                     {!noGeo && room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) && <button role="menuitem" onClick={() => setLivePick(true)}><Icon name="location" /> اشتراک موقعیت زنده</button>}
