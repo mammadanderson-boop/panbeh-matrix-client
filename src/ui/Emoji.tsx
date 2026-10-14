@@ -19,6 +19,7 @@ const GROUPS: [number, string, string][] = [
   [5, "✈️", "سفر و مکان‌ها"], [6, "⚽", "فعالیت‌ها"], [7, "💡", "اشیا"], [8, "❤️", "نمادها"], [9, "🏳️", "پرچم‌ها"],
 ];
 
+const IRAN = "🇮🇷", ISRAEL = "🇮🇱";
 const strip = (s: string) => s.replace(/️/g, ""); // CLDR keys drop the emoji variation selector
 let data: Promise<Map<number, Emoji[]>> | null = null;
 
@@ -28,12 +29,14 @@ function loadEmoji() {
     for (const [k, v] of Object.entries(fa.annotations.annotations)) names.set(strip(k), v as never);
     const groups = new Map<number, Emoji[]>();
     for (const e of en.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
-      if (e.group == null || e.group === 2) continue; // no group = bare regional indicators
+      if (e.group == null || e.group === 2 || e.unicode === ISRAEL) continue; // no group = bare regional indicators
       const f = names.get(strip(e.unicode));
       const name = f?.tts?.[0] ?? e.label;
       if (!groups.has(e.group)) groups.set(e.group, []);
       groups.get(e.group)!.push({ u: e.unicode, name, search: normalize([name, ...(f?.default ?? []), e.label, ...(e.tags ?? [])].join(" ")) });
     }
+    const flags = groups.get(9) ?? [], ir = flags.findIndex((e) => e.u === IRAN);
+    if (ir > 0) flags.unshift(...flags.splice(ir, 1));
     return groups;
   });
   data.catch(() => { data = null; }); // retry next time the panel opens
