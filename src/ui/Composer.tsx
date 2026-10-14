@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type ClipboardEvent, type 
 import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
 import { getDraft, setDraft, showingDraft } from "../drafts.ts";
-import { isNative, captureCameraPhoto, pickGalleryPhotos } from "../native.ts";
+import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages } from "../native.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
 import { clock, escRe, formatMessage, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
@@ -28,6 +28,14 @@ const noGeo = isDesktop && navigator.userAgent.includes("Linux");
 export const EDITABLE = ["m.text", "m.emote", "m.notice", ...MEDIA];
 /** A media message's caption (MSC2530): body differs from filename; otherwise body is just the name. */
 export const captionOf = (c: IContent): string => (c.filename && c.body !== c.filename ? c.body ?? "" : "");
+
+/** Files pasted into a composer box. On Android the WebView hands the paste event no image (it stays on the system
+ *  clipboard as a content:// URI), so the native side reads it off the clipboard like a picked photo. */
+function pasteFiles(e: ClipboardEvent, setFiles: (f: (x: File[]) => File[]) => void) {
+  const f = [...e.clipboardData.files];
+  if (f.length) { e.preventDefault(); setFiles((x) => [...x, ...f]); return; }
+  if (isNative) clipboardImages().then((g) => g?.length && setFiles((x) => [...x, ...g]));
+}
 
 const LOCK_AT = 60, CANCEL_AT = 100; // px the held finger slides up to lock, sideways to cancel
 
@@ -293,6 +301,14 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     camInput.current?.click();
   }
 
+  /** چسباندن از کلیپ‌بورد: the image copied in another app. Android's WebView hides it from the paste event, so it's
+   *  read straight off the clipboard through the plugin; anything else there is nothing to send. */
+  async function pasteClipboard() {
+    const f = await clipboardImages();
+    if (f?.length) setFiles((x) => [...x, ...f]);
+    else toast("عکسی در کلیپ‌بورد نیست");
+  }
+
   function onKey(e: KeyboardEvent) {
     if (suggestions.length) {
       const i = sel % suggestions.length;
@@ -334,11 +350,6 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     client.sendMessage(room.roomId, threadId, content as never).catch((e) => alertDialog(errText(e)));
     setMode(null);
   }
-
-  const onPaste = (e: ClipboardEvent) => {
-    const f = [...e.clipboardData.files];
-    if (f.length) { e.preventDefault(); setFiles((x) => [...x, ...f]); }
-  };
 
   function recorded(v?: Voice) {
     recControl.current = null;
@@ -443,6 +454,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                   <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
                     {canCamera && <button role="menuitem" onClick={takePhoto}><Icon name="camera" /> دوربین</button>}
                     <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس</button>
+                    {isNative && <button role="menuitem" onClick={pasteClipboard}><Icon name="clipboard" /> چسباندن از کلیپ‌بورد</button>}
                     <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل</button>
                     {/* one location entry: the map opens first, then it's a spot chosen on it, the GPS position or live sharing */}
                     <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="location" /> موقعیت مکانی</button>
@@ -454,7 +466,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
             <textarea ref={ta} rows={1} value={text} placeholder={mediaEdit ? "کپشن…" : "پیام"} aria-label="پیام"
               onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart); setSel(0); typing(!!e.target.value); }}
               onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
-              onKeyDown={onKey} onPaste={onPaste} onBlur={() => typingAt.current && typing(false)} />
+              onKeyDown={onKey} onPaste={(e) => pasteFiles(e, setFiles)} onBlur={() => typingAt.current && typing(false)} />
             {canSched && sched.list.length > 0 && (
               <button className="icon-btn" title="پیام‌های زمان‌بندی‌شده" aria-label="پیام‌های زمان‌بندی‌شده" onClick={() => setSchedList(true)}><Icon name="clock" /></button>
             )}
@@ -527,7 +539,7 @@ function SendFiles({ files, setFiles, onSend, canSchedule }: { files: File[]; se
         ))}
         <textarea className="send-caption" rows={2} autoFocus value={caption} placeholder="کپشن…" aria-label="کپشن"
           onChange={(e) => setCaption(e.target.value)}
-          onPaste={(e) => { const f = [...e.clipboardData.files]; if (f.length) { e.preventDefault(); setFiles((x) => [...x, ...f]); } }}
+          onPaste={(e) => pasteFiles(e, setFiles)}
           onKeyDown={(e) => { if (isSendKey(e)) { e.preventDefault(); send(); } }} />
         {imgs.length > 0 && (
           <label className="switch-row"><span>ارسال به صورت فایل<small>بدون فشرده‌سازی</small></span>

@@ -51,6 +51,7 @@ interface PanbehPlugin {
   takeLaunchShare(): Promise<Partial<Shared>>;
   pickImages(p: { multiple: boolean }): Promise<{ files: { uri: string; name: string; type: string }[] }>;
   pickCamera(): Promise<{ files: { uri: string; name: string; type: string }[] }>;
+  clipboardImage(): Promise<{ files: { uri: string; name: string; type: string }[] }>;
   biometricAvailable(): Promise<{ available: boolean }>;
   biometricUnlock(p: { title: string; cancel: string }): Promise<{ ok: boolean }>;
   metered(): Promise<{ metered: boolean }>;
@@ -344,6 +345,19 @@ export async function captureCameraPhoto(): Promise<File[] | null> {
   } catch (e) {
     console.error("camera capture failed", e);
     return null;
+  }
+}
+
+/** An image copied in another app (a screenshot, "copy image"): read straight off the Android clipboard like a picked
+ *  photo, because the WebView carries no image on the paste event. null = not on the Android app; [] = no image there. */
+export async function clipboardImages(): Promise<File[] | null> {
+  if (!isNative || headless) return null;
+  try {
+    const r = await plugin.clipboardImage();
+    return await Promise.all((r.files ?? []).map((x) => uriToFile(x)));
+  } catch (e) {
+    console.error("clipboard read failed", e);
+    return [];
   }
 }
 
