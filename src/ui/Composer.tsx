@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
 import { getDraft, setDraft, showingDraft } from "../drafts.ts";
@@ -15,9 +15,11 @@ import { isSendKey, loadPrefs } from "./Settings.tsx";
 import { reducedMotion, useExit } from "./useDismiss.ts";
 import { useLongPress } from "./useLongPress.ts";
 import { SchedulePicker, ScheduledList, useScheduled } from "./Scheduled.tsx";
-import { MapPicker } from "./MapPicker.tsx";
 import { DURATIONS, sharingIn, startSharing, stopSharing } from "../liveLocation.ts";
 import { isDesktop } from "../desktop.ts";
+
+// Leaflet only loads when the map opens
+const MapPicker = lazy(() => import("./MapPicker.tsx").then((m) => ({ default: m.MapPicker })));
 
 export type Mode = { kind: "reply" | "edit"; ev: MatrixEvent } | null;
 const MEDIA = ["m.image", "m.video", "m.file"];
@@ -271,22 +273,17 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       const { latitude: lat, longitude: lon, accuracy } = p.coords;
       const acc = Math.round(accuracy);
       if (!(await confirmDialog(`موقعیت فعلی شما (با دقت حدود ${num(acc)} متر) ارسال شود؟`))) return;
-      const la = +lat.toFixed(6), lo = +lon.toFixed(6);
-      // body keeps a map link for clients that don't show locations
-      const content: Record<string, unknown> = ContentHelpers.makeLocationContent(`موقعیت مکانی ${osmUrl(la, lo)}`, `geo:${la},${lo};u=${acc}`, Date.now(), null, LocationAssetType.Self);
-      if (mode?.kind === "reply") content["m.relates_to"] = { "m.in_reply_to": { event_id: mode.ev.getId() } };
-      setMode(null);
-      client.sendMessage(room.roomId, threadId, content as never).catch((e) => alertDialog(errText(e)));
+      sendLocation(+lat.toFixed(6), +lon.toFixed(6), LocationAssetType.Self, acc);
     }, (e) => {
       setLocating(false);
       alertDialog(e.code === e.PERMISSION_DENIED ? "اجازه‌ی دسترسی به موقعیت مکانی داده نشد." : "موقعیت مکانی پیدا نشد.");
     }, { enableHighAccuracy: true, timeout: 15_000 });
   }
 
-  /** The spot chosen on the map: sent as a pinned location (m.pin), unlike the GPS one which is the user (m.self). */
-  function sendPinnedLocation(lat: number, lon: number) {
+  /** The GPS position is the user (m.self, with its accuracy); a spot chosen on the map is a pin (m.pin). */
+  function sendLocation(lat: number, lon: number, asset: LocationAssetType, acc?: number) {
     // body keeps a map link for clients that don't show locations
-    const content: Record<string, unknown> = ContentHelpers.makeLocationContent(`موقعیت مکانی ${osmUrl(lat, lon)}`, `geo:${lat},${lon}`, Date.now(), null, LocationAssetType.Pin);
+    const content: Record<string, unknown> = ContentHelpers.makeLocationContent(`موقعیت مکانی ${osmUrl(lat, lon)}`, `geo:${lat},${lon}${acc ? `;u=${acc}` : ""}`, Date.now(), null, asset);
     if (mode?.kind === "reply") content["m.relates_to"] = { "m.in_reply_to": { event_id: mode.ev.getId() } };
     setMode(null);
     client.sendMessage(room.roomId, threadId, content as never).catch((e) => alertDialog(errText(e)));
@@ -495,7 +492,12 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       {schedList && <ScheduledList room={room} list={sched.list} onClose={() => setSchedList(false)} />}
       {pollForm && <PollForm room={room} threadId={threadId} onClose={() => setPollForm(false)} />}
       {livePick && <LiveLocationPicker room={room} onClose={() => setLivePick(false)} />}
-      {mapPick && <MapPicker onClose={() => setMapPick(false)} onPick={(lat, lon) => { setMapPick(false); sendPinnedLocation(lat, lon); }} />}
+      {mapPick && (
+        <Suspense fallback={null}>
+          <MapPicker canLocate={!noGeo} onClose={() => setMapPick(false)}
+            onPick={(lat, lon) => { setMapPick(false); sendLocation(lat, lon, LocationAssetType.Pin); }} />
+        </Suspense>
+      )}
     </div>
   );
 }

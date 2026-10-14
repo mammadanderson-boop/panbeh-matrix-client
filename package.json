@@ -22,8 +22,7 @@
     "desktop:dist": "npm run build && electron-builder --publish never"
   },
   "dependencies": {
-    "electron-updater": "^6.8.9",
-    "leaflet": "^1.9.4"
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.2",
@@ -41,6 +40,7 @@
     "electron-builder": "^26.15.3",
     "emojibase-data": "^17.0.0",
     "jsqr": "^1.4.0",
+    "leaflet": "^1.9.4",
     "livekit-client": "^2.22.3",
     "matrix-encrypt-attachment": "^1.0.3",
     "matrix-js-sdk": "^43.0.0",
