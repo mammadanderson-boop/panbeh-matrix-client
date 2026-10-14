@@ -740,6 +740,17 @@ input[role="switch"]:checked::before { transform: translateX(-18px); }
 .file-row.location { padding-bottom: 16px; }
 .file-row span.location-links { display: flex; gap: 12px; font-size: 13px; }
 
+/* ---------- map picker ---------- */
+.map-backdrop { padding: 0; }
+.map-modal { width: min(560px, 100%); height: 100%; max-height: 100%; border-radius: 0; }
+.map-wrap { position: relative; z-index: 0; flex: 1; min-height: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+.leaflet-container { background: var(--bg); font: inherit; }
+.map-pin { color: var(--accent); }
+.map-pin svg { display: block; width: 30px; height: 38px; fill: currentColor; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35)); }
+.map-locate { position: absolute; right: 10px; bottom: 24px; z-index: 1000; background: var(--panel); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+.map-locate:hover { color: var(--text); }
+.map-locating { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; align-items: center; padding: 6px 12px; border-radius: 999px; background: var(--panel); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); white-space: nowrap; }
+
 /* ---------- pinned ---------- */
 .pinned-bar { flex: none; display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .pinned-main { flex: 1; min-width: 0; display: flex; align-items: stretch; gap: 10px; padding: 4px 8px; border-radius: 10px; text-align: start; }

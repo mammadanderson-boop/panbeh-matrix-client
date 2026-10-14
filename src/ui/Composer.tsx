@@ -15,6 +15,7 @@ import { isSendKey, loadPrefs } from "./Settings.tsx";
 import { reducedMotion, useExit } from "./useDismiss.ts";
 import { useLongPress } from "./useLongPress.ts";
 import { SchedulePicker, ScheduledList, useScheduled } from "./Scheduled.tsx";
+import { MapPicker } from "./MapPicker.tsx";
 import { DURATIONS, sharingIn, startSharing, stopSharing } from "../liveLocation.ts";
 import { isDesktop } from "../desktop.ts";
 
@@ -46,6 +47,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const [recordMode, setRecordMode] = useState(() => loadPrefs().recordMode);
   const [locating, setLocating] = useState(false);
   const [livePick, setLivePick] = useState(false);
+  const [mapPick, setMapPick] = useState(false);
   const [emoji, setEmoji] = useState(false);
   const [emojiShown, emojiClosing] = useExit(emoji && !recording);
   const [caret, setCaret] = useState(0);
@@ -281,6 +283,15 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     }, { enableHighAccuracy: true, timeout: 15_000 });
   }
 
+  /** The spot chosen on the map: sent as a pinned location (m.pin), unlike the GPS one which is the user (m.self). */
+  function sendPinnedLocation(lat: number, lon: number) {
+    // body keeps a map link for clients that don't show locations
+    const content: Record<string, unknown> = ContentHelpers.makeLocationContent(`موقعیت مکانی ${osmUrl(lat, lon)}`, `geo:${lat},${lon}`, Date.now(), null, LocationAssetType.Pin);
+    if (mode?.kind === "reply") content["m.relates_to"] = { "m.in_reply_to": { event_id: mode.ev.getId() } };
+    setMode(null);
+    client.sendMessage(room.roomId, threadId, content as never).catch((e) => alertDialog(errText(e)));
+  }
+
   /** عکس از گالری: on Android the gallery opens straight away (the system photo picker on 13+, the gallery app before);
    *  elsewhere a file dialog filtered to images. */
   async function pickPhotos() {
@@ -455,6 +466,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                     <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل</button>
                     <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
                     {!noGeo && <button role="menuitem" onClick={shareLocation}><Icon name="location" /> موقعیت مکانی</button>}
+                    <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="map" /> ارسال از نقشه</button>
                     {!noGeo && room.currentState.maySendStateEvent(M_BEACON_INFO.name, me()) && <button role="menuitem" onClick={() => setLivePick(true)}><Icon name="location" /> اشتراک موقعیت زنده</button>}
                   </div>
                 </>
@@ -483,6 +495,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       {schedList && <ScheduledList room={room} list={sched.list} onClose={() => setSchedList(false)} />}
       {pollForm && <PollForm room={room} threadId={threadId} onClose={() => setPollForm(false)} />}
       {livePick && <LiveLocationPicker room={room} onClose={() => setLivePick(false)} />}
+      {mapPick && <MapPicker onClose={() => setMapPick(false)} onPick={(lat, lon) => { setMapPick(false); sendPinnedLocation(lat, lon); }} />}
     </div>
   );
 }
