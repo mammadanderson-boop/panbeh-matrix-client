@@ -544,6 +544,19 @@ public class PanbehPlugin extends Plugin {
         }
     }
 
+    /** A location in a map app: the system chooser every time (not the default app), so the user picks Neshan, Balad,
+     *  Google Maps… `q=` makes them drop a pin; parentheses would end the label early. */
+    @PluginMethod
+    public void openGeo(PluginCall call) {
+        Double lat = call.getDouble("lat"), lon = call.getDouble("lon");
+        if (lat == null || lon == null) { call.reject("no position"); return; }
+        String label = call.getString("label", "").replaceAll("[()]", "").trim();
+        String q = lat + "," + lon + (label.isEmpty() ? "" : "(" + Uri.encode(label) + ")");
+        Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:" + lat + "," + lon + "?q=" + q));
+        getContext().startActivity(Intent.createChooser(view, "باز کردن با").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        call.resolve();
+    }
+
     private void drop(Save sv) {
         try { if (sv.out != null) sv.out.close(); } catch (IOException ignored) { }
         try {

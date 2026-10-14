@@ -4,6 +4,7 @@ import { addDirect, client, dmPeer, isDirect, loadEvent } from "../matrix.ts";
 import { usePresence, useTick, useTyping } from "../hooks.ts";
 import { Icon } from "../icons.tsx";
 import { clock, neshanUrl, num, stamp } from "../logic.ts";
+import { geoClick } from "../native.ts";
 import { bdi, Dots, errText, me, RoomAvatar, senderName } from "./common.tsx";
 import { Timeline, type Jumper } from "./Timeline.tsx";
 import { PinnedBar } from "./Pinned.tsx";
@@ -176,7 +177,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
                 <span>
                   {myShare && <>موقعیت زنده‌ی شما تا {clock(myShare.until)} فعال است{others.length ? " · " : ""}</>}
                   {others.length === 1
-                    ? <><a href={neshanUrl(others[0].lat, others[0].lon)} target="_blank" rel="noreferrer noopener">{bdi(others[0].name)}</a> در حال اشتراک موقعیت زنده</>
+                    ? <><a href={neshanUrl(others[0].lat, others[0].lon)} target="_blank" rel="noreferrer noopener" onClick={geoClick(others[0].lat, others[0].lon, others[0].name)}>{bdi(others[0].name)}</a> در حال اشتراک موقعیت زنده</>
                     : others.length > 1 ? <>{num(others.length)} نفر در حال اشتراک موقعیت زنده</> : null}
                 </span>
                 {myShare && <button onClick={() => stopSharing(client, room.roomId).catch((e) => alertDialog(errText(e)))}>قطع</button>}
