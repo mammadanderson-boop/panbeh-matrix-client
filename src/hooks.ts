@@ -4,6 +4,7 @@ import { client, getFolderOrder, spaceChildren, getUploads, setFolderOrder, subs
 import { byListOrder, lastSeen, spaceRooms, type RoomInfo } from "./logic.ts";
 import { ARCHIVED, hasTag, isMarkedUnread, PINNED } from "./chats.ts";
 import { isMuted } from "./notify.ts";
+import { draftPreview, useDrafts, type Draft } from "./drafts.ts";
 
 /** The run of linked timelines `tl` belongs to, oldest first. A window opened around an old event (a pin, a reply)
  *  is its own timeline until paging forwards reaches the live one; the SDK links them then. */
@@ -105,10 +106,11 @@ const ROOM_LIST_EVENTS = [
   RoomEvent.Tags, RoomEvent.AccountData, // pin/archive, marked unread
 ];
 
-export type RoomRow = RoomInfo & { room: Room; last?: MatrixEvent; ts: number; invite: boolean; pinned: boolean };
+export type RoomRow = RoomInfo & { room: Room; last?: MatrixEvent; ts: number; invite: boolean; pinned: boolean; draft?: Draft };
 
 export function useRooms() {
   useTick(client, ROOM_LIST_EVENTS);
+  useDrafts();
   const all = client.getVisibleRooms().filter((r) => ["join", "invite"].includes(r.getMyMembership())); // visible = minus rooms replaced by a joined upgrade
   const direct = client.getAccountData(EventType.Direct)?.getContent<Record<string, string[]>>() ?? {};
   const dmIds = new Set(Object.values(direct).flat());
@@ -124,12 +126,15 @@ export function useRooms() {
   const rows: RoomRow[] = all.filter((r) => !r.isSpaceRoom() || r.getMyMembership() === "invite").map((room) => {
     const last = lastMessage(room);
     const invite = room.getMyMembership() === "invite";
+    const draft = invite ? undefined : draftPreview(room.roomId);
     return {
       id: room.roomId,
       room,
       last,
-      ts: last?.getTs() ?? room.getLastActiveTimestamp(),
+      // a draft newer than the last message brings the chat up, like Telegram
+      ts: Math.max(last?.getTs() ?? room.getLastActiveTimestamp(), draft?.ts ?? 0),
       invite,
+      draft,
       isDM: dmIds.has(room.roomId) || !!room.getDMInviter(),
       unread: room.getUnreadNotificationCount(),
       spaces: membership.get(room.roomId) ?? [],

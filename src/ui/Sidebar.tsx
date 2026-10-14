@@ -222,6 +222,8 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
   const typers = useTyping(room);
   const typing = row.invite ? [] : typers;
   if (typing.length) preview = (row.isDM ? "" : bdi(typing[0].name.split(" ")[0]) + " ") + "در حال نوشتن";
+  const draft = !typing.length && row.draft;
+  if (draft) preview = draft.body.split("\n")[0];
   const muted = !!row.muted;
   const bumped = useChange(row.unread);
   const previewChanged = useChange(preview, 350);
@@ -236,7 +238,7 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
           <span className="room-time">{listTime(row.ts)}</span>
         </div>
         <div className="room-item-bottom">
-          <span className={"room-preview" + (typing.length ? " typing" : "") + (previewChanged ? " changed" : "")}>{preview}{typing.length > 0 && <Dots />}</span>
+          <span className={"room-preview" + (typing.length ? " typing" : "") + (previewChanged ? " changed" : "")}>{draft && <span className="draft">پیش‌نویس: </span>}{preview}{typing.length > 0 && <Dots />}</span>
           {mentioned && <span className="badge">@</span>}
           {(row.unread > 0 || row.invite) ? <span className={"badge" + (muted ? " muted" : "") + (bumped ? " bump" : "")}>{row.invite ? "!" : num(row.unread)}</span>
             : row.marked ? <span className={"badge dot" + (muted ? " muted" : "")} aria-label="خوانده‌نشده" />

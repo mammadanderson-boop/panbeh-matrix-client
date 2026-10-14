@@ -7,6 +7,7 @@ import { isDesktop, isWindowVisible, onWindowVisibility, openExternal } from "./
 import { confirmDialog } from "./ui/dialog.tsx";
 import { CACHE_MAX_FILE, cacheClear, cacheGet, cacheHas, cachePut } from "./mediaCache.ts";
 import { clearStaleBeacons, stopAll } from "./liveLocation.ts";
+import { syncDrafts } from "./drafts.ts";
 
 type Session = { baseUrl: string; userId: string; deviceId: string; accessToken: string; refreshToken?: string; oauthClientId?: string; legacy?: boolean };
 // several accounts, one running client at a time; switching reloads the page so every cache starts clean
@@ -146,6 +147,7 @@ export async function start(s: Session) {
     c.on(ClientEvent.Sync, (state) => nativeSyncState(state));
     onKick(kick);
   }
+  if (!isHeadless) syncDrafts(); // before startClient: the cached and first-sync account data come in during it
   await c.startClient({ threadSupport: true, lazyLoadMembers: true, initialSyncLimit: 30, filter: isHeadless ? headlessFilter(s.userId) : undefined });
   // a reload leaves our live-location beacons live with nothing watching or stopping them: turn them off
   // (not in the headless page: it shares the device with the app page, which may be sharing right now)

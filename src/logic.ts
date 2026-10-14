@@ -669,3 +669,24 @@ export function fmtSpan(ms: number) {
 
 /** When a scheduled message goes out, for its list row: "امروز ساعت ۲۱:۰۰", "۱۹ مهر ساعت ۰۹:۳۰". */
 export const scheduleLabel = (ts: number, now = Date.now()) => `${dayLabel(ts, now)} ساعت ${TIME.format(ts)}`;
+
+// ---------- synced drafts ----------
+// In encrypted rooms a draft goes to account data sealed with AES-GCM, under a key HKDF-derived from the key-backup private key:
+// every device of ours that holds the backup can read it, the server can't. The room id is bound in, so a draft can't be moved to another room.
+const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+const unb64 = (s: string) => Uint8Array.from(atob(s), (ch) => ch.charCodeAt(0));
+export async function deriveDraftKey(backupKey: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+  const base = await crypto.subtle.importKey("raw", backupKey, "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: new TextEncoder().encode("panbeh drafts") },
+    base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+export async function sealDraft(key: CryptoKey, roomId: string, obj: object): Promise<{ iv: string; ciphertext: string }> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: new TextEncoder().encode(roomId) }, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return { iv: b64(iv), ciphertext: b64(new Uint8Array(ct)) };
+}
+/** Throws on a wrong key, a wrong room or tampering. */
+export async function openDraft<T>(key: CryptoKey, roomId: string, c: { iv: string; ciphertext: string }): Promise<T> {
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(c.iv), additionalData: new TextEncoder().encode(roomId) }, key, unb64(c.ciphertext));
+  return JSON.parse(new TextDecoder().decode(pt));
+}

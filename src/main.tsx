@@ -16,7 +16,7 @@ import { Login } from "./ui/Login.tsx";
 import { Sidebar } from "./ui/Sidebar.tsx";
 import { Room } from "./ui/Room.tsx";
 import { ShareSheet } from "./ui/Forward.tsx";
-import { shareInto } from "./ui/Composer.tsx";
+import { shareInto } from "./drafts.ts";
 import { NowPlaying } from "./ui/Voice.tsx";
 import { Settings, UpdateBanner, applyPrefs, loadPrefs, type View } from "./ui/Settings.tsx";
 import { VerificationListener } from "./ui/Verify.tsx";
