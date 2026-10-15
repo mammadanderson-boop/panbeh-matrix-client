@@ -3,9 +3,10 @@ import { EventTimeline, KnownMembership, type MatrixEvent, type Room } from "mat
 import { client, isEncrypted, searchOlder, searchServer } from "../matrix.ts";
 import { isMessage } from "../hooks.ts";
 import { backfill, backfillDone, indexOn, searchIndex } from "../searchIndex.ts";
-import { matchRange, normalize, stamp } from "../logic.ts";
+import { hashtagsOf, matchRange, normalize, soleHashtag, stamp } from "../logic.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, previewText, senderMember, senderName, Sheet } from "./common.tsx";
+import { useSlider } from "./useSlider.ts";
 
 /** A search result waiting for its room to open; `requestJump` also pings an already-open Room. */
 export const pendingJump = { current: null as { roomId: string; eventId: string } | null };
@@ -57,7 +58,12 @@ function useResults(term: string, run: (t: string, failed: () => void) => Promis
     if (t.length < MIN) { setRes(null); return; }
     let live = true, failed = false;
     setRes(null);
-    const h = setTimeout(async () => { const evs = await run(t, () => { failed = true; }); if (live) setRes({ evs, failed }); }, 300);
+    const tag = soleHashtag(t); // every source matches substrings: "#tag" would find "#tagging" too
+    const h = setTimeout(async () => {
+      let evs = await run(tag ? t.slice(1) : t, () => { failed = true; }); // servers' full-text search may choke on "#"
+      if (tag) evs = evs.filter((e) => hashtagsOf(previewText(e)).some((x) => normalize(x) === tag));
+      if (live) setRes({ evs, failed });
+    }, 300);
     return () => { live = false; clearTimeout(h); };
   }, [term, ...deps]);
   return res;
@@ -65,8 +71,10 @@ function useResults(term: string, run: (t: string, failed: () => void) => Promis
 
 const ServerFailed = () => <p className="muted">جستجو روی سرور انجام نشد؛ فقط پیام‌های روی همین دستگاه جستجو شدند</p>;
 
-export function SearchSheet({ room, onJump, onClose }: { room: Room; onJump: (eventId: string, fromServer: boolean) => void; onClose: () => void }) {
-  const [q, setQ] = useState("");
+export function SearchSheet({ room, initial = "", onJump, onClose }: { room: Room; initial?: string; onJump: (eventId: string, fromServer: boolean) => void; onClose: () => void }) {
+  const [q, setQ] = useState(initial);
+  const [all, setAll] = useState(false); // across all chats
+  const pill = useSlider<HTMLDivElement>();
   const enc = isEncrypted(room);
   const indexed = enc && indexOn(); // search the local index, and "older" indexes further back instead of loading the timeline
   const [more, setMore] = useState(() => indexed || !!room.getLiveTimeline().getPaginationToken(EventTimeline.BACKWARDS));
@@ -92,14 +100,20 @@ export function SearchSheet({ room, onJump, onClose }: { room: Room; onJump: (ev
       <div className="picker">
         <label className="search">
           <Icon name="search" size={16} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجو" aria-label="جستجو در گفتگو" autoFocus />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجو" aria-label="جستجو در گفتگو" autoFocus={!initial} />
         </label>
+        <div className="segmented" data-pill ref={pill}>
+          <button className={all ? "" : "on"} onClick={() => setAll(false)}>این گفتگو</button>
+          <button className={all ? "on" : ""} onClick={() => setAll(true)}>همه‌ی گفتگوها</button>
+        </div>
+        {all ? <MessageResults term={q} onPick={(roomId, eventId) => { onClose(); requestJump(roomId, eventId); location.hash = roomId; }} /> : <>
         {enc && <p className="muted">{indexed ? "پیام‌های رمزنگاری‌شده در نمایه‌ی همین دستگاه جستجو می‌شوند" : "در گفتگوهای رمزنگاری‌شده فقط پیام‌های بارگذاری‌شده جستجو می‌شوند"}</p>}
         {ready && !res && <p className="muted">در حال جستجو…</p>}
         {found?.failed && <ServerFailed />}
         {res?.length === 0 && <p className="muted">پیامی پیدا نشد</p>}
         {res?.map((ev) => <ResultRow key={ev.getId()} ev={ev} term={q} onClick={() => { onClose(); onJump(ev.getId()!, !enc); }} />)}
         {enc && ready && more && <button className="primary" disabled={paging} onClick={older}>{paging ? "در حال جستجو…" : "جستجو در پیام‌های قدیمی‌تر"}</button>}
+        </>}
       </div>
     </Sheet>
   );

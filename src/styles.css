@@ -484,6 +484,8 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
 .recovery-key { padding: 10px; border-radius: 10px; background: var(--panel); font-size: 15px; word-spacing: 4px; user-select: all; }
 .msg.mine .msg-text a { color: inherit; text-decoration: underline; }
 .msg-text a { unicode-bidi: plaintext; } /* URLs keep their trailing "/" in RTL text */
+.msg-text .hashtag { color: var(--accent); unicode-bidi: isolate; }
+.msg.mine .msg-text .hashtag { color: inherit; font-weight: 500; }
 
 /* user-supplied one-line labels: direction from their own text (so "Alice!" isn't "!Alice"), but always right-aligned */
 .room-name, .room-preview, .room-head-text b, .profile b, .invite h2, .composer-mode span, .user-row b, .chip, .info-text h2 { unicode-bidi: plaintext; text-align: right; }

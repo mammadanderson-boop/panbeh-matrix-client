@@ -22,6 +22,7 @@ import { Predecessor, Upgraded } from "./Admin.tsx";
 import { liveBeacons, onBeaconChange, sharingIn, stopSharing, useLiveLocation } from "../liveLocation.ts";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { useExit } from "./useDismiss.ts";
+import { overlayOpen, pushBack } from "../back.ts";
 
 export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   useTick(client, ["Room.myMembership", "Room.name"]);
@@ -40,11 +41,11 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   const [forwarding, setForwarding] = useState<MatrixEvent[] | null>(null);
   const [sel, setSel] = useState<ReadonlySet<string> | null>(null); // multi-select: event ids of the main timeline
   const forward1 = useCallback((ev: MatrixEvent | MatrixEvent[]) => setForwarding([ev].flat()), []);
-  const [search, setSearch] = useState(false);
+  const [search, setSearch] = useState<string | null>(null); // the sheet's starting query, while open
 
   const jumper = useRef<Jumper>(null);
   useEffect(() => { // Ctrl+F (Sidebar's shortcuts)
-    const open = () => { if (room.getMyMembership() !== KnownMembership.Invite) setSearch(true); };
+    const open = (e: Event) => { if (room.getMyMembership() !== KnownMembership.Invite) setSearch((e as CustomEvent<string | undefined>).detail ?? ""); }; // detail: a tapped #hashtag
     addEventListener("panbeh-search", open);
     return () => removeEventListener("panbeh-search", open);
   }, [room]);
@@ -102,6 +103,9 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
     ? `${typing.length > 2 ? `${typing.slice(0, 2).join("، ")} و ${num(typing.length - 2)} نفر دیگر` : typing.join(" و ")} در حال نوشتن`
     : room.getMyMembership() === KnownMembership.Invite ? "دعوت‌نامه" // invites carry no member counts
     : seen.text ?? `${num(room.getJoinedMemberCount())} عضو`;
+  useEffect(() => { // Android back closes the thread, back to the chat it was opened from
+    if (threadId) return pushBack(() => (overlayOpen() ? false : setThreadId(null)));
+  }, [threadId]);
   const liveThread = threadId ? room.getThread(threadId) : null;
   const [threadShown, threadClosing] = useExit(!!liveThread, 240);
   const lastThread = useRef(liveThread);
@@ -160,7 +164,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
           </button>
           {room.getMyMembership() !== KnownMembership.Invite && <>
             <CallButtons room={room} />
-            <button className="icon-btn" onClick={() => setSearch(true)} title="جستجو" aria-label="جستجو"><Icon name="search" /></button>
+            <button className="icon-btn" onClick={() => setSearch("")} title="جستجو" aria-label="جستجو"><Icon name="search" /></button>
           </>}
         </header>
         )}
@@ -198,7 +202,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
           <ThreadView key={thread.id} room={room} threadId={thread.id} view={setViewing} info={setSeenFor} reactions={setReactionsFor} profile={setProfile} forward={forward1} />
         </aside>
       )}
-      {search && <SearchSheet room={room} onJump={(id, server) => searchJump(id, server ? 50 : undefined)} onClose={() => setSearch(false)} />}
+      {search !== null && <SearchSheet key={search} room={room} initial={search} onJump={(id, server) => searchJump(id, server ? 50 : undefined)} onClose={() => setSearch(null)} />}
       {info && <RoomInfo room={room} onClose={() => setInfo(false)} />}
       {seenFor && <SeenBy room={room} ev={seenFor} onClose={() => setSeenFor(null)} />}
       {reactionsFor && <ReactedBy room={room} ev={reactionsFor} onClose={() => setReactionsFor(null)} />}

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel, deriveDraftKey, sealDraft, openDraft } from "./logic.ts";
-import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, deleteBack, cachedSlice, type Msg } from "./logic.ts";
+import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, deleteBack, cachedSlice, hashtagsOf, soleHashtag, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
 const m = (id: string, sender: string, min: number, kind: Msg["kind"] = "msg"): Msg => ({ id, sender, ts: T + min * 60_000, kind });
@@ -114,6 +114,15 @@ test("formatMessage markdown", () => {
   assert.equal(h("1. a\n2. b"), "<ol><li>a</li><li>b</li></ol>");
   assert.equal(h("۳. a\n۴. b"), '<ol start="3"><li>a</li><li>b</li></ol>');
   assert.equal(h("__u__ snake__case__x ***bi***"), "<u>u</u> snake__case__x <em><strong>bi</strong></em>");
+});
+
+test("hashtagsOf / soleHashtag", () => {
+  assert.deepEqual(hashtagsOf("hi #tag, (#سلام) #می\u200cخواهم #tag_1."), ["tag", "سلام", "می\u200cخواهم", "tag_1"]);
+  assert.deepEqual(hashtagsOf("#room:server.org x.com/#a a#b #123 # heading ##x &#38;"), []);
+  assert.deepEqual(hashtagsOf("#a\u200c b"), ["a"]);
+  assert.equal(soleHashtag(" #Tag "), "tag");
+  assert.equal(soleHashtag("#tag x"), null);
+  assert.equal(soleHashtag("tag"), null);
 });
 
 test("toggleWrap / prefixLines", () => {
