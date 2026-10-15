@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type Clip
 import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
 import { getDraft, setDraft, showingDraft } from "../drafts.ts";
-import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages } from "../native.ts";
+import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages, nativeHoldIme } from "../native.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
 import { clock, escRe, formatMessage, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
@@ -76,7 +76,8 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { // the composer floats over the timeline; tell it how much room to leave at the bottom
     const el = root.current!, host = el.parentElement!;
-    const ro = new ResizeObserver(() => host.style.setProperty("--composer-h", el.offsetHeight + "px"));
+    // without the docked emoji panel: the timeline ends above it (--emoji-gap), so its fade covers the row only
+    const ro = new ResizeObserver(() => host.style.setProperty("--composer-h", el.offsetHeight - (el.querySelector<HTMLElement>(".emoji-dock")?.offsetHeight ?? 0) + "px"));
     ro.observe(el);
     return () => { ro.disconnect(); host.style.removeProperty("--composer-h"); };
   }, []);
@@ -99,16 +100,28 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       const panel = kbH || Math.round(full * 0.4);
       const search = !!document.activeElement?.closest(".emoji-panel"); // its search box: panel over the keyboard
       el.style.setProperty("--emoji-h", panel + "px");
-      el.style.setProperty("--emoji-gap", (on ? (search ? panel : Math.max(0, panel - kb)) : 0) + "px");
-      el.classList.toggle("emoji-slide", toggled && !up); // opened or closed with no keyboard: it slides; swaps with the keyboard mustn't
+      host.style.setProperty("--emoji-gap", (on ? (search ? panel : Math.max(0, panel - kb)) : 0) + "px"); // the timeline makes room too
+      host.classList.toggle("emoji-slide", toggled && !up); // opened or closed with no keyboard: it slides; swaps with the keyboard mustn't
     };
     const ro = new ResizeObserver(() => fit.current());
     ro.observe(host);
     const focus = () => fit.current();
     addEventListener("focusin", focus);
-    return () => { ro.disconnect(); removeEventListener("focusin", focus); };
+    return () => { ro.disconnect(); removeEventListener("focusin", focus); host.style.removeProperty("--emoji-gap"); };
   }, []);
   useLayoutEffect(() => fit.current(true), [emoji]);
+  useEffect(() => { // docked: a tap outside the composer closes it (a scroll doesn't click); a rising keyboard covers it first
+    if (!DOCK || !emoji) return;
+    nativeHoldIme(true);
+    const out = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (root.current!.contains(t)) return;
+      setEmoji(false);
+      if (t.closest(".timeline-wrap")) { e.preventDefault(); e.stopPropagation(); } // a tap on the chat only closes it, as with the keyboard
+    };
+    addEventListener("click", out, true);
+    return () => { nativeHoldIme(false); removeEventListener("click", out, true); };
+  }, [emoji]);
   const backToKb = useRef(0);
   function toggleEmoji() {
     if (!DOCK) return setEmoji((x) => !x);
@@ -451,7 +464,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   );
 
   const kbBtn = DOCK && emoji; // ⌨ in place of 😊 while the panel stands in for the keyboard
-  const emojiPanel = emojiShown && <EmojiPanel closing={emojiClosing} room={room} onEmoji={(k, custom) => insert(custom ? k + " " : k)} onClose={() => setEmoji(false)}
+  const emojiPanel = emojiShown && <EmojiPanel closing={emojiClosing} docked={DOCK} room={room} onEmoji={(k, custom) => insert(custom ? k + " " : k)} onClose={() => setEmoji(false)}
     gifs={mode?.kind === "edit" ? undefined : { onPick: sendGif }} stickers={mode?.kind === "edit" ? undefined : { onPick: sendSticker }} />;
 
   return (

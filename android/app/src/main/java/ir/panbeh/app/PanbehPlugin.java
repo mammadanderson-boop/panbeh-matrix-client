@@ -771,6 +771,13 @@ public class PanbehPlugin extends Plugin {
         call.resolve();
     }
 
+    /** The emoji panel stands in for the keyboard: see MainActivity.holdIme. */
+    @PluginMethod
+    public void holdIme(PluginCall call) {
+        MainActivity.holdIme = call.getBoolean("on", false);
+        call.resolve();
+    }
+
     /** A call's video fills the screen: status and navigation bars hidden (a swipe shows them for a moment). */
     @PluginMethod
     public void setImmersive(PluginCall call) {
