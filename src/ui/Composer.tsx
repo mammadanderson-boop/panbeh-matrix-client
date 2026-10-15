@@ -516,7 +516,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                 <div className="menu-backdrop" onClick={() => setMenu(false)} />
                 <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
                   {canCamera && <button role="menuitem" onClick={takePhoto}><Icon name="camera" /> دوربین</button>}
-                  <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس</button>
+                  <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس و ویدیو</button>
                   {isNative && <button role="menuitem" onClick={pasteClipboard}><Icon name="clipboard" /> چسباندن از کلیپ‌بورد</button>}
                   <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل</button>
                   {/* one location entry: the map opens first, then it's a spot chosen on it, the GPS position or live sharing */}
