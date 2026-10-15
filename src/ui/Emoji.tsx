@@ -1,5 +1,5 @@
 import { useSlider } from "./useSlider.ts";
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from "react";
 import { ClientEvent, RoomStateEvent, type MatrixEvent, type Room } from "matrix-js-sdk";
 // fetched as files, not bundled as JS: separate chunks, loaded the first time the panel opens
 import enUrl from "emojibase-data/en/compact.json?url";
@@ -8,6 +8,7 @@ import { client, emotesFor, mediaUrl, savedGifs, tintFor, toggleGif, type Emote 
 import { usePromise, useTick } from "../hooks.ts";
 import { emoteRe, isDarkMono, normalize, type Gif } from "../logic.ts";
 import { confirmDialog } from "./dialog.tsx";
+import { Icon } from "../icons.tsx";
 
 type Emoji = { u: string; name: string; search: string; custom?: Emote };
 type Raw = { unicode: string; label: string; tags?: string[]; group?: number; order?: number };
@@ -52,14 +53,27 @@ function remember(u: string) {
 }
 
 /** `custom`: a custom emoji was picked; `e` is then its ":code:". `room`: whose packs are offered besides mine. */
-type Props = { onEmoji: (e: string, custom?: Emote) => void; onClose: () => void; room?: Room;
+/** `onBackspace`: a ⌫ beside the tabs, for the composer. */
+type Props = { onEmoji: (e: string, custom?: Emote) => void; onClose: () => void; room?: Room; onBackspace?: () => void;
   gifs?: { onPick: (g: Gif) => void }; stickers?: { onPick: (s: Emote) => void } };
 
 /** Emoji (+ optional stickers and saved gifs) popover; closes on outside click / Esc. Picking doesn't close it. */
 /** docked: in the keyboard's place (Composer) — no backdrop, the chat stays scrollable and the composer closes it. */
-export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, closing, docked }: Props & { closing?: boolean; docked?: boolean }) {
-  const [tab, setTab] = useState<"emoji" | "sticker" | "gif">("emoji");
+export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, onBackspace, closing, docked }: Props & { closing?: boolean; docked?: boolean }) {
+  const [tab, setTabState] = useState<"emoji" | "sticker" | "gif">("emoji");
   const pill = useSlider<HTMLDivElement>();
+  // the floating tabs make way while scrolling down the grid, and come back on the way up (Telegram's)
+  const [away, setAway] = useState(false);
+  const lastTop = useRef(0);
+  const setTab = (t: typeof tab) => { setTabState(t); setAway(false); lastTop.current = 0; };
+  const onScroll = (e: UIEvent) => {
+    const top = (e.target as HTMLElement).scrollTop, dy = top - lastTop.current;
+    if ((e.target as HTMLElement).matches(".emoji-cats")) return; // sideways
+    lastTop.current = top;
+    if (top < 20 || dy < -4) setAway(false);
+    else if (dy > 4) setAway(true);
+  };
+  const tabs = !!(gifs || stickers), bksp = !!onBackspace && tab === "emoji";
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     addEventListener("keydown", k);
@@ -68,17 +82,22 @@ export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, closing, do
   return (
     <>
       {!docked && <div className="menu-backdrop" onClick={onClose} />}
-      <div className={"emoji-panel" + (closing ? " closing" : "")} role="dialog" aria-label="اموجی">
-        {(gifs || stickers) && (
-          <div className="segmented" data-pill ref={pill}>
-            <button className={tab === "emoji" ? "on" : ""} onClick={() => setTab("emoji")}>اموجی</button>
-            {stickers && <button className={tab === "sticker" ? "on" : ""} onClick={() => setTab("sticker")}>استیکر</button>}
-            {gifs && <button className={tab === "gif" ? "on" : ""} onClick={() => setTab("gif")}>گیف</button>}
-          </div>
-        )}
+      <div className={"emoji-panel" + (closing ? " closing" : "") + (tabs || bksp ? " floating" : "")} role="dialog" aria-label="اموجی" onScrollCapture={onScroll}>
         {tab === "sticker" && stickers ? <StickerGrid room={room} {...stickers} />
           : tab === "gif" && gifs ? <GifGrid {...gifs} />
           : <EmojiGrid room={room} onPick={(e) => { if (e.custom) onEmoji(e.name, e.custom); else { remember(e.u); onEmoji(e.u); } }} />}
+        {(tabs || bksp) && (
+          <div className={"emoji-float" + (away ? " away" : "")}>
+            {tabs && (
+              <div className="segmented" data-pill ref={pill} role="tablist">
+                <button role="tab" aria-selected={tab === "emoji"} className={tab === "emoji" ? "on" : ""} onClick={() => setTab("emoji")}>اموجی</button>
+                {stickers && <button role="tab" aria-selected={tab === "sticker"} className={tab === "sticker" ? "on" : ""} onClick={() => setTab("sticker")}>استیکر</button>}
+                {gifs && <button role="tab" aria-selected={tab === "gif"} className={tab === "gif" ? "on" : ""} onClick={() => setTab("gif")}>گیف</button>}
+              </div>
+            )}
+            {bksp && <button className="emoji-bksp" aria-label="پاک کردن" title="پاک کردن" onMouseDown={(e) => e.preventDefault()} onClick={onBackspace}><Icon name="backspace" size={22} /></button>}
+          </div>
+        )}
       </div>
     </>
   );
@@ -106,18 +125,32 @@ function EmojiGrid({ room, onPick }: { room?: Room; onPick: (e: Emoji) => void }
     const p = e.custom!.pack;
     return [p.key, <EmoteImg key={p.key} url={p.avatar ?? e.custom!.img.url} alt="" />, p.name] as const;
   });
-  const cats: (readonly [number | string, ReactNode, string])[] = [...(rec.length ? [[-1, "🕘", "اخیر"] as const] : []), ...packCats, ...GROUPS];
+  const nav = useRef<HTMLElement>(null);
+  /** Fades the bar's edges where there's more to scroll to; RTL's scrollLeft runs negative. */
+  const edges = () => {
+    const n = nav.current;
+    if (!n) return;
+    const x = Math.abs(n.scrollLeft);
+    n.toggleAttribute("data-start", x > 1);
+    n.toggleAttribute("data-end", x + n.clientWidth < n.scrollWidth - 1);
+  };
+  useLayoutEffect(edges, [packCats.length, rec.length]);
+  useEffect(() => { nav.current?.querySelector(".on")?.scrollIntoView({ inline: "nearest", block: "nearest" }); }, [group]);
+  const cat = ([g, icon, label]: readonly [number | string, ReactNode, string]) => {
+    const on = !term && g === group;
+    return <button key={g} role="tab" aria-selected={on} className={on ? "on" : ""} title={label} aria-label={label} onClick={() => { setQ(""); setGroup(g); }}>{icon}</button>;
+  };
   return (
     <>
+      {/* a mouse wheel's vertical turn scrolls the bar sideways, toward its end */}
+      <nav className="emoji-cats" role="tablist" ref={nav} onScroll={edges}
+        onWheel={(e) => { if (!e.deltaX) nav.current?.scrollBy({ left: getComputedStyle(nav.current).direction === "rtl" ? -e.deltaY : e.deltaY }); }}>
+        {rec.length > 0 && cat([-1, "🕘", "اخیر"])}
+        <div className="emoji-groups">{GROUPS.map(cat)}</div>
+        {packCats.map(cat)}
+      </nav>
       <input className="emoji-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی اموجی" aria-label="جستجوی اموجی" />
-      {!term && (
-        <nav className="emoji-cats" role="tablist">
-          {cats.map(([g, icon, label]) => (
-            <button key={g} role="tab" aria-selected={g === group} className={g === group ? "on" : ""} title={label} aria-label={label} onClick={() => setGroup(g)}>{icon}</button>
-          ))}
-        </nav>
-      )}
-      <div className="emoji-grid">
+      <div className="emoji-grid" key={term ? "q" : group}>
         {!groups ? <span className="spinner" />
           : !list.length ? <p className="muted">اموجی‌ای پیدا نشد</p>
           // mousedown default would move focus off the composer: keep its caret where the emoji goes

@@ -5,7 +5,7 @@ import { getDraft, setDraft, showingDraft } from "../drafts.ts";
 import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages, nativeHoldIme } from "../native.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
-import { clock, escRe, formatMessage, prefixLines, toggleWrap, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
+import { clock, deleteBack, escRe, formatMessage, prefixLines, toggleWrap, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
 import { isMessage } from "../hooks.ts";
 import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
@@ -416,6 +416,16 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     requestAnimationFrame(() => el && placeCaret(el, c));
   }
 
+  /** The emoji panel's ⌫, at the caret like insert(). */
+  function backspace() {
+    const el = ta.current;
+    const [a, b] = el ? caretOf(el) : [text.length, text.length];
+    const [t, c] = deleteBack(text, a, b, emotes.keys());
+    setText(t);
+    setCaret(c);
+    requestAnimationFrame(() => el && placeCaret(el, c));
+  }
+
   function sendSticker(s: Emote) {
     setEmoji(false);
     const content: Record<string, unknown> = { body: s.img.body || s.code, url: s.img.url, info: s.img.info ?? {} };
@@ -500,7 +510,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   );
 
   const kbBtn = DOCK && emoji; // ⌨ in place of 😊 while the panel stands in for the keyboard
-  const emojiPanel = emojiShown && <EmojiPanel closing={emojiClosing} docked={DOCK} room={room} onEmoji={(k, custom) => insert(custom ? k + " " : k)} onClose={() => setEmoji(false)}
+  const emojiPanel = emojiShown && <EmojiPanel closing={emojiClosing} docked={DOCK} room={room} onEmoji={(k, custom) => insert(custom ? k + " " : k)} onBackspace={backspace} onClose={() => setEmoji(false)}
     gifs={mode?.kind === "edit" ? undefined : { onPick: sendGif }} stickers={mode?.kind === "edit" ? undefined : { onPick: sendSticker }} />;
 
   return (
