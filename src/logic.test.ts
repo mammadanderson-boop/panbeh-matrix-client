@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel, deriveDraftKey, sealDraft, openDraft } from "./logic.ts";
-import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, type Msg } from "./logic.ts";
+import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
 const m = (id: string, sender: string, min: number, kind: Msg["kind"] = "msg"): Msg => ({ id, sender, ts: T + min * 60_000, kind });
@@ -101,10 +101,33 @@ test("formatMessage markdown", () => {
   assert.equal(h("`*a* _b_` *c*"), "<code>*a* _b_</code> <em>c</em>");
   assert.equal(h("**<b>**"), "<strong>&#60;b&#62;</strong>");
   assert.equal(h("> a\n> *b*\nc"), "<blockquote>a<br><em>b</em></blockquote>c");
-  assert.equal(h("x\n```js\nlet _a_ = 1;\n*z*\n```\ny"), "x<pre><code>let _a_ = 1;\n*z*</code></pre>y");
+  assert.equal(h("x\n```js\nlet _a_ = 1;\n*z*\n```\ny"), 'x<pre><code class="language-js">let _a_ = 1;\n*z*</code></pre>y');
   assert.equal(h("[a_b](https://x.io/a_b_c?q=1&r=2)"), '<a href="https://x.io/a_b_c?q=1&#38;r=2">a_b</a>');
   assert.equal(h("[a](javascript:alert(1))"), null);
   assert.equal(h("```@Ali```", [{ name: "Ali", id: "@ali:hs" }]), "<pre><code>@Ali</code></pre>");
+  assert.equal(h("> q\n```\nc\n```\n- a\n```b```"), "<blockquote>q</blockquote><pre><code>c</code></pre><ul><li>a</li></ul><pre><code>b</code></pre>");
+  assert.equal(h("a ```b``` c"), "a <pre><code>b</code></pre> c");
+  assert.equal(h("# تست"), "<h1>تست</h1>");
+  assert.equal(h("a\n## **b**\nc"), "a<h2><strong>b</strong></h2>c");
+  assert.equal(h("#tag and #### x"), null);
+  assert.equal(h("x\n- a\n* *b*\ny"), "x<ul><li>a</li><li><em>b</em></li></ul>y");
+  assert.equal(h("1. a\n2. b"), "<ol><li>a</li><li>b</li></ol>");
+  assert.equal(h("۳. a\n۴. b"), '<ol start="3"><li>a</li><li>b</li></ol>');
+  assert.equal(h("__u__ snake__case__x ***bi***"), "<u>u</u> snake__case__x <em><strong>bi</strong></em>");
+});
+
+test("toggleWrap / prefixLines", () => {
+  assert.deepEqual(toggleWrap("a word b", 2, 7, "**"), { text: "a **word** b", a: 4, b: 8 });
+  assert.deepEqual(toggleWrap("a **word** b", 4, 8, "**"), { text: "a word b", a: 2, b: 6 });
+  assert.deepEqual(toggleWrap("a **word** b", 4, 8, "*"), { text: "a ***word*** b", a: 5, b: 9 }); // italic over bold
+  assert.deepEqual(toggleWrap("***w***", 3, 4, "*"), { text: "**w**", a: 2, b: 3 });
+  assert.deepEqual(toggleWrap("***w***", 3, 4, "**"), { text: "*w*", a: 1, b: 2 });
+  assert.deepEqual(toggleWrap("x word ", 1, 7, "~~"), { text: "x ~~word~~ ", a: 4, b: 8 }); // edge spaces left out
+  assert.equal(toggleWrap("a  b", 1, 3, "**"), null);
+  assert.deepEqual(toggleWrap("a\nb", 0, 3, "`"), { text: "```\na\nb\n```", a: 4, b: 7 });
+  assert.deepEqual(toggleWrap("```\na\nb\n```", 4, 7, "`"), { text: "a\nb", a: 0, b: 3 });
+  assert.deepEqual(prefixLines("x\nab\ncd\ny", 3, 6, "> "), { text: "x\n> ab\n> cd\ny", a: 2, b: 11 });
+  assert.deepEqual(prefixLines("x\n> ab\n> cd\ny", 2, 11, "> "), { text: "x\nab\ncd\ny", a: 2, b: 7 });
 });
 
 test("normalize", () => {

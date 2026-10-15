@@ -244,7 +244,7 @@ export function formatMessage(text: string, mentions: { name: string; id: string
   const stash: string[] = [];
   const hold = (html: string) => `\0${stash.push(html) - 1}\0`;
   let t = text.replaceAll("\0", "");
-  t = t.replace(/\n?```(?:[\w+-]*\n)?([\s\S]*?)\n?```\n?/g, (_, c) => hold(`<pre><code>${esc(c)}</code></pre>`));
+  t = t.replace(/\n?```(?:([\w+-]*)\n)?([\s\S]*?)\n?```\n?/g, (_, lang, c) => `\n${hold(`<pre><code${lang ? ` class="language-${lang}"` : ""}>${esc(c)}</code></pre>`)}\n`); // a line of its own, out of any quote or list
   t = t.replace(/`([^`\n]+)`/g, (_, c) => hold(`<code>${esc(c)}</code>`));
 
   const byName = new Map(mentions.map((m) => ["@" + m.name, m.id]));
@@ -265,16 +265,27 @@ export function formatMessage(text: string, mentions: { name: string; id: string
 
   t = esc(t);
   t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => hold(`<a href="${url}">${label}</a>`));
-  const parts: { html: string; quote: boolean }[] = [];
+  // block lines: "> " quotes, "# " headings (up to ###), "- "/"* " and "1. " lists; runs of quotes or list items group
+  const parts: { html: string; tag: string; attr?: string }[] = [];
   for (const line of t.split("\n")) {
-    const q = line.startsWith("&#62; ");
+    let m: RegExpExecArray | null, tag = "", html = line, attr;
+    if ((m = /^\0(\d+)\0$/.exec(line)) && stash[+m[1]].startsWith("<pre>")) tag = "pre"; // already its own block
+    else if (line.startsWith("&#62; ")) { tag = "blockquote"; html = line.slice(6); }
+    else if ((m = /^(#{1,3}) +(.+)/.exec(line))) { tag = "h" + m[1].length; html = m[2]; }
+    else if ((m = /^[-*] +(.+)/.exec(line))) { tag = "ul"; html = `<li>${m[1]}</li>`; }
+    else if ((m = /^([0-9\u06f0-\u06f9]{1,9})\. +(.+)/.exec(line))) {
+      tag = "ol"; html = `<li>${m[2]}</li>`;
+      const n = Number(m[1].replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x6f0)));
+      if (n !== 1) attr = ` start="${n}"`;
+    }
     const last = parts[parts.length - 1];
-    if (q && last?.quote) last.html += "<br>" + line.slice(6);
-    else parts.push({ html: q ? line.slice(6) : line, quote: q });
+    if (tag && last?.tag === tag && !tag.startsWith("h")) last.html += (tag === "blockquote" ? "<br>" : "") + html;
+    else parts.push({ html, tag, attr });
   }
-  let h = parts.map((p, i) => (p.quote ? `<blockquote>${p.html}</blockquote>` : p.html) + (i < parts.length - 1 && !p.quote && !parts[i + 1].quote ? "\n" : "")).join("");
+  let h = parts.map((p, i) => (p.tag && p.tag !== "pre" ? `<${p.tag}${p.attr ?? ""}>${p.html}</${p.tag}>` : p.html) + (i < parts.length - 1 && !p.tag && !parts[i + 1].tag ? "\n" : "")).join("");
   const wrap = (re: RegExp, open: string, close: string) => (h = h.replace(re, `${open}$1${close}`));
   wrap(/\*\*([^\s*](?:[^*\n]*?[^\s*])?)\*\*/g, "<strong>", "</strong>");
+  wrap(/(?<![\p{L}\p{N}_])__([^\s_](?:[^_\n]*?[^\s_])?)__(?![\p{L}\p{N}_])/gu, "<u>", "</u>");
   wrap(/~~([^\s~](?:[^~\n]*?[^\s~])?)~~/g, "<del>", "</del>");
   wrap(/\|\|([^\s|](?:[^|\n]*?[^\s|])?)\|\|/g, "<span data-mx-spoiler>", "</span>");
   // opening marker not after a word char, closing not before one: snake_case and 2*3*4 stay literal
@@ -283,6 +294,36 @@ export function formatMessage(text: string, mentions: { name: string; id: string
   while (h.includes("\0")) h = h.replace(/\0(\d+)\0/g, (_, n) => stash[+n]);
   const clean = esc(text.replaceAll("\0", "")).replace(/\n/g, "<br>");
   return used.size || h !== clean ? { html: h, ids: [...used] } : null;
+}
+
+/** Formatting from the composer's bar: wraps the selection [a, b) in `mark`, or unwraps it when it's already marked
+ *  (in a run of "*", odd = italic, two or more = bold). The selection drops its edge spaces first; multi-line code
+ *  gets a ``` fence. The result keeps the same text selected. */
+export function toggleWrap(text: string, a: number, b: number, mark: string) {
+  while (a < b && /\s/.test(text[a])) a++;
+  while (b > a && /\s/.test(text[b - 1])) b--;
+  if (a === b) return null;
+  const sel = text.slice(a, b);
+  let o = mark, c = mark, on: boolean;
+  if (mark === "`" && sel.includes("\n")) { o = "```\n"; c = "\n```"; on = text.slice(a - o.length, a) === o && text.startsWith(c, b); }
+  else {
+    let l = 0, r = 0;
+    while (text[a - 1 - l] === mark[0]) l++;
+    while (text[b + r] === mark[0]) r++;
+    const n = Math.min(l, r);
+    on = mark === "*" ? n % 2 === 1 : n >= mark.length;
+  }
+  return on
+    ? { text: text.slice(0, a - o.length) + sel + text.slice(b + c.length), a: a - o.length, b: b - o.length }
+    : { text: text.slice(0, a) + o + sel + c + text.slice(b), a: a + o.length, b: b + o.length };
+}
+
+/** "> " (`prefix`) added to every line the selection touches, or taken off when they all have it; the lines end up selected. */
+export function prefixLines(text: string, a: number, b: number, prefix: string) {
+  const s = text.lastIndexOf("\n", a - 1) + 1, e = text.indexOf("\n", Math.max(a, b - 1)), end = e < 0 ? text.length : e;
+  const lines = text.slice(s, end).split("\n"), on = lines.every((l) => l.startsWith(prefix));
+  const out = lines.map((l) => (on ? l.slice(prefix.length) : prefix + l)).join("\n");
+  return { text: text.slice(0, s) + out + text.slice(end), a: s, b: s + out.length };
 }
 
 // ---------- custom emoji & stickers (MSC2545 image packs) ----------

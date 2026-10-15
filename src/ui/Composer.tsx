@@ -5,13 +5,13 @@ import { getDraft, setDraft, showingDraft } from "../drafts.ts";
 import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages, nativeHoldIme } from "../native.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
-import { clock, escRe, formatMessage, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
+import { clock, escRe, formatMessage, prefixLines, toggleWrap, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
 import { isMessage } from "../hooks.ts";
 import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
 import { EmojiPanel, EmoteImg } from "./Emoji.tsx";
 import { caretOf, EmoteInput, focusAt, placeCaret } from "./EmoteInput.tsx";
-import { alertDialog } from "./dialog.tsx";
+import { alertDialog, promptDialog } from "./dialog.tsx";
 import { isSendKey, loadPrefs } from "./Settings.tsx";
 import { useExit } from "./useDismiss.ts";
 import { useLongPress } from "./useLongPress.ts";
@@ -66,6 +66,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const [emojiShown, emojiClosing] = useExit(emoji && !recording, 220); // outlasts the docked panel's slide
   const [caret, setCaret] = useState(0);
   const [sel, setSel] = useState(0);
+  const [selEnd, setSelEnd] = useState(0); // past `caret` when text is selected: the format bar shows
   const [closedAt, setClosedAt] = useState(-1); // Esc hides the mention list for this "@"
   const sched = useScheduled(room);
   const canSched = sched.ok && !threadId; // a thread reply needs the thread's latest event, unknown until it goes out
@@ -354,7 +355,34 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     else toast("عکسی در کلیپ‌بورد نیست");
   }
 
+  /** Markdown markers around the selection (or "> " before its lines), the same text left selected. */
+  function format(mark: string) {
+    const el = ta.current;
+    if (!el) return;
+    const [a, b] = caretOf(el);
+    const r = a === b ? null : mark === "> " ? prefixLines(text, a, b, mark) : toggleWrap(text, a, b, mark);
+    if (!r) return;
+    setText(r.text);
+    requestAnimationFrame(() => placeCaret(el, r.a, r.b));
+  }
+  async function addLink() {
+    const el = ta.current!, [a, b] = caretOf(el), label = text.slice(a, b).trim();
+    if (!label) return;
+    const url = await promptDialog("نشانی لینک", { placeholder: "https://…", ok: "افزودن" });
+    if (url) {
+      const link = `[${label}](${/^https?:\/\//i.test(url) ? url : "https://" + url})`;
+      setText(text.slice(0, a) + link + text.slice(b));
+      requestAnimationFrame(() => focusAt(el, a + link.length));
+    } else focusAt(el);
+  }
+  // Telegram Desktop's keys, by the physical key so they work on a Persian layout too
+  const FORMAT_KEYS: Record<string, string> = { KeyB: "**", KeyI: "*", KeyU: "__", "shift+KeyX": "~~", "shift+KeyM": "`", "shift+KeyP": "||" };
+
   function onKey(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && selEnd > caret) {
+      const mark = FORMAT_KEYS[(e.shiftKey ? "shift+" : "") + e.code];
+      if (mark || (e.code === "KeyK" && !e.shiftKey)) { e.preventDefault(); return mark ? format(mark) : void addLink(); }
+    }
     if (suggestions.length) {
       const i = sel % suggestions.length;
       if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setSel((i + (e.key === "ArrowDown" ? 1 : suggestions.length - 1)) % suggestions.length); return; }
@@ -439,8 +467,17 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const hasSched = canSched && sched.list.length > 0; // its button sits by attach and slides away with it
   const canCamera = isNative || matchMedia("(pointer: coarse)").matches; // a desktop file dialog can't take a photo
 
+  const FORMATS: [string, string, ReactNode][] = [["**", "پررنگ", <b>B</b>], ["*", "کج", <i>I</i>], ["__", "زیرخط", <u>U</u>],
+    ["~~", "خط‌خورده", <s>S</s>], ["`", "کد", <code>{"</>"}</code>], ["||", "اسپویلر", <span className="fmt-spoiler">S</span>], ["> ", "نقل‌قول", "”"]];
   const bar = (
     <>
+      {selEnd > caret && (
+        // onMouseDown: focus (the phone's keyboard, the selection) stays in the text box
+        <div className="format-bar" role="toolbar" aria-label="قالب‌بندی" onMouseDown={(e) => e.preventDefault()}>
+          {FORMATS.map(([mark, label, glyph]) => <button key={mark} className="icon-btn" title={label} aria-label={label} onClick={() => format(mark)}>{glyph}</button>)}
+          <button className="icon-btn" title="لینک" aria-label="لینک" onClick={addLink}><Icon name="link" /></button>
+        </div>
+      )}
       {mode && (
         <div className="composer-mode">
           <Icon name={mode.kind === "edit" ? "edit" : "reply"} />
@@ -518,11 +555,11 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
             )}
           </div>
           <EmoteInput inputRef={ta} className="composer-text" value={text} emotes={emotes} placeholder={mediaEdit ? "کپشن…" : "پیام"} aria-label="پیام"
-            onChange={(t, c) => { if (recording) return; setText(t); setCaret(c); setSel(0); typing(!!t); }}
-            onCaret={setCaret}
+            onChange={(t, c) => { if (recording) return; setText(t); setCaret(c); setSelEnd(c); setSel(0); typing(!!t); }}
+            onCaret={(c, end) => { setCaret(c); setSelEnd(end); }}
             // a keyboard that doesn't resize the page (a browser tab, a hardware one) never closes the panel by itself
             onFocus={() => { if (DOCK && emoji) backToKb.current = window.setTimeout(() => setEmoji(false), 700); }}
-            onKeyDown={onKey} onPaste={(e) => pasteFiles(e, setFiles)} onBlur={() => typingAt.current && typing(false)} />
+            onKeyDown={onKey} onPaste={(e) => pasteFiles(e, setFiles)} onBlur={() => { setSelEnd(0); if (typingAt.current) typing(false); }} />
           <button className="icon-btn emoji-toggle" title={kbBtn ? "صفحه‌کلید" : "اموجی و استیکر"} aria-label={kbBtn ? "صفحه‌کلید" : "اموجی و استیکر"} aria-expanded={kbBtn ? undefined : emoji}
             onMouseDown={(e) => e.preventDefault()} /* the keyboard stays up until the panel is in its place */ onClick={toggleEmoji}><Icon name={kbBtn ? "keyboard" : "smile"} /></button>
         </div>
