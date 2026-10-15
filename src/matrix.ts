@@ -786,7 +786,7 @@ export function packsFor(room?: Room): Pack[] {
 export const emotesFor = (room: Room | undefined, use: Usage): Emote[] =>
   packsFor(room).flatMap((pack) => packImages(pack.content, use).map(([code, img]) => ({ code, img, pack })));
 
-const LONGEST: Record<Usage, number> = { emoticon: 128, sticker: 512 }; // px, after padding
+const LONGEST: Record<Usage, number> = { emoticon: 256, sticker: 512 }; // px, after padding; a jumbo emoji is 60px, ~180 device px on a 3× phone
 const ANIM_CAP: Record<Usage, number> = { emoticon: 1 << 20, sticker: 2 << 20 }; // bytes
 
 /** Animated GIF (looping block), APNG (acTL chunk) or WebP (VP8X animation flag): a canvas would freeze these.
