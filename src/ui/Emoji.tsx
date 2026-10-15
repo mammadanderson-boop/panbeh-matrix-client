@@ -8,6 +8,7 @@ import { client, emotesFor, mediaUrl, savedGifs, tintFor, toggleGif, type Emote 
 import { usePromise, useTick } from "../hooks.ts";
 import { emoteRe, isDarkMono, normalize, type Gif } from "../logic.ts";
 import { confirmDialog } from "./dialog.tsx";
+import { formattedPlain, previewText } from "./common.tsx";
 import { Icon } from "../icons.tsx";
 
 type Emoji = { u: string; name: string; search: string; custom?: Emote };
@@ -197,6 +198,11 @@ export function EmoteText({ text, emotes }: { text: string; emotes?: ReadonlyMap
   const re = emotes?.size ? emoteRe(emotes.keys()) : null;
   if (!re) return <>{text}</>;
   return <>{text.split(re).map((p, i) => (i % 2 ? <EmoteImg key={i} url={emotes!.get(p)!} alt={`:${p}:`} /> : p))}</>;
+}
+
+/** previewText with the message's custom emoji as images (reply quotes, the composer's reply bar). */
+export function PreviewText({ ev }: { ev: MatrixEvent }) {
+  return <EmoteText text={previewText(ev)} emotes={formattedPlain(ev.getContent())?.emotes} />;
 }
 
 /** A reaction's key: a custom emoji's is its mxc, named by com.beeper.reaction.shortcode on the reaction `ev`. */

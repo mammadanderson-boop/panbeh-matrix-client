@@ -368,7 +368,7 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
   border-start-start-radius: 4px; border-end-start-radius: 4px;
   background: color-mix(in srgb, currentColor 6%, transparent); font-size: 14px; min-width: 0;
 }
-.reply-quote span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
+.reply-quote > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
 
 .reactions, .thread-link { direction: rtl; }
 .reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -986,8 +986,8 @@ div.msg-text blockquote { color: color-mix(in srgb, currentColor 85%, transparen
 .emote { display: inline-block; vertical-align: middle; }
 img.emote, span.emote img { height: 1.5em; width: auto; max-width: 4em; object-fit: contain; vertical-align: middle; }
 .emote.shimmer { width: 1.5em; height: 1.5em; border-radius: 6px; }
-.room-preview img.emote { height: 1.25em; }
-.room-preview .emote.shimmer { width: 1.25em; height: 1.25em; }
+.room-preview img.emote, .reply-quote img.emote, .composer-mode img.emote { height: 1.25em; }
+.room-preview .emote.shimmer, .reply-quote .emote.shimmer, .composer-mode .emote.shimmer { width: 1.25em; height: 1.25em; }
 span.emote[data-mxc] { cursor: pointer; }
 .emoji-grid .emote, .mention-room .emote { height: 28px; max-width: 34px; }
 .user-row > .mention-room.emote-sug { background: none; border-radius: 6px; }
