@@ -1,7 +1,7 @@
-// A local index of decrypted messages, so encrypted chats can be searched beyond what's loaded (the server can't
-// search them). On by default (Settings can turn it off): it keeps message text in plain form on the device. Fed as messages decrypt — while
+// A local index of messages, so encrypted chats can be searched beyond what's loaded (the server can't search them),
+// and the others while offline. On by default (Settings can turn it off): it keeps message text in plain form on the device. Fed as messages decrypt — while
 // scrolling, from background sync on Android, and by backfill() paging a chat's history.
-import { EventType, MatrixEvent, MatrixEventEvent, RoomEvent, type Room } from "matrix-js-sdk";
+import { EventStatus, EventType, MatrixEvent, MatrixEventEvent, RoomEvent, type Room } from "matrix-js-sdk";
 import { client, historyPage } from "./matrix.ts";
 import { isMessage } from "./hooks.ts";
 import { normalize } from "./logic.ts";
@@ -90,19 +90,33 @@ function add(ev: MatrixEvent) {
   schedule();
 }
 
-/** Indexes messages as they decrypt (only events that were encrypted decrypt, so only encrypted chats). Returns an unsubscribe. */
+/** Indexes messages as they decrypt in encrypted chats, as they arrive in the others (whose server search fails offline),
+ *  and our own as they're sent. Returns an unsubscribe. */
 export function startSearchIndex() {
   onByDefaultOnce();
   const onDecrypted = (ev: MatrixEvent) => add(ev);
-  const onRedaction = (ev: MatrixEvent) => { const id = ev.getAssociatedId(); if (id && indexOn()) { dels.add(id); schedule(); } };
+  // not RoomEvent.Redaction: that only comes for a target that's loaded. Ours come as local echoes.
+  const redacted = (ev: MatrixEvent) => { const id = ev.getAssociatedId(); if (id && indexOn()) { dels.add(id); schedule(); } };
+  const onTimeline = (ev: MatrixEvent, room?: Room) => {
+    if (ev.isRedaction()) redacted(ev);
+    else if (room && !room.hasEncryptionStateEvent()) add(ev);
+  };
+  const onEcho = (ev: MatrixEvent) => {
+    if (ev.isRedaction()) { if (ev.status === EventStatus.SENT) redacted(ev); }
+    else add(ev); // skipped until it's sent
+  };
   client.on(MatrixEventEvent.Decrypted, onDecrypted);
-  client.on(RoomEvent.Redaction, onRedaction);
-  return () => { client.off(MatrixEventEvent.Decrypted, onDecrypted); client.off(RoomEvent.Redaction, onRedaction); void flush(); };
+  client.on(RoomEvent.Timeline, onTimeline);
+  client.on(RoomEvent.LocalEchoUpdated, onEcho);
+  return () => {
+    client.off(MatrixEventEvent.Decrypted, onDecrypted); client.off(RoomEvent.Timeline, onTimeline);
+    client.off(RoomEvent.LocalEchoUpdated, onEcho); void flush();
+  };
 }
 
-/** Turned on: take in what's already loaded and decrypted, which won't decrypt again. */
+/** Turned on: take in what's already loaded (and decrypted, which won't decrypt again). */
 export function indexLoaded() {
-  for (const room of client.getRooms()) if (room.hasEncryptionStateEvent()) room.getLiveTimeline().getEvents().forEach(add);
+  for (const room of client.getRooms()) room.getLiveTimeline().getEvents().forEach(add);
 }
 
 /** Turned off, or signing out: the index goes. */

@@ -63,7 +63,7 @@ function useResults(term: string, run: (t: string, failed: () => void) => Promis
   return res;
 }
 
-const ServerFailed = () => <p className="muted">جستجو روی سرور انجام نشد؛ فقط پیام‌های بارگذاری‌شده جستجو شدند</p>;
+const ServerFailed = () => <p className="muted">جستجو روی سرور انجام نشد؛ فقط پیام‌های روی همین دستگاه جستجو شدند</p>;
 
 export function SearchSheet({ room, onJump, onClose }: { room: Room; onJump: (eventId: string, fromServer: boolean) => void; onClose: () => void }) {
   const [q, setQ] = useState("");
@@ -76,7 +76,9 @@ export function SearchSheet({ room, onJump, onClose }: { room: Room; onJump: (ev
   const found = useResults(q, (t, failed) => (indexed ? searchIndex(t, room.roomId).then((ix) => merge([...ix, ...scanLoaded(room, t)]), () => scanLoaded(room, t))
     : enc ? scanLoaded(room, t)
     // the server doesn't fold ي/ك or ZWNJ; the local scan catches loaded messages it misses
-    : serverOr(searchServer(t, room.roomId), failed).then((s) => merge([...s, ...scanLoaded(room, t)]))), [round]);
+    // offline: what the device has indexed
+    : searchServer(t, room.roomId).catch(() => { failed(); return indexOn() ? searchIndex(t, room.roomId).catch(() => []) : []; })
+      .then((s) => merge([...s, ...scanLoaded(room, t)]))), [round]);
   const res = found?.evs;
   const older = async () => {
     setPaging(true);

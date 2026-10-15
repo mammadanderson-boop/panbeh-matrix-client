@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ClientEvent, SyncState } from "matrix-js-sdk";
-import { cancelAdd, client, finishOAuth, isAdding, isOAuthCallback, logout, recoveryState, savedSession, start } from "./matrix.ts";
+import { cancelAdd, client, finishOAuth, isAdding, isOAuthCallback, logout, pastFirstSync, recoveryState, savedSession, start } from "./matrix.ts";
 import { useTick } from "./hooks.ts";
 import { onNotifyButton, startNotifications } from "./notify.ts";
 import { startSearchIndex } from "./searchIndex.ts";
+import { startSendQueue } from "./sendQueue.ts";
 import { isHeadless, isNative, onCallAction, onNotifyAction, onOpenLink, onOpenRoom, onShare, requestNotifyPermission, setBackgroundService } from "./native.ts";
 import { onNativeCall, startCalls } from "./call.ts";
 import { startBackButton } from "./back.ts";
 import { drainLinks, handleIncomingLink } from "./openTarget.ts";
-import { onDesktopLink } from "./desktop.ts";
+import { isDesktop, onDesktopLink } from "./desktop.ts";
 import { parseMatrixHash } from "./uri.ts";
 import { isMarkedUnread, setMarkedUnread } from "./chats.ts";
 import { Login } from "./ui/Login.tsx";
@@ -36,6 +37,8 @@ addEventListener("resize", screenH); // rotation
 import logo from "./logo.svg";
 
 applyPrefs();
+// the website opens offline too (the Android and desktop apps load from their own files)
+if (import.meta.env.PROD && !isNative && !isDesktop && "serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 // web: let the browser offer Panbeh for matrix: links; the hash form is picked up by Shell (see parseMatrixHash)
 try { navigator.registerProtocolHandler?.("matrix", location.origin + location.pathname + "#/?uri=%s"); } catch { /* unsupported or not secure */ }
 
@@ -82,10 +85,11 @@ function Shell() {
   const refreshSecurity = () => recoveryState().then(setSecurity, () => {});
 
   const sync = client.getSyncState();
-  const synced = client.isInitialSyncComplete();
+  const synced = pastFirstSync(); // not isInitialSyncComplete(): that drops while offline or reconnecting, closing what was open
   useEffect(() => { if (synced) refreshSecurity(); }, [synced]);
   useEffect(startNotifications, []);
   useEffect(startSearchIndex, []);
+  useEffect(startSendQueue, []);
   useEffect(startCalls, []);
   // Android call notification buttons: answering may have cold-started the app, so wait for the rooms
   useEffect(() => (synced ? onCallAction((a) => void onNativeCall(a).catch((e) => alertDialog(errText(e)))) : undefined), [synced]);
