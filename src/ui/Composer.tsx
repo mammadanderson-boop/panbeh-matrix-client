@@ -10,9 +10,10 @@ import { isMessage } from "../hooks.ts";
 import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
 import { EmojiPanel, EmoteImg } from "./Emoji.tsx";
+import { caretOf, EmoteInput, focusAt, placeCaret } from "./EmoteInput.tsx";
 import { alertDialog } from "./dialog.tsx";
 import { isSendKey, loadPrefs } from "./Settings.tsx";
-import { reducedMotion, useExit } from "./useDismiss.ts";
+import { useExit } from "./useDismiss.ts";
 import { useLongPress } from "./useLongPress.ts";
 import { SchedulePicker, ScheduledList, useScheduled } from "./Scheduled.tsx";
 import { DURATIONS, sharingIn, startSharing, stopSharing } from "../liveLocation.ts";
@@ -72,7 +73,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const [picking, setPicking] = useState(false);
   const [schedList, setSchedList] = useState(false);
   const sendPress = useLongPress(canSched ? (x, y) => { if (text.trim() && mode?.kind !== "edit") setSendMenu({ x, y }); } : undefined);
-  const ta = useRef<HTMLTextAreaElement>(null);
+  const ta = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { // the composer floats over the timeline; tell it how much room to leave at the bottom
     const el = root.current!, host = el.parentElement!;
@@ -126,7 +127,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   function toggleEmoji() {
     if (!DOCK) return setEmoji((x) => !x);
     clearTimeout(backToKb.current);
-    if (emoji) return ta.current?.focus(); // ⌨
+    if (emoji) return focusAt(ta.current); // ⌨
     setEmoji(true);
     ta.current?.blur(); // the keyboard goes down, the panel is already in its place
   }
@@ -165,15 +166,6 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     setDraft(draftKey, editing.current ? stash.current : text, threadId ? undefined : reply);
   }, [draftKey, text, mode]);
   const mounted = useRef(false);
-  useEffect(() => { // autosize
-    const el = ta.current;
-    if (!el) return;
-    const from = el.offsetHeight;
-    el.style.height = "auto";
-    const to = Math.min(el.scrollHeight, parseFloat(getComputedStyle(el).maxHeight)); // cap lives in CSS (40dvh)
-    if (from && from !== to && !reducedMotion()) { el.style.height = from + "px"; void el.offsetHeight; } // transition from where it was
-    el.style.height = to + "px";
-  }, [text]);
   useEffect(() => {
     const restored = mode !== lastMode.current && pendingReply.current !== undefined; // a draft's reply coming back: no focus
     if (mode !== lastMode.current) { lastMode.current = mode; pendingReply.current = undefined; }
@@ -188,7 +180,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     editing.current = edit;
     // opening a chat must not pop the keyboard on touch devices; reply/edit always focuses
     if (!mounted.current && !matchMedia("(pointer: fine)").matches) mounted.current = true;
-    else if (!restored) { mounted.current = true; ta.current?.focus(); }
+    else if (!restored) { mounted.current = true; focusAt(ta.current); }
   }, [mode]);
 
   useEffect(() => () => { // left the room mid-typing
@@ -197,6 +189,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   }, [room.roomId]);
 
   // ---------- @ mentions, :custom emoji ----------
+  const emotes = emoteMap(room); // what's sent as images, and shown as them in the box
   const at = /(^|\s)@([^\s@]*)$/.exec(text.slice(0, caret));
   const colon = !at && /(^|\s):([^\s:]{2,})$/.exec(text.slice(0, caret));
   const atPos = at ? caret - at[2].length - 1 : colon ? caret - colon[2].length - 1 : -1;
@@ -225,7 +218,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     const c = atPos + insert.length;
     setText(next);
     setCaret(c);
-    requestAnimationFrame(() => { ta.current?.focus(); ta.current?.setSelectionRange(c, c); });
+    requestAnimationFrame(() => focusAt(ta.current, c));
   }
 
   function typing(on: boolean) {
@@ -241,8 +234,6 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     const typed = room.getJoinedMembers().filter((m) => m.userId !== me())
       .flatMap((m) => [{ name: m.name, id: m.userId }, { name: m.userId.slice(1), id: m.userId }])
       .filter((m) => new RegExp("@" + escRe(m.name) + "(?![\\p{L}\\p{N}_])", "u").test(body));
-    const emotes = new Map<string, string>();
-    for (const e of emotesFor(room, "emoticon")) if (!emotes.has(e.code)) emotes.set(e.code, e.img.url);
     const html = formatMessage(body, [...mentions.current, ...typed], emotes);
     const ids = new Set(html?.ids);
     const replyTo = mode?.kind === "reply" ? mode.ev.getSender() : undefined;
@@ -382,11 +373,11 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   /** Emoji at the caret (replacing a selection); the caret ends up after it for the next pick. */
   function insert(s: string) {
     const el = ta.current;
-    const a = el?.selectionStart ?? text.length, b = el?.selectionEnd ?? a;
+    const [a, b] = el ? caretOf(el) : [text.length, text.length];
     setText(text.slice(0, a) + s + text.slice(b));
     const c = a + s.length;
     setCaret(c);
-    requestAnimationFrame(() => el?.setSelectionRange(c, c));
+    requestAnimationFrame(() => el && placeCaret(el, c));
   }
 
   function sendSticker(s: Emote) {
@@ -526,9 +517,9 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
               </>
             )}
           </div>
-          <textarea ref={ta} rows={1} value={text} placeholder={mediaEdit ? "کپشن…" : "پیام"} aria-label="پیام"
-            onChange={(e) => { if (recording) return; setText(e.target.value); setCaret(e.target.selectionStart); setSel(0); typing(!!e.target.value); }}
-            onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+          <EmoteInput inputRef={ta} className="composer-text" value={text} emotes={emotes} placeholder={mediaEdit ? "کپشن…" : "پیام"} aria-label="پیام"
+            onChange={(t, c) => { if (recording) return; setText(t); setCaret(c); setSel(0); typing(!!t); }}
+            onCaret={setCaret}
             // a keyboard that doesn't resize the page (a browser tab, a hardware one) never closes the panel by itself
             onFocus={() => { if (DOCK && emoji) backToKb.current = window.setTimeout(() => setEmoji(false), 700); }}
             onKeyDown={onKey} onPaste={(e) => pasteFiles(e, setFiles)} onBlur={() => typingAt.current && typing(false)} />
@@ -537,7 +528,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
         </div>
       </div>
       {DOCK ? <div className="emoji-dock">{emojiPanel}</div> : emojiPanel}
-      {files.length > 0 && <SendFiles files={files} setFiles={setFiles} onSend={sendFiles} canSchedule={canSched} />}
+      {files.length > 0 && <SendFiles room={room} files={files} setFiles={setFiles} onSend={sendFiles} canSchedule={canSched} />}
       {sendMenu && (
         <ContextMenu {...sendMenu} target=".send-btn" onClose={() => setSendMenu(null)}>
           <button role="menuitem" onClick={() => { setSendMenu(null); setPicking(true); }}><Icon name="clock" /> ارسال زمان‌بندی‌شده</button>
@@ -559,7 +550,14 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   );
 }
 
-function SendFiles({ files, setFiles, onSend, canSchedule }: { files: File[]; setFiles: Props["setFiles"]; canSchedule: boolean;
+/** Custom emoji by code → mxc; the first pack's wins, as in the suggestions. */
+function emoteMap(room: Room) {
+  const m = new Map<string, string>();
+  for (const e of emotesFor(room, "emoticon")) if (!m.has(e.code)) m.set(e.code, e.img.url);
+  return m;
+}
+
+function SendFiles({ room, files, setFiles, onSend, canSchedule }: { room: Room; files: File[]; setFiles: Props["setFiles"]; canSchedule: boolean;
   onSend: (files: File[], caption: string, asFile: boolean, asGif: boolean, sendAt?: number) => void }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [picking, setPicking] = useState(false);
@@ -598,8 +596,8 @@ function SendFiles({ files, setFiles, onSend, canSchedule }: { files: File[]; se
             {x(i)}
           </div>
         ))}
-        <textarea className="send-caption" rows={2} autoFocus value={caption} placeholder="کپشن…" aria-label="کپشن"
-          onChange={(e) => setCaption(e.target.value)}
+        <EmoteInput className="send-caption" autoFocus value={caption} emotes={emoteMap(room)} placeholder="کپشن…" aria-label="کپشن"
+          onChange={setCaption}
           onPaste={(e) => pasteFiles(e, setFiles)}
           onKeyDown={(e) => { if (isSendKey(e)) { e.preventDefault(); send(); } }} />
         {imgs.length > 0 && (
