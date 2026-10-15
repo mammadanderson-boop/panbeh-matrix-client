@@ -4,7 +4,8 @@ import { client, loadEvent, pinnedIds, togglePin } from "../matrix.ts";
 import { usePromise, useTick } from "../hooks.ts";
 import { num } from "../logic.ts";
 import { Icon } from "../icons.tsx";
-import { Avatar, errText, me, previewText, senderMember, senderName, Sheet } from "./common.tsx";
+import { Avatar, errText, me, senderMember, senderName, Sheet } from "./common.tsx";
+import { PreviewText } from "./Emoji.tsx";
 import { alertDialog } from "./dialog.tsx";
 
 /** Bar under the header: shows one pin; a click jumps to it and moves on to the next older one. */
@@ -25,7 +26,7 @@ export function PinnedBar({ room, onJump }: { room: Room; onJump: (id: string) =
           <span className="pinned-ticks">{ids.length > 1 && ids.slice(-4).map((id) => <i key={id} className={id === ids[i] ? "on" : ""} />)}</span>
           <span className="pinned-text" key={ids[i]}>
             <b>پیام سنجاق‌شده{ids.length > 1 && ` ${num(i + 1)} از ${num(ids.length)}`}</b>
-            <span dir="auto">{ev ? previewText(ev) : "…"}</span>
+            <span dir="auto">{ev ? <PreviewText ev={ev} /> : "…"}</span>
           </span>
         </button>
         <button className="icon-btn" onClick={() => setList(true)} title="همه‌ی پیام‌های سنجاق‌شده" aria-label="همه‌ی پیام‌های سنجاق‌شده"><Icon name="list" /></button>
@@ -50,7 +51,7 @@ function PinnedRow({ room, id, canPin, onJump }: { room: Room; id: string; canPi
     <div className="user-row">
       <button className="pinned-row" onClick={() => onJump(id)}>
         {ev ? <Avatar mxc={senderMember(ev)?.getMxcAvatarUrl()} name={senderName(ev)} id={ev.getSender()!} size={42} /> : <Avatar name="…" id={id} size={42} />}
-        <span><b>{ev ? senderName(ev) : "…"}</b><small dir="auto">{ev ? previewText(ev) : "در حال بارگذاری…"}</small></span>
+        <span><b>{ev ? senderName(ev) : "…"}</b><small dir="auto">{ev ? <PreviewText ev={ev} /> : "در حال بارگذاری…"}</small></span>
       </button>
       {canPin && (
         <button className="icon-btn" title="برداشتن سنجاق" aria-label="برداشتن سنجاق" onClick={() => togglePin(room, id).catch((e) => alertDialog(errText(e)))}>

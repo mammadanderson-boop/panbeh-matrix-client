@@ -237,6 +237,15 @@ export function emoteRe(codes: Iterable<string>): RegExp | null {
   return c.length ? new RegExp(`:(${c.join("|")}):`, "g") : null;
 }
 
+/** The composer's ⌫: a selection goes whole, else the custom emoji (":code:" of `codes`) or the one character
+ *  (grapheme, so 👨‍👩‍👧 and 🇮🇷 go in one press) before the caret `a`. Returns the text and the new caret. */
+export function deleteBack(text: string, a: number, b: number, codes: Iterable<string>): [string, number] {
+  if (a !== b) return [text.slice(0, a) + text.slice(b), a];
+  const before = text.slice(0, a), re = emoteRe(codes);
+  const n = (re && before.match(new RegExp(`(?:${re.source})$`))?.[0].length) || ([...new Intl.Segmenter().segment(before)].at(-1)?.segment.length ?? 0);
+  return [text.slice(0, a - n) + text.slice(a), a - n];
+}
+
 /** Markdown subset + "@Name" mentions as matrix.to links + ":code:" custom emoji (code → mxc).
  *  Everything that must not be re-parsed (code, links, mentions, emoji) is stashed behind \0N\0 placeholders until the end.
  *  null when nothing got formatted, so plain messages send no formatted_body. */

@@ -9,10 +9,10 @@ import { abortSave, geoClick, isMetered, isNative, openSave, openSaved, remember
 import { usePromise } from "../hooks.ts";
 import { LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, neshanUrl, num, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind, type Usage } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
-import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, previewText, senderMember, senderName, stripReplyFallback, toast, useChange, isVoice } from "./common.tsx";
+import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, senderMember, senderName, stripReplyFallback, toast, useChange, isVoice } from "./common.tsx";
 import { AudioPlayer, NoteRing, stopPlayer, trackFor } from "./Voice.tsx";
 import { PollBody } from "./Poll.tsx";
-import { EmojiPanel, ReactionKey, tinted } from "./Emoji.tsx";
+import { EmojiPanel, PreviewText, ReactionKey, tinted } from "./Emoji.tsx";
 import { LinkPreview } from "./LinkPreview.tsx";
 import { captionOf, EDITABLE } from "./Composer.tsx";
 import { useBackdropHold } from "./useBackdropHold.ts";
@@ -746,7 +746,7 @@ function ReplyQuote({ room, id, onJump }: { room: Room; id: string; onJump?: (id
     <div className="reply-quote" dir="auto" style={{ borderColor: ev ? colorFor(ev.getSender()!) : undefined }}
       role={go && "button"} tabIndex={go && 0} onClick={go} onKeyDown={(e) => e.key === "Enter" && go?.(e)}>
       <b dir="auto" style={{ color: ev ? colorFor(ev.getSender()!) : undefined }}>{ev ? senderName(ev) : "پاسخ"}</b>
-      <span>{ev ? previewText(ev) : "پیام اصلی بارگذاری نشده"}</span>
+      <span>{ev ? <PreviewText ev={ev} /> : "پیام اصلی بارگذاری نشده"}</span>
     </div>
   );
 }

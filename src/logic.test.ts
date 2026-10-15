@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel, deriveDraftKey, sealDraft, openDraft } from "./logic.ts";
-import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, type Msg } from "./logic.ts";
+import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, deleteBack, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
 const m = (id: string, sender: string, min: number, kind: Msg["kind"] = "msg"): Msg => ({ id, sender, ts: T + min * 60_000, kind });
@@ -496,4 +496,13 @@ test("isDarkMono: dark gray art yes; colored, light or empty no", () => {
   assert.equal(tintOf({ pack: { "app.panbeh.tint": "never" } }, { url: "mxc://a/b" }), "never");
   assert.equal(tintOf({ pack: { "app.panbeh.tint": "never" } }, { url: "mxc://a/b", "app.panbeh.tint": "always" }), "always");
   assert.equal(tintOf({}, { url: "mxc://a/b" }), "auto");
+});
+
+test("deleteBack: selection, grapheme, custom emoji", () => {
+  assert.deepEqual(deleteBack("hello", 1, 3, []), ["hlo", 1]);
+  assert.deepEqual(deleteBack("a👨‍👩‍👧b", 9, 9, []), ["ab", 1]);
+  assert.deepEqual(deleteBack("x🇮🇷", 5, 5, []), ["x", 1]);
+  assert.deepEqual(deleteBack("hi :cat: there", 8, 8, ["cat"]), ["hi  there", 3]);
+  assert.deepEqual(deleteBack("hi :dog:", 8, 8, ["cat"]), ["hi :dog", 7]);
+  assert.deepEqual(deleteBack("abc", 0, 0, ["cat"]), ["abc", 0]);
 });
