@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
-import { client, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
+import { client, emoteMap, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
 import { getDraft, setDraft, showingDraft } from "../drafts.ts";
 import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages, nativeHoldIme } from "../native.ts";
 import { Icon } from "../icons.tsx";
@@ -588,12 +588,6 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
 }
 
 /** Custom emoji by code → mxc; the first pack's wins, as in the suggestions. */
-function emoteMap(room: Room) {
-  const m = new Map<string, string>();
-  for (const e of emotesFor(room, "emoticon")) if (!m.has(e.code)) m.set(e.code, e.img.url);
-  return m;
-}
-
 function SendFiles({ room, files, setFiles, onSend, canSchedule }: { room: Room; files: File[]; setFiles: Props["setFiles"]; canSchedule: boolean;
   onSend: (files: File[], caption: string, asFile: boolean, asGif: boolean, sendAt?: number) => void }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);

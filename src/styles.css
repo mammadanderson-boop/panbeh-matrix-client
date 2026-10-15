@@ -958,6 +958,8 @@ div.msg-text blockquote { color: color-mix(in srgb, currentColor 85%, transparen
 .emote { display: inline-block; vertical-align: middle; }
 img.emote, span.emote img { height: 1.5em; width: auto; max-width: 4em; object-fit: contain; vertical-align: middle; }
 .emote.shimmer { width: 1.5em; height: 1.5em; border-radius: 6px; }
+.room-preview img.emote { height: 1.25em; }
+.room-preview .emote.shimmer { width: 1.25em; height: 1.25em; }
 span.emote[data-mxc] { cursor: pointer; }
 .emoji-grid .emote, .mention-room .emote { height: 28px; max-width: 34px; }
 .user-row > .mention-room.emote-sug { background: none; border-radius: 6px; }
