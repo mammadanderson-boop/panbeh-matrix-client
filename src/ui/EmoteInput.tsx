@@ -130,11 +130,14 @@ export function EmoteInput({ value, onChange, onCaret, emotes, placeholder, auto
   }
 
   // controlled, like a textarea: text set from outside (or an edit the parent turned down) is laid out again, the caret
-  // at its end (a caller that wants it elsewhere places it after)
+  // at its end (a caller that wants it elsewhere places it after). A phone keyboard is composing nearly always (the
+  // word under the caret), so that only holds off turning a typed code into its image, never text set from outside
+  // (a send clearing the box): laying it out anew ends the composition
   useLayoutEffect(() => {
-    const e = el.current!;
-    if (composing.current || (textOf(e) === value && !rawCode(e))) return;
-    const keep = textOf(e) === value; // only the emoji changed (packs loaded): the caret stays
+    const e = el.current!, t = textOf(e);
+    if (t === value && (composing.current || !rawCode(e))) return;
+    composing.current = false;
+    const keep = t === value; // only the emoji changed (packs loaded): the caret stays
     const [c] = caretOf(e);
     build(e, value, re, emotes);
     placeCaret(e, keep ? c : value.length);
