@@ -14,6 +14,8 @@ export function pushBack(fn: Handler, opts?: { low?: boolean }) {
 }
 
 const OVERLAY = "[role=dialog], [role=menu], [role=listbox], .composer-mode, .select-bar";
+/** Whether a menu, sheet, reply bar or selection is open: back closes that first. */
+export const overlayOpen = () => !!document.querySelector(OVERLAY);
 const run = (s: Handler[]) => { for (let i = s.length - 1; i >= 0; i--) if (s[i]() !== false) return true; return false; };
 
 /** true if something consumed the press. */

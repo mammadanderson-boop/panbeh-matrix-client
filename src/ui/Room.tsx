@@ -22,6 +22,7 @@ import { Predecessor, Upgraded } from "./Admin.tsx";
 import { liveBeacons, onBeaconChange, sharingIn, stopSharing, useLiveLocation } from "../liveLocation.ts";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { useExit } from "./useDismiss.ts";
+import { overlayOpen, pushBack } from "../back.ts";
 
 export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   useTick(client, ["Room.myMembership", "Room.name"]);
@@ -102,6 +103,9 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
     ? `${typing.length > 2 ? `${typing.slice(0, 2).join("، ")} و ${num(typing.length - 2)} نفر دیگر` : typing.join(" و ")} در حال نوشتن`
     : room.getMyMembership() === KnownMembership.Invite ? "دعوت‌نامه" // invites carry no member counts
     : seen.text ?? `${num(room.getJoinedMemberCount())} عضو`;
+  useEffect(() => { // Android back closes the thread, back to the chat it was opened from
+    if (threadId) return pushBack(() => (overlayOpen() ? false : setThreadId(null)));
+  }, [threadId]);
   const liveThread = threadId ? room.getThread(threadId) : null;
   const [threadShown, threadClosing] = useExit(!!liveThread, 240);
   const lastThread = useRef(liveThread);
