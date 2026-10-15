@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel, deriveDraftKey, sealDraft, openDraft } from "./logic.ts";
-import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, deleteBack, type Msg } from "./logic.ts";
+import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, deleteBack, cachedSlice, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
 const m = (id: string, sender: string, min: number, kind: Msg["kind"] = "msg"): Msg => ({ id, sender, ts: T + min * 60_000, kind });
@@ -505,4 +505,12 @@ test("deleteBack: selection, grapheme, custom emoji", () => {
   assert.deepEqual(deleteBack("hi :cat: there", 8, 8, ["cat"]), ["hi  there", 3]);
   assert.deepEqual(deleteBack("hi :dog:", 8, 8, ["cat"]), ["hi :dog", 7]);
   assert.deepEqual(deleteBack("abc", 0, 0, ["cat"]), ["abc", 0]);
+});
+
+test("cachedSlice pages the cache, then hands over to the server's token", () => {
+  const r = (...ids: string[]) => ids.map((id) => ({ id }));
+  assert.deepEqual(cachedSlice(r("c", "b", "a"), 2, "srv", "pb."), { chunk: r("c", "b"), end: "pb.b" }); // more cached
+  assert.deepEqual(cachedSlice(r("b", "a"), 2, "srv", "pb."), { chunk: r("b", "a"), end: "srv" }); // the cache ends here
+  assert.deepEqual(cachedSlice(r("a"), 2, null, "pb."), { chunk: r("a") }); // the start of the chat
+  assert.deepEqual(cachedSlice([], 2, "srv", "pb."), { chunk: [], end: "srv" });
 });

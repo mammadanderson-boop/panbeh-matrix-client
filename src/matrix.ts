@@ -8,6 +8,7 @@ import { confirmDialog } from "./ui/dialog.tsx";
 import { CACHE_MAX_FILE, cacheClear, cacheGet, cacheHas, cachePut } from "./mediaCache.ts";
 import { clearStaleBeacons, stopAll } from "./liveLocation.ts";
 import { syncDrafts } from "./drafts.ts";
+import { cachedPage, historyName, startHistoryCache } from "./historyCache.ts";
 
 type Session = { baseUrl: string; userId: string; deviceId: string; accessToken: string; refreshToken?: string; oauthClientId?: string; legacy?: boolean };
 // several accounts, one running client at a time; switching reloads the page so every cache starts clean
@@ -82,6 +83,11 @@ setInterval(() => {
  *  timer), so kick() can fail it, which drops the SDK into its normal reconnect. */
 const netFetch: typeof fetch = (input, init) => {
   const url = input instanceof Request ? input.url : String(input);
+  // paging a chat back: what's kept on the device first (offline too)
+  if (!isHeadless && /\/rooms\/[^/]+\/messages\?/.test(url)) return cachedPage(url).then((r) => r ?? plainFetch(url, input, init));
+  return plainFetch(url, input, init);
+};
+const plainFetch = (url: string, input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const res = fetch(input, init);
   if (devOn()) res.then((r) => count(url, r), () => {});
   if (!/\/sync\?.*since=/.test(url)) return res; // not an incremental sync; the initial one may rightly take minutes
@@ -150,7 +156,7 @@ export async function start(s: Session) {
     c.on(ClientEvent.Sync, (state) => nativeSyncState(state));
     onKick(kick);
   }
-  if (!isHeadless) syncDrafts(); // before startClient: the cached and first-sync account data come in during it
+  if (!isHeadless) { syncDrafts(); startHistoryCache(); } // before startClient: the cached and first-sync data come in during it
   await c.startClient({ threadSupport: true, lazyLoadMembers: true, initialSyncLimit: 30, filter: isHeadless ? headlessFilter(s.userId) : undefined });
   // a reload leaves our live-location beacons live with nothing watching or stopping them: turn them off
   // (not in the headless page: it shares the device with the app page, which may be sharing right now)
@@ -250,7 +256,9 @@ export async function logout() {
   const left = sessions().filter((x) => x.userId !== current?.userId);
   if (current) localStorage.removeItem(`panbeh.drafts:${current.userId}`);
   if (current) localStorage.removeItem(`panbeh.profile:${current.userId}`);
+  if (current) localStorage.removeItem(`panbeh.outbox:${current.userId}`); // sendQueue.ts
   if (current) indexedDB.deleteDatabase(`panbeh-search:${current.userId}`); // searchIndex.ts's local message index
+  if (current) indexedDB.deleteDatabase(historyName(current.userId));
   setSessions(left);
   if (left.length) localStorage.setItem(ACTIVE_KEY, left[0].userId); else localStorage.removeItem(ACTIVE_KEY);
   if (isNative) { nativeCancelAll(); if (!left.length) setBackgroundService(false); }
@@ -277,9 +285,10 @@ export async function logoutAll() {
   for (const s of others) {
     const db = dbNames(s);
     // best effort, as in logout(): a blocked delete stays pending
-    for (const n of [`matrix-js-sdk:${db.sync}`, `${db.crypto}::matrix-sdk-crypto`, `${db.crypto}::matrix-sdk-crypto-meta`, `panbeh-search:${s.userId}`]) indexedDB.deleteDatabase(n);
+    for (const n of [`matrix-js-sdk:${db.sync}`, `${db.crypto}::matrix-sdk-crypto`, `${db.crypto}::matrix-sdk-crypto-meta`, `panbeh-search:${s.userId}`, historyName(s.userId)]) indexedDB.deleteDatabase(n);
     localStorage.removeItem(`panbeh.drafts:${s.userId}`);
     localStorage.removeItem(`panbeh.profile:${s.userId}`);
+    localStorage.removeItem(`panbeh.outbox:${s.userId}`);
   }
   await logout();
 }
