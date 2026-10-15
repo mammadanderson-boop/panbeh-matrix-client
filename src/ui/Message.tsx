@@ -38,6 +38,9 @@ export type Actions = {
 const QUICK = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
 
 const LONG_PRESS = 450, SWIPE_AT = 60, SWIPE_MAX = 80;
+/** The last press was a finger. Touch works like Telegram: a tap on a message opens its menu, holding it selects it. */
+let touched = false;
+addEventListener("pointerdown", (e) => { touched = e.pointerType === "touch"; }, true);
 
 /** Text a copy should give: body without the reply fallback; media only their caption. */
 export function copyTextOf(ev: MatrixEvent): string {
@@ -110,10 +113,10 @@ type Props = { ev: MatrixEvent; room: Room; first: boolean; last: boolean; actio
 export function Message({ ev, room, first, last, actions, flash, enter, album }: Props) {
   const [picker, setPicker] = useState(false);
   const [fullPicker, setFullPicker] = useState(false);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null); // touch screens have no hover: long-press (or right-click) opens this
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null); // touch screens have no hover: a tap (or right-click) opens this
   const row = useRef<HTMLDivElement>(null);
   const g = useRef<{ id: number; x: number; y: number; timer: number; lock: boolean; px: number; crossed: boolean } | null>(null);
-  const swallow = useRef(false); // the click that follows a swipe / long-press
+  const swallow = useRef(false); // the click that follows a swipe / hold
   const mine = ev.getSender() === me();
   const [deleting, setDeleting] = useState(false);
   const items = album ?? [ev];
@@ -146,12 +149,12 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
 
   const setX = (px: number) => { row.current!.style.setProperty("--sx", `${-px}px`); row.current!.style.setProperty("--sp", String(Math.min(1, px / SWIPE_AT))); };
   const end = (cancel: boolean) => {
+    if (swallow.current) setTimeout(() => { swallow.current = false; }, 350); // eat only the click this finger-up brings
     const s = g.current;
     g.current = null;
     if (!s) return;
     clearTimeout(s.timer);
     if (s.lock) {
-      setTimeout(() => { swallow.current = false; }, 350);
       row.current!.classList.add("snap"); // animate back
       setX(0);
       setTimeout(() => row.current?.classList.remove("snap", "swiping"), 220);
@@ -165,10 +168,10 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
     const { clientX: x, clientY: y } = e;
     clearTimeout(g.current?.timer);
     g.current = { id: e.pointerId, x, y, lock: false, px: 0, crossed: false, timer: window.setTimeout(() => {
+      g.current = null; // held: no swipe after this
       swallow.current = true;
-      setTimeout(() => { swallow.current = false; }, 1500); // the click normally follows at finger-up; don't eat a later tap if it doesn't
       navigator.vibrate?.(15);
-      setMenu({ x, y });
+      if (actions.select) select(); else setMenu({ x, y }); // a thread has no selection: its hold still opens the menu
     }, LONG_PRESS) };
   };
   const move = (e: PointerEvent) => {
@@ -194,11 +197,21 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   return (
     <div ref={row} className={`msg ${mine ? "mine" : "theirs"}${first ? " first" : ""}${last ? " last" : ""}${failed ? " failed" : ""}${flash ? " flash" : ""}${enter ? " enter" : ""}${deleting ? " deleting" : ""}${selecting ? " selecting" : ""}${selected ? " selected" : ""}`}
       onPointerDown={down} onPointerMove={move} onPointerUp={() => end(false)} onPointerCancel={() => end(true)}
-      onContextMenu={(e) => { if (!live || selecting || !inside(e)) return; e.preventDefault(); setMenu((m) => m ?? { x: e.clientX, y: e.clientY }); }}
+      onContextMenu={(e) => {
+        if (!inside(e)) return;
+        if (touched) return e.preventDefault(); // Android's own long-press: our hold timer has it
+        if (!live || selecting) return;
+        e.preventDefault();
+        setMenu((m) => m ?? { x: e.clientX, y: e.clientY });
+      }}
       onClickCapture={(e) => {
         if (!inside(e)) return;
-        if (selecting) { e.preventDefault(); e.stopPropagation(); select(); } // taps only toggle while selecting
-        else if (swallow.current) { e.preventDefault(); e.stopPropagation(); swallow.current = false; }
+        if (swallow.current) { e.preventDefault(); e.stopPropagation(); swallow.current = false; } // first: a hold that just selected
+        else if (selecting) { e.preventDefault(); e.stopPropagation(); select(); } // taps only toggle while selecting
+      }}
+      onClick={(e) => { // touch: a tap on the bubble opens the menu, unless it was on a link, button or media inside
+        const t = e.target as HTMLElement;
+        if (touched && live && inside(e) && t.closest(".bubble") && !t.closest("a,button,input,video,audio,[role=button],[data-mx-spoiler]")) setMenu({ x: e.clientX, y: e.clientY });
       }}>
       {selecting && <span className="sel-check" aria-hidden>{selected && <Icon name="check" size={14} />}</span>}
       {swipeOk && <span className="swipe-ico" aria-hidden><Icon name="reply" size={20} /></span>}
@@ -279,7 +292,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
           mine && EDITABLE.includes(content.msgtype ?? "") && { icon: "edit", label: "ویرایش", run: () => actions.edit(ev) },
           mine && { icon: "info", label: "دیده‌شده توسط", run: () => actions.info(ev) },
           reacted && { icon: "smile", label: "واکنش‌ها", run: () => actions.reactions(ev) },
-          actions.select && { icon: "select", label: "انتخاب", run: select },
+          actions.select && !touched && { icon: "select", label: "انتخاب", run: select }, // touch selects by holding
           !mine && ev.getId() && { icon: "flag", label: "گزارش", run: () => void report(room, ev) },
           canDelete && { icon: "trash", label: "حذف", danger: true, run: remove },
         ]} />
@@ -310,7 +323,7 @@ function MsgMenu({ x, y, items, onReact, onMore, onClose }: { x: number; y: numb
     return () => removeEventListener("keydown", onKey);
   }, [close]);
   const act = (fn: () => unknown) => { onClose(); fn(); };
-  const backdrop = useBackdropHold(onClose, ".msg", close); // holding another message switches the menu to it
+  const backdrop = useBackdropHold(onClose, ".msg", close); // right-clicking another message switches the menu to it (a finger hold just closes)
   return createPortal(
     <div className={"chat-menu-backdrop msg-menu-backdrop" + (closing ? " closing" : "")} {...backdrop}>
       <div className="chat-menu msg-menu" role="menu" aria-label="گزینه‌های پیام" tabIndex={-1} ref={ref} style={pos ?? { left: x, top: y, visibility: "hidden" }} onClick={(e) => e.stopPropagation()}>

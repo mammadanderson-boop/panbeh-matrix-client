@@ -405,7 +405,7 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
 }
 .msg.mine .quick-react { left: auto; right: 0; }
 .quick-react button { font-size: 22px; width: 36px; height: 36px; border-radius: 50%; transition: transform 0.12s; }
-.quick-react button:hover { transform: scale(1.25); }
+@media (hover: hover) { .quick-react button:hover { transform: scale(1.25); } } /* touch: :hover sticks where the finger was */
 @keyframes pop { from { opacity: 0; transform: scale(0.9) translateY(4px); } }
 
 /* ---------- composer ---------- */
@@ -698,6 +698,8 @@ input[role="switch"]:checked::before { transform: translateX(-18px); }
 /* the mic button: tap switches voice/video, hold records; the browser mustn't scroll or zoom under the finger */
 .rec-btn { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .recorder.held { justify-content: space-between; }
+/* the text row under a recording: out of sight but not display:none, which would blur the textarea and drop the keyboard */
+.composer-row.behind-rec { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .rec-hint { display: inline-flex; align-items: center; gap: 4px; margin-inline-start: auto; color: var(--muted); font-size: 14px; white-space: nowrap; }
 .rec-mic { position: relative; flex: none; width: 54px; height: 54px; display: grid; place-items: center; border-radius: 50%; background: #e53935; color: #fff; transform: scale(1.15); }
 .rec-lock { position: absolute; bottom: calc(100% + 18px); left: 50%; translate: -50% 0; width: 32px; height: 44px; display: grid; place-items: center; border-radius: 16px; background: var(--panel); color: var(--muted); box-shadow: var(--shadow); animation: lock-hint 1.4s ease-in-out infinite; }
@@ -907,7 +909,8 @@ div.msg-text blockquote { color: color-mix(in srgb, currentColor 85%, transparen
   box-shadow: 0 6px 30px rgba(0, 0, 0, 0.22); animation: pop 0.14s ease-out;
 }
 .chat-menu button { display: flex; align-items: center; gap: 14px; width: 100%; padding: 9px 12px; border-radius: 10px; font-weight: 500; text-align: start; }
-.chat-menu button:hover, .chat-menu button:focus-visible { background: var(--hover); outline: none; }
+.chat-menu button:focus-visible { background: var(--hover); outline: none; }
+@media (hover: hover) { .chat-menu button:hover { background: var(--hover); } } /* touch: a menu opening under the finger mustn't light up an item */
 .chat-menu svg { color: var(--muted); }
 .chat-menu .danger-item, .chat-menu .danger-item svg { color: #e53935; }
 .chat-menu .menu-check { display: inline-flex; width: 20px; height: 20px; flex: none; }
@@ -1297,6 +1300,11 @@ img.tint {
 .attach-menu:dir(ltr) { transform-origin: bottom left; }
 .emoji-panel { animation: pop 0.18s var(--ease-out); transform-origin: bottom left; } /* end-aligned, over the 😊: the left edge in RTL */
 .emoji-panel:dir(ltr) { transform-origin: bottom right; }
+/* touch: docked under the row in the keyboard's place. Composer sets --emoji-h (the keyboard's height) and --emoji-gap
+   (what the keyboard doesn't cover); with the keyboard still up the panel waits below it, off screen */
+.emoji-dock { position: relative; height: var(--emoji-gap, 0px); }
+.emoji-dock .emoji-panel, .emoji-dock .emoji-panel.closing { top: 8px; bottom: auto; inset-inline: 0; width: auto; height: calc(var(--emoji-h) - 8px); animation: none; }
+.composer:has(.emoji-dock .emoji-panel) .composer-row { position: relative; z-index: 22; } /* over the panel's backdrop: the text box and ⌨ stay tappable */
 @media (max-width: 700px) {
   .chat-menu-backdrop.closing > .msg-menu { animation: sheet-down 0.18s ease-in forwards; }
 }
