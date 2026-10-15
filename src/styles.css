@@ -373,9 +373,10 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
   display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 9px; border-radius: 14px;
   background: var(--bubble-in); box-shadow: var(--shadow); font-size: 15px; transition: transform 0.1s;
 }
-.reactions button span { font-size: 13px; font-weight: 600; color: var(--accent); }
-.reactions button.on { background: var(--accent); }
-.reactions button.on span { color: #fff; }
+/* the chip's color, not just the count's: a tinted custom emoji takes it too */
+.reactions button { color: var(--accent); }
+.reactions button span { font-size: 13px; font-weight: 600; }
+.reactions button.on { background: var(--accent); color: #fff; }
 
 .thread-link {
   display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; padding: 4px 10px; border-radius: 14px;
