@@ -231,6 +231,11 @@ export function tallyPoll(votes: Vote[], answerIds: string[], max: number) {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 export const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** `:code:` for any of `codes`, the code captured (longest first, so `:cat2:` isn't read as `:cat:`); null for none. */
+export function emoteRe(codes: Iterable<string>): RegExp | null {
+  const c = [...codes].sort((a, b) => b.length - a.length).map(escRe);
+  return c.length ? new RegExp(`:(${c.join("|")}):`, "g") : null;
+}
 
 /** Markdown subset + "@Name" mentions as matrix.to links + ":code:" custom emoji (code → mxc).
  *  Everything that must not be re-parsed (code, links, mentions, emoji) is stashed behind \0N\0 placeholders until the end.
@@ -253,9 +258,9 @@ export function formatMessage(text: string, mentions: { name: string; id: string
       return hold(`<a href="https://matrix.to/#/${esc(id)}">${esc(m.slice(1))}</a>`);
     });
   }
-  if (emotes.size) {
-    const re = new RegExp(`:(${[...emotes.keys()].sort((a, b) => b.length - a.length).map(escRe).join("|")}):`, "g");
-    t = t.replace(re, (m, code) => hold(`<img data-mx-emoticon src="${esc(emotes.get(code)!)}" alt="${esc(m)}" title="${esc(m)}" height="32">`));
+  const re = emoteRe(emotes.keys());
+  if (re) {
+    t = t.replace(re,(m, code) => hold(`<img data-mx-emoticon src="${esc(emotes.get(code)!)}" alt="${esc(m)}" title="${esc(m)}" height="32">`));
   }
 
   t = esc(t);

@@ -24,8 +24,8 @@ export function goBack(): boolean {
     // Esc handlers live on the overlay or its field; with focus elsewhere (body, a button) aim at the topmost overlay
     const a = document.activeElement;
     const top = ov[ov.length - 1];
-    // the composer's reply/edit bar and @ list close from its textarea's keydown
-    const field = top.closest(".composer")?.querySelector("textarea");
+    // the composer's reply/edit bar and @ list close from its text box's keydown
+    const field = top.closest(".composer")?.querySelector(".composer-text");
     const to = field ?? (a && a !== document.body && top.contains(a) ? a : top);
     to.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     return true;

@@ -426,8 +426,8 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
   background: var(--panel); border-radius: 18px; box-shadow: var(--shadow);
 }
 .composer-field > .composer-mode { grid-column: 1 / -1; }
-.composer-row textarea {
-  min-height: 54px; max-height: 40dvh; overflow-y: auto; padding: 16px 6px; resize: none; border: 0; outline: none;
+.composer-row .composer-text {
+  min-height: 54px; max-height: 40dvh; overflow-y: auto; padding: 16px 6px; border: 0; outline: none;
   border-radius: inherit; background: transparent; line-height: 1.4;
 }
 .send-btn {
@@ -483,7 +483,7 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
 /* user-supplied one-line labels: direction from their own text (so "Alice!" isn't "!Alice"), but always right-aligned */
 .room-name, .room-preview, .room-head-text b, .profile b, .invite h2, .composer-mode span, .user-row b, .chip, .info-text h2 { unicode-bidi: plaintext; text-align: right; }
 /* typed text picks its direction per line; empty fields (placeholder) stay RTL — dir=auto would make them LTR */
-.search input, .composer textarea, .send-caption, .card input, .form input, .modal input:not([role]) { unicode-bidi: plaintext; }
+.search input, .emote-input, .send-caption, .card input, .form input, .modal input:not([role]) { unicode-bidi: plaintext; }
 /* password dots have no direction of their own, so they'd follow the page's RTL; once typed, they fill left to right */
 input[type="password"]:not(:placeholder-shown) { direction: ltr; }
 
@@ -631,7 +631,7 @@ input[role="switch"]:checked::before { transform: translateX(-18px); }
 .send-file { position: relative; padding: 4px 0; padding-inline-end: 32px; }
 .send-file > span:nth-child(2) { display: grid; min-width: 0; } /* name over size; the ✕ is last-child here */
 .send-file .send-x { top: 50%; transform: translateY(-50%); background: var(--hover); color: var(--muted); }
-.send-caption { resize: none; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: inherit; font: inherit; }
+.send-caption { resize: none; min-height: calc(2lh + 18px); max-height: 30dvh; overflow-y: auto; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: inherit; font: inherit; }
 .modal-actions { position: sticky; bottom: -16px; display: flex; justify-content: flex-end; gap: 8px; margin: 0 -16px -16px; padding: 8px 16px 16px; background: var(--panel); }
 .modal-actions button { padding: 8px 16px; border-radius: 10px; color: var(--accent); font-weight: 600; }
 .modal-actions button:hover { background: var(--hover); }
@@ -952,6 +952,9 @@ span.emote[data-mxc] { cursor: pointer; }
 .emoji-grid .emote, .mention-room .emote { height: 28px; max-width: 34px; }
 .user-row > .mention-room.emote-sug { background: none; border-radius: 6px; }
 .emoji-cats .emote.shimmer { width: 26px; height: 26px; }
+/* a text box showing custom emoji as images (EmoteInput) */
+.emote-input { white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.emote-input:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
 /* custom emoji that take the text color: the picture moved out of its box, its shape (alpha minus luminance, so gray
    shading stays lighter) cut from a text-colored background. Masks animate, so animated emoji keep playing. */
 img.tint {
@@ -1049,7 +1052,7 @@ img.tint {
 /* touch: a long-press opens our menus, so it mustn't also start a text selection (copy is in the menu) */
 @media (hover: none) {
   body, body * { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-  body input, body textarea { user-select: text; -webkit-user-select: text; }
+  body input, body textarea, body .emote-input, body .emote-input * { user-select: text; -webkit-user-select: text; }
   .recovery-key { user-select: all; -webkit-user-select: all; }
 }
 .msg-menu { z-index: 46; min-width: 220px; max-width: calc(100vw - 16px); padding: 6px; }
@@ -1094,7 +1097,7 @@ img.tint {
   .composer { padding: 4px 8px 8px; }
   .composer-row { gap: 6px; }
   .composer-field { border-radius: 23px; }
-  .composer-row textarea { min-height: 46px; padding: 12px 6px; font-size: 15px; line-height: 1.45; }
+  .composer-row .composer-text { min-height: 46px; padding: 12px 6px; font-size: 15px; line-height: 1.45; }
   .send-btn { width: 46px; height: 46px; }
   .composer-row .attach, .composer-row .emoji-toggle { margin-bottom: 3px; }
   .room-head { gap: 4px; padding: 0 6px; }
@@ -1341,7 +1344,6 @@ img.tint {
 .pinned-text { animation: preview-in 0.22s var(--ease-out); }
 
 /* composer */
-.composer-row textarea { transition: height 0.12s var(--ease-out); }
 .recorder-live, .recorder-preview { animation: mode-in 0.2s var(--ease-out); }
 .emoji-grid, .gif-grid { animation: fade 0.18s; }
 .emoji-grid button { transition: background var(--dur-fast), transform var(--dur-fast); }
