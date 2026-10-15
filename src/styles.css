@@ -788,7 +788,7 @@ input[role="switch"]:checked::before { transform: translateX(-18px); }
 .pinned-ticks i.on { background: var(--accent); }
 .pinned-text { flex: 1; min-width: 0; display: grid; font-size: 14px; }
 .pinned-text b { font-size: 13px; color: var(--accent); }
-.pinned-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; text-align: right; }
+.pinned-text > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; text-align: right; }
 .pinned-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: start; }
 .pinned-row > span { flex: 1; min-width: 0; display: grid; }
 
@@ -986,8 +986,8 @@ div.msg-text blockquote { color: color-mix(in srgb, currentColor 85%, transparen
 .emote { display: inline-block; vertical-align: middle; }
 img.emote, span.emote img { height: 1.5em; width: auto; max-width: 4em; object-fit: contain; vertical-align: middle; }
 .emote.shimmer { width: 1.5em; height: 1.5em; border-radius: 6px; }
-.room-preview img.emote, .reply-quote img.emote, .composer-mode img.emote { height: 1.25em; }
-.room-preview .emote.shimmer, .reply-quote .emote.shimmer, .composer-mode .emote.shimmer { width: 1.25em; height: 1.25em; }
+.room-preview img.emote, .reply-quote img.emote, .composer-mode img.emote, .pinned-text img.emote, .pinned-row img.emote { height: 1.25em; }
+.room-preview .emote.shimmer, .reply-quote .emote.shimmer, .composer-mode .emote.shimmer, .pinned-text .emote.shimmer, .pinned-row .emote.shimmer { width: 1.25em; height: 1.25em; }
 span.emote[data-mxc] { cursor: pointer; }
 .emoji-grid .emote, .mention-room .emote { height: 28px; max-width: 34px; }
 .user-row > .mention-room.emote-sug { background: none; border-radius: 6px; }

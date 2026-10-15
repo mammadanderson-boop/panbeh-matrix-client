@@ -200,7 +200,7 @@ export function EmoteText({ text, emotes }: { text: string; emotes?: ReadonlyMap
   return <>{text.split(re).map((p, i) => (i % 2 ? <EmoteImg key={i} url={emotes!.get(p)!} alt={`:${p}:`} /> : p))}</>;
 }
 
-/** previewText with the message's custom emoji as images (reply quotes, the composer's reply bar). */
+/** previewText with the message's custom emoji as images (reply quotes, the composer's reply bar, pins). */
 export function PreviewText({ ev }: { ev: MatrixEvent }) {
   return <EmoteText text={previewText(ev)} emotes={formattedPlain(ev.getContent())?.emotes} />;
 }
