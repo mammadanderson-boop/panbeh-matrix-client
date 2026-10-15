@@ -2,7 +2,7 @@ import { useLongPress } from "./useLongPress.ts";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { NotificationCountType, UserEvent, type Room } from "matrix-js-sdk";
-import { client, dmPeer } from "../matrix.ts";
+import { client, dmPeer, emoteMap } from "../matrix.ts";
 import { setMuted } from "../notify.ts";
 import { isCallStart, useFolderOrder, useRooms, useTick, useTyping, type RoomRow } from "../hooks.ts";
 import { ARCHIVED, leaveAndForget, markRead, PINNED, setMarkedUnread, setTag } from "../chats.ts";
@@ -12,7 +12,8 @@ import { pushBack } from "../back.ts";
 import { setBadge } from "../desktop.ts";
 import logo from "../logo.svg";
 import { Icon } from "../icons.tsx";
-import { bdi, ContextMenu, Dots, errText, useChange, me, noticeText, previewText, RoomAvatar, senderName } from "./common.tsx";
+import { bdi, ContextMenu, Dots, errText, formattedPlain, useChange, me, noticeText, previewText, RoomAvatar, senderName } from "./common.tsx";
+import { EmoteText } from "./Emoji.tsx";
 import { NewChat } from "./NewChat.tsx";
 import { RoomInfo } from "./RoomInfo.tsx";
 import { MessageResults, requestJump } from "./Search.tsx";
@@ -214,16 +215,18 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
   const { room, last } = row;
   const { click, handlers } = useLongPress(row.invite ? undefined : onMenu);
   let preview = row.invite ? "دعوت‌نامه" : "";
+  let emotes: ReadonlyMap<string, string> | undefined; // the preview's custom emoji, code → mxc
   if (last && !row.invite && isCallStart(last)) preview = "📞 " + noticeText(last); // names the caller itself
   else if (last && !row.invite) {
     const who = last.getSender() === me() ? "شما" : row.isDM ? "" : bdi(senderName(last).split(" ")[0]);
     preview = (who ? who + ": " : "") + previewText(last);
+    emotes = formattedPlain(last.getContent())?.emotes;
   }
   const typers = useTyping(room);
   const typing = row.invite ? [] : typers;
   if (typing.length) preview = (row.isDM ? "" : bdi(typing[0].name.split(" ")[0]) + " ") + "در حال نوشتن";
   const draft = !typing.length && row.draft;
-  if (draft) preview = draft.body.split("\n")[0];
+  if (draft) { preview = draft.body.split("\n")[0]; emotes = emoteMap(room); } // composer text: this room's emoji
   const muted = !!row.muted;
   const bumped = useChange(row.unread);
   const previewChanged = useChange(preview, 350);
@@ -238,7 +241,7 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
           <span className="room-time">{listTime(row.ts)}</span>
         </div>
         <div className="room-item-bottom">
-          <span className={"room-preview" + (typing.length ? " typing" : "") + (previewChanged ? " changed" : "")}>{draft && <span className="draft">پیش‌نویس: </span>}{preview}{typing.length > 0 && <Dots />}</span>
+          <span className={"room-preview" + (typing.length ? " typing" : "") + (previewChanged ? " changed" : "")}>{draft && <span className="draft">پیش‌نویس: </span>}{typing.length ? preview : <EmoteText text={preview} emotes={emotes} />}{typing.length > 0 && <Dots />}</span>
           {mentioned && <span className="badge">@</span>}
           {(row.unread > 0 || row.invite) ? <span className={"badge" + (muted ? " muted" : "") + (bumped ? " bump" : "")}>{row.invite ? "!" : num(row.unread)}</span>
             : row.marked ? <span className={"badge dot" + (muted ? " muted" : "")} aria-label="خوانده‌نشده" />

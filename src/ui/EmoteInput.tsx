@@ -95,7 +95,8 @@ function build(el: HTMLElement, text: string, re: RegExp | null, emotes: Readonl
 type Props = Omit<HTMLAttributes<HTMLDivElement>, "onChange"> & {
   value: string;
   onChange: (text: string, caret: number) => void;
-  onCaret?: (caret: number) => void;
+  /** the selection moved: its start, and its end (= start when collapsed) */
+  onCaret?: (caret: number, end: number) => void;
   /** code → mxc of the custom emoji to show */
   emotes: ReadonlyMap<string, string>;
   placeholder?: string;
@@ -150,7 +151,7 @@ export function EmoteInput({ value, onChange, onCaret, emotes, placeholder, auto
       if (document.activeElement !== e) return;
       const c = caretOf(e);
       lastSel.set(e, c);
-      live.current.onCaret?.(c[0]);
+      live.current.onCaret?.(c[0], c[1]);
     };
     e.addEventListener("beforeinput", before);
     document.addEventListener("selectionchange", sel);

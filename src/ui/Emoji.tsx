@@ -6,7 +6,7 @@ import enUrl from "emojibase-data/en/compact.json?url";
 import faUrl from "cldr-annotations-modern/annotations/fa/annotations.json?url";
 import { client, emotesFor, mediaUrl, savedGifs, tintFor, toggleGif, type Emote } from "../matrix.ts";
 import { usePromise, useTick } from "../hooks.ts";
-import { isDarkMono, normalize, type Gif } from "../logic.ts";
+import { emoteRe, isDarkMono, normalize, type Gif } from "../logic.ts";
 import { confirmDialog } from "./dialog.tsx";
 
 type Emoji = { u: string; name: string; search: string; custom?: Emote };
@@ -157,6 +157,13 @@ export function EmoteImg({ url, alt, className = "emote", sticker }: { url: stri
   return src && tint !== undefined
     ? <img className={className + (tint ? " tint" : "")} style={tint ? { "--src": `url("${src}")` } as never : undefined} src={src} alt={alt} title={alt || undefined} draggable={false} />
     : <span className={className + " shimmer"} />;
+}
+
+/** Text with its ":code:"s for `emotes` (code → mxc) shown as the emoji. */
+export function EmoteText({ text, emotes }: { text: string; emotes?: ReadonlyMap<string, string> }) {
+  const re = emotes?.size ? emoteRe(emotes.keys()) : null;
+  if (!re) return <>{text}</>;
+  return <>{text.split(re).map((p, i) => (i % 2 ? <EmoteImg key={i} url={emotes!.get(p)!} alt={`:${p}:`} /> : p))}</>;
 }
 
 /** A reaction's key: a custom emoji's is its mxc, named by com.beeper.reaction.shortcode on the reaction `ev`. */

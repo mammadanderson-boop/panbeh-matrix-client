@@ -92,7 +92,43 @@ export function errText(e: unknown): string {
   return /fetch|network/i.test(m) ? "به سرور دسترسی نیست. نشانی و پورت را بررسی کنید." : m;
 }
 
-const cap = (c: Record<string, any>): string | undefined => (c.filename && c.body !== c.filename ? c.body : undefined);
+const cap = (c: Record<string, any>): string | undefined => (c.filename && c.body !== c.filename ? formattedPlain(c)?.text ?? c.body : undefined);
+
+const BLOCK = /^(P|DIV|LI|H[1-6]|BLOCKQUOTE|PRE|UL|OL|TR)$/;
+const plainCache = new WeakMap<object, { text: string; emotes: Map<string, string> } | null>();
+/** A formatted message's text as it reads: no markup (so no markdown markers), spoilers hidden, custom emoji as
+ *  ":code:" with their mxc in `emotes`. null when it has no formatted_body. */
+export function formattedPlain(c: Record<string, any>) {
+  if (plainCache.has(c)) return plainCache.get(c)!;
+  let out = null;
+  if (c.format === "org.matrix.custom.html" && typeof c.formatted_body === "string") {
+    // inert: a parsed document loads nothing and runs nothing
+    const doc = new DOMParser().parseFromString(c.formatted_body, "text/html");
+    doc.querySelectorAll("mx-reply").forEach((n) => n.remove());
+    const emotes = new Map<string, string>();
+    let text = "";
+    const walk = (n: Node) => {
+      for (const k of n.childNodes) {
+        if (k.nodeType === Node.TEXT_NODE) { text += k.textContent; continue; }
+        if (!(k instanceof Element)) continue;
+        if (k.tagName === "BR") text += "\n";
+        else if (k.hasAttribute("data-mx-spoiler")) text += "▒▒▒";
+        else if (k.tagName === "IMG") {
+          const alt = k.getAttribute("alt") ?? "", m = /^:([^:\s]+):$/.exec(alt), src = k.getAttribute("src") ?? "";
+          if (m && k.hasAttribute("data-mx-emoticon") && src.startsWith("mxc://")) emotes.set(m[1], src);
+          text += alt;
+        } else {
+          if (BLOCK.test(k.tagName) && text && !text.endsWith("\n")) text += "\n";
+          walk(k);
+        }
+      }
+    };
+    walk(doc.body);
+    out = { text: text.trim(), emotes };
+  }
+  plainCache.set(c, out);
+  return out;
+}
 
 /** One-line text for list previews and reply quotes. */
 export function previewText(ev: MatrixEvent): string {
@@ -105,12 +141,12 @@ export function previewText(ev: MatrixEvent): string {
     case "m.audio": return isVoice(c) ? "🎤 پیام صوتی " + fmtDuration(audioDuration(c)) : "🎵 صدا";
     case "m.location": return "📍 موقعیت مکانی";
     case "m.file": return "📎 " + (cap(c) ?? c.filename ?? c.body ?? "فایل");
-    case "m.emote": return `* ${senderName(ev)} ${c.body}`;
+    case "m.emote": return `* ${senderName(ev)} ${formattedPlain(c)?.text ?? c.body}`;
     case VERIFY_REQUEST: return "🔐 درخواست تأیید هویت";
   }
   if (ev.getType() === EventType.Sticker) return "استیکر";
   if (M_POLL_START.matches(ev.getType())) return "📊 " + (parsePoll(ev)?.question.text ?? "نظرسنجی");
-  return stripReplyFallback(String(c.body ?? ""));
+  return formattedPlain(c)?.text ?? stripReplyFallback(String(c.body ?? ""));
 }
 
 type Content = Record<string, any>;

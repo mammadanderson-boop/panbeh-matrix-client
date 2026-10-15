@@ -785,6 +785,12 @@ export function packsFor(room?: Room): Pack[] {
 /** Emoji (or stickers) usable here, grouped by pack; a shortcode used by several packs resolves to the first. */
 export const emotesFor = (room: Room | undefined, use: Usage): Emote[] =>
   packsFor(room).flatMap((pack) => packImages(pack.content, use).map(([code, img]) => ({ code, img, pack })));
+/** code → mxc of the emoji usable here (the first pack's, where several share a code). */
+export function emoteMap(room: Room) {
+  const m = new Map<string, string>();
+  for (const e of emotesFor(room, "emoticon")) if (!m.has(e.code)) m.set(e.code, e.img.url);
+  return m;
+}
 
 const LONGEST: Record<Usage, number> = { emoticon: 256, sticker: 512 }; // px, after padding; a jumbo emoji is 60px, ~180 device px on a 3× phone
 const ANIM_CAP: Record<Usage, number> = { emoticon: 1 << 20, sticker: 2 << 20 }; // bytes
