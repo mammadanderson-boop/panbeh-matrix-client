@@ -86,7 +86,7 @@ export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, onBackspace
       <div className={"emoji-panel" + (closing ? " closing" : "") + (tabs || bksp ? " floating" : "")} role="dialog" aria-label="اموجی" onScrollCapture={onScroll}>
         {tab === "sticker" && stickers ? <StickerGrid room={room} {...stickers} />
           : tab === "gif" && gifs ? <GifGrid {...gifs} />
-          : <EmojiGrid room={room} onPick={(e) => { if (e.custom) onEmoji(e.name, e.custom); else { remember(e.u); onEmoji(e.u); } }} />}
+          : <EmojiGrid room={room} onPick={(e) => { remember(e.u); if (e.custom) onEmoji(e.name, e.custom); else onEmoji(e.u); }} />}
         {(tabs || bksp) && (
           <div className={"emoji-float" + (away ? " away" : "")}>
             {tabs && (
@@ -104,7 +104,6 @@ export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, onBackspace
   );
 }
 
-// ponytail: recents are unicode only; custom emoji sit in their packs' tabs
 function EmojiGrid({ room, onPick }: { room?: Room; onPick: (e: Emoji) => void }) {
   useTick(client, [ClientEvent.AccountData, RoomStateEvent.Events]);
   const groups = usePromise(useMemo(loadEmoji, []));
@@ -118,9 +117,11 @@ function EmojiGrid({ room, onPick }: { room?: Room; onPick: (e: Emoji) => void }
     if (!custom.has(e.pack.key)) custom.set(e.pack.key, []);
     custom.get(e.pack.key)!.push({ u: e.pack.key + ":" + e.code, name: `:${e.code}:`, search: normalize(e.code), custom: e });
   }
+  const customByU = new Map([...custom.values()].flat().map((e) => [e.u, e]));
   const term = normalize(q.trim());
   const list = !groups ? [] : term ? [...[...custom.values()].flat(), ...all].filter((e) => e.search.includes(term)).slice(0, 240)
-    : group === -1 ? rec.map((u) => byU.get(u) ?? { u, name: u, search: "" })
+    // a custom one's u is "pack:code" (unicode never has a ":"); one whose pack is gone drops out
+    : group === -1 ? rec.flatMap((u) => byU.get(u) ?? customByU.get(u) ?? (u.includes(":") ? [] : { u, name: u, search: "" }))
     : typeof group === "string" ? custom.get(group) ?? [] : groups.get(group) ?? [];
   const packCats = [...custom.values()].map(([e]) => {
     const p = e.custom!.pack;
@@ -136,7 +137,14 @@ function EmojiGrid({ room, onPick }: { room?: Room; onPick: (e: Emoji) => void }
     n.toggleAttribute("data-end", x + n.clientWidth < n.scrollWidth - 1);
   };
   useLayoutEffect(edges, [packCats.length, rec.length]);
-  useEffect(() => { nav.current?.querySelector(".on")?.scrollIntoView({ inline: "nearest", block: "nearest" }); }, [group]);
+  // the bar alone: scrollIntoView would scroll the chat too, pulling the composer up while the docked panel still
+  // waits off screen under the keyboard
+  useEffect(() => {
+    const n = nav.current, b = n?.querySelector(".on");
+    if (!n || !b) return;
+    const r = b.getBoundingClientRect(), s = n.getBoundingClientRect();
+    n.scrollLeft += Math.min(0, r.left - s.left) + Math.max(0, r.right - s.right);
+  }, [group]);
   const cat = ([g, icon, label]: readonly [number | string, ReactNode, string]) => {
     const on = !term && g === group;
     return <button key={g} role="tab" aria-selected={on} className={on ? "on" : ""} title={label} aria-label={label} onClick={() => { setQ(""); setGroup(g); }}>{icon}</button>;
@@ -147,8 +155,8 @@ function EmojiGrid({ room, onPick }: { room?: Room; onPick: (e: Emoji) => void }
       <nav className="emoji-cats" role="tablist" ref={nav} onScroll={edges}
         onWheel={(e) => { if (!e.deltaX) nav.current?.scrollBy({ left: getComputedStyle(nav.current).direction === "rtl" ? -e.deltaY : e.deltaY }); }}>
         {rec.length > 0 && cat([-1, "🕘", "اخیر"])}
-        <div className="emoji-groups">{GROUPS.map(cat)}</div>
         {packCats.map(cat)}
+        <div className="emoji-groups">{GROUPS.map(cat)}</div>
       </nav>
       <input className="emoji-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی اموجی" aria-label="جستجوی اموجی" />
       <div className="emoji-grid" key={term ? "q" : group}>

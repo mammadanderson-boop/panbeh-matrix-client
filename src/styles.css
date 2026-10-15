@@ -939,7 +939,7 @@ div.msg-text blockquote { color: color-mix(in srgb, currentColor 85%, transparen
 }
 .react-picker .emoji-panel { position: fixed; inset: 0; margin: auto; width: min(360px, calc(100vw - 32px)); }
 .emoji-panel .muted { margin: 0; padding: 16px; text-align: center; }
-.emoji-search { flex: none; width: 100%; padding: 8px 12px; border: 0; outline: none; border-radius: 10px; background: var(--hover); }
+.emoji-search { flex: none; width: 100%; padding: 8px 14px; border: 0; outline: none; border-radius: 999px; background: var(--hover); }
 /* Telegram's bottom bar: the tabs pill and ⌫ float over the grid, translucent, and slide away while scrolling down */
 .emoji-float {
   position: absolute; z-index: 1; bottom: 10px; inset-inline: 10px; display: flex; justify-content: center; pointer-events: none;
@@ -955,7 +955,7 @@ div.msg-text blockquote { color: color-mix(in srgb, currentColor 85%, transparen
 .emoji-float .segmented button { flex: none; height: 34px; padding: 0 16px; border-radius: 999px; }
 .emoji-float .segmented[data-pill]::before { border-radius: 999px; background: var(--hover); box-shadow: none; }
 .emoji-float .segmented[data-pill]:not(.ready) button.on { background: var(--hover); box-shadow: none; }
-.emoji-bksp { position: absolute; inset-inline-end: 0; bottom: 0; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--muted); }
+.emoji-bksp { position: absolute; right: 0; bottom: 0; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--muted); }
 .emoji-bksp:active { transform: scale(0.9); }
 .floating .emoji-grid, .floating .gif-grid { padding-bottom: 56px; } /* the last row clear of the floating bar */
 /* categories: recents, the built-in groups in one gray pill, then custom packs; no scrollbar, the edges fade where
