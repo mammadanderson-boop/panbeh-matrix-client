@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { EventType, type IPublicRoomsChunkRoom, type Room } from "matrix-js-sdk";
 import { addToSpace, client, createChat, openDM } from "../matrix.ts";
@@ -10,10 +11,10 @@ import { useExit } from "./useDismiss.ts";
 
 type Kind = "dm" | "group" | "space" | "join";
 const MENU: [Kind, IconName, string][] = [
-  ["dm", "user", "پیام جدید"],
-  ["group", "group", "گروه جدید"],
-  ["space", "space", "فضای جدید"],
-  ["join", "link", "پیوستن به گفتگو"],
+  ["dm", "user", t("new.dm")],
+  ["group", "group", t("new.group")],
+  ["space", "space", t("new.space")],
+  ["join", "link", t("new.join")],
 ];
 const TITLES = Object.fromEntries(MENU.map(([k, , t]) => [k, t])) as Record<Kind, string>;
 
@@ -35,7 +36,7 @@ export function NewChat({ activeSpace, onOpen }: { activeSpace?: string; onOpen:
           </div>
         </div>
       )}
-      <button className={"fab" + (menu ? " open" : "")} onClick={() => setMenu((m) => !m)} aria-label="گفتگوی جدید" title="گفتگوی جدید">
+      <button className={"fab" + (menu ? " open" : "")} onClick={() => setMenu((m) => !m)} aria-label={t("new.chat")} title={t("new.chat")}>
         <Icon name={menu ? "close" : "pencil"} size={24} />
       </button>
       {kind && (
@@ -55,7 +56,7 @@ function NewDM({ onDone }: { onDone: (roomId: string) => void }) {
     setBusy(true);
     openDM(p.userId).then(onDone, (e) => { alertDialog(errText(e)); setBusy(false); });
   };
-  return busy ? <p className="muted">در حال ساخت گفتگو…</p> : <UserPicker onPick={pick} />;
+  return busy ? <p className="muted">{t("new.creatingChat")}</p> : <UserPicker onPick={pick} />;
 }
 
 // ---------- user search ----------
@@ -95,9 +96,9 @@ export function UserPicker({ onPick, exclude = [], autoFocus = true }: { onPick:
     <div className="picker">
       <label className="search">
         <Icon name="search" size={16} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="نام یا شناسه، مثل ‎@ali:example.org" aria-label="جستجوی کاربر" autoFocus={autoFocus} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("new.userPlaceholder")} aria-label={t("new.searchUser")} autoFocus={autoFocus} />
       </label>
-      {shown?.length === 0 && <p className="muted">کاربری پیدا نشد. شناسه‌ی کامل را وارد کنید.</p>}
+      {shown?.length === 0 && <p className="muted">{t("new.noUser")}</p>}
       {shown?.map((p) => (
         <button key={p.userId} type="button" className="user-row" onClick={() => { onPick(p); setQ(""); }}>
           <Avatar mxc={p.avatar} name={p.name} id={p.userId} size={42} />
@@ -147,7 +148,7 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
         encrypted, alias: isPublic ? alias.trim() : undefined, restrictTo: canRestrict && spaceJoin ? parent : undefined,
       });
       // the room exists now: a failure here mustn't look like the whole thing failed, or a retry makes a duplicate
-      if (parent) await addToSpace(parent, id).catch(() => toast("ساخته شد، ولی به فضا افزوده نشد"));
+      if (parent) await addToSpace(parent, id).catch(() => toast(t("new.notAddedToSpace")));
       onDone(id);
     } catch (err) {
       setError(errText(err));
@@ -158,15 +159,15 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
   return (
     <form className="form" onSubmit={submit}>
       <div className="form-head">
-        <label className="avatar-pick" title="انتخاب عکس">
+        <label className="avatar-pick" title={t("new.pickPhoto")}>
           <input type="file" accept="image/*" hidden onChange={(e) => setAvatar(e.target.files?.[0] ?? null)} />
           {preview ? <img src={preview} alt="" /> : <Icon name={kind === "space" ? "space" : "group"} size={28} />}
         </label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "space" ? "نام فضا" : "نام گروه"} required autoFocus />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "space" ? t("new.spaceName") : t("new.groupName")} required autoFocus />
       </div>
-      <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="توضیحات (اختیاری)" />
+      <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={t("new.topic")} />
 
-      <label className="switch-row"><span>عمومی<small>هر کسی می‌تواند پیدا کند و بپیوندد</small></span>
+      <label className="switch-row"><span>{t("new.public")}<small>{t("new.publicHint")}</small></span>
         <input type="checkbox" role="switch" checked={isPublic} onChange={(e) => togglePublic(e.target.checked)} /></label>
       {isPublic && (
         <div className="alias-input" dir="ltr">
@@ -176,24 +177,24 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
         </div>
       )}
       {kind === "group" && (
-        <label className="switch-row"><span>رمزنگاری سرتاسری<small>پس از روشن کردن، خاموش نمی‌شود</small></span>
+        <label className="switch-row"><span>{t("new.e2ee")}<small>{t("new.e2eeHint")}</small></span>
           <input type="checkbox" role="switch" checked={encrypted} onChange={(e) => setEncrypted(e.target.checked)} /></label>
       )}
       {spaces.length > 0 && (
-        <label className="select-row">داخل فضای
-          <Select value={parent} options={[["", "هیچ‌کدام"], ...spaces.map((s): [string, string] => [s.roomId, s.name])]} onChange={setParent} />
+        <label className="select-row">{t("new.inSpace")}
+          <Select value={parent} options={[["", t("common.none")], ...spaces.map((s): [string, string] => [s.roomId, s.name])]} onChange={setParent} />
         </label>
       )}
       {canRestrict && (
-        <label className="switch-row"><span>اعضای فضا بدون دعوت بپیوندند<small>وگرنه فقط دعوت‌شده‌ها</small></span>
+        <label className="switch-row"><span>{t("new.spaceMembersJoin")}<small>{t("new.spaceMembersJoinHint")}</small></span>
           <input type="checkbox" role="switch" checked={spaceJoin} onChange={(e) => setSpaceJoin(e.target.checked)} /></label>
       )}
 
-      <h3>اعضا {invite.length > 0 && `(${num(invite.length)})`}</h3>
+      <h3>{t("new.members")} {invite.length > 0 && `(${num(invite.length)})`}</h3>
       {invite.length > 0 && (
         <div className="chips">
           {invite.map((p) => (
-            <button key={p.userId} type="button" className="chip" onClick={() => setInvite(invite.filter((x) => x !== p))} title="حذف">
+            <button key={p.userId} type="button" className="chip" onClick={() => setInvite(invite.filter((x) => x !== p))} title={t("common.delete")}>
               <Avatar mxc={p.avatar} name={p.name} id={p.userId} size={24} /> {p.name} <Icon name="close" size={14} />
             </button>
           ))}
@@ -202,7 +203,7 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
       <UserPicker exclude={invite.map((p) => p.userId)} onPick={(p) => setInvite([...invite, p])} autoFocus={false} />
 
       {error && <p className="error">{error}</p>}
-      <button className="primary" disabled={busy}>{busy ? "در حال ساخت…" : kind === "space" ? "ساخت فضا" : "ساخت گروه"}</button>
+      <button className="primary" disabled={busy}>{busy ? t("new.creating") : kind === "space" ? t("new.createSpace") : t("new.createGroup")}</button>
     </form>
   );
 }
@@ -226,11 +227,11 @@ export async function joinOrKnock(idOrAlias: string, via?: string[]): Promise<Ro
     return await client.joinRoom(idOrAlias, { viaServers: via });
   } catch (e) {
     if ((e as { errcode?: string })?.errcode !== "M_FORBIDDEN") alertDialog(errText(e));
-    else if (await confirmDialog("پیوستن به این گفتگو نیاز به تأیید مدیران دارد. درخواست عضویت فرستاده شود؟")) {
+    else if (await confirmDialog(t("new.knockQ"))) {
       try {
         await client.knockRoom(idOrAlias, { viaServers: via });
-        alertDialog("درخواست فرستاده شد. اگر پذیرفته شود، دعوت‌نامه برایتان می‌آید.");
-      } catch (e2) { alertDialog((e2 as { errcode?: string }).errcode === "M_FORBIDDEN" ? "این گفتگو درخواست عضویت نمی‌پذیرد" : errText(e2)); }
+        alertDialog(t("new.knockSent"));
+      } catch (e2) { alertDialog((e2 as { errcode?: string }).errcode === "M_FORBIDDEN" ? t("new.noKnock") : errText(e2)); }
     }
     return null;
   }
@@ -262,18 +263,18 @@ function JoinChat({ onDone }: { onDone: (roomId: string, space: boolean) => void
     <div className="picker">
       <form className="search" onSubmit={(e) => { e.preventDefault(); if (address) join(q.trim()); }}>
         <Icon name="search" size={16} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجو یا نشانی، مثل ‎#room:example.org" aria-label="جستجوی گفتگو" autoFocus />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("new.roomPlaceholder")} aria-label={t("new.searchRoom")} autoFocus />
       </form>
-      {address && <button className="primary" disabled={busy} onClick={() => join(q.trim())}>پیوستن به <bdi dir="ltr">{q.trim()}</bdi></button>}
-      {!address && rooms?.length === 0 && <p className="muted">گفتگوی عمومی‌ای پیدا نشد</p>}
+      {address && <button className="primary" disabled={busy} onClick={() => join(q.trim())}>{t("new.joinAddr")} <bdi dir="ltr">{q.trim()}</bdi></button>}
+      {!address && rooms?.length === 0 && <p className="muted">{t("new.noPublic")}</p>}
       {!address && rooms?.map((r) => (
         <button key={r.room_id} className="user-row" disabled={busy} onClick={() => (joined(r.room_id) ? onDone(r.room_id, r.room_type === "m.space") : join(r.room_id, r.room_type === "m.space"))}>
           <Avatar mxc={r.avatar_url} name={r.name ?? r.canonical_alias ?? r.room_id} id={r.room_id} size={42} />
           <span>
             <b>{r.name ?? r.canonical_alias ?? r.room_id}</b>
-            <small>{r.canonical_alias && <bdi dir="ltr">{r.canonical_alias}</bdi>} · {num(r.num_joined_members)} عضو</small>
+            <small>{r.canonical_alias && <bdi dir="ltr">{r.canonical_alias}</bdi>} · {t("room.members", { count: r.num_joined_members })}</small>
           </span>
-          <em>{joined(r.room_id) ? "باز کردن" : "پیوستن"}</em>
+          <em>{joined(r.room_id) ? t("common.open") : t("invite.join")}</em>
         </button>
       ))}
     </div>

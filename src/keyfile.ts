@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 // Megolm key-export files (the format Element reads/writes). WebCrypto only, so `node --test` can run it.
 // Body: 0x01 | salt(16) | iv(16) | rounds(4, BE) | AES-256-CTR ciphertext | HMAC-SHA256 of everything before it.
 
@@ -35,13 +36,13 @@ export async function encryptKeyFile(json: string, pass: string, rounds = 500_00
 /** Decrypts a key file back to the JSON for importRoomKeysAsJson(). Throws on a wrong passphrase. */
 export async function decryptKeyFile(text: string, pass: string): Promise<string> {
   const a = text.indexOf(HEADER), b = text.indexOf(FOOTER);
-  if (a < 0 || b < a) throw new Error("این فایل، فایل کلید رمزنگاری نیست");
+  if (a < 0 || b < a) throw new Error(t("keyfile.notKeys"));
   const bin = atob(text.slice(a + HEADER.length, b).replace(/\s+/g, ""));
   const body = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  if (body[0] !== 1 || body.length < 1 + 16 + 16 + 4 + 32) throw new Error("نسخه‌ی فایل کلید پشتیبانی نمی‌شود");
+  if (body[0] !== 1 || body.length < 1 + 16 + 16 + 4 + 32) throw new Error(t("keyfile.version"));
   const end = body.length - 32;
   const [aes, hmac] = await keys(pass, body.slice(1, 17), new DataView(body.buffer).getUint32(33));
-  if (!(await subtle.verify("HMAC", hmac, body.slice(end), body.subarray(0, end)))) throw new Error("عبارت عبور درست نیست");
+  if (!(await subtle.verify("HMAC", hmac, body.slice(end), body.subarray(0, end)))) throw new Error(t("keyfile.wrongPass"));
   const pt = await subtle.decrypt({ name: "AES-CTR", counter: body.slice(17, 33), length: 64 }, aes, body.subarray(37, end));
   return new TextDecoder().decode(pt);
 }

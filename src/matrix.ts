@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { ClientEvent, RoomStateEvent, createClient, UNSTABLE_MSC4140_DELAYED_EVENTS, Direction, EventTimeline, EventType, Filter, SearchOrderBy, HttpApiEvent, IndexedDBStore, MatrixEvent, Method, OAuth2, Preset, SetPresence, SyncState, Visibility, type ICreateRoomStateEvent, type MatrixClient, type MatrixError, type Room } from "matrix-js-sdk";
 import { decodeRecoveryKey, deriveRecoveryKeyFromPassphrase } from "matrix-js-sdk/lib/crypto-api/index.js";
 import { decryptAttachment, encryptAttachment, type IEncryptedFile } from "matrix-encrypt-attachment";
@@ -241,12 +242,12 @@ export async function finishOAuth() {
   const pending = JSON.parse(pendingStore().getItem(PENDING_KEY) ?? "null");
   pendingStore().removeItem(PENDING_KEY);
   if (q.get("error")) throw new Error(q.get("error_description") || q.get("error")!);
-  if (!pending || pending.state !== q.get("state")) throw new Error("ورود ناتمام ماند؛ دوباره تلاش کنید");
+  if (!pending || pending.state !== q.get("state")) throw new Error(t("login.incomplete"));
   const { baseUrl, clientId, deviceId } = pending;
   const meta = await createClient({ baseUrl }).getAuthMetadata();
-  const t = await new OAuth2(meta, pending).completeAuthorizationCodeGrant(q.get("code")!, redirectUri());
-  const { user_id } = await createClient({ baseUrl, accessToken: t.access_token }).whoami();
-  const s = { baseUrl, userId: user_id, deviceId, accessToken: t.access_token, refreshToken: t.refresh_token, oauthClientId: clientId };
+  const tok = await new OAuth2(meta, pending).completeAuthorizationCodeGrant(q.get("code")!, redirectUri());
+  const { user_id } = await createClient({ baseUrl, accessToken: tok.access_token }).whoami();
+  const s = { baseUrl, userId: user_id, deviceId, accessToken: tok.access_token, refreshToken: tok.refresh_token, oauthClientId: clientId };
   save(s);
   return start(s);
 }
@@ -306,13 +307,13 @@ export async function recoveryState(): Promise<"ok" | "unlock" | "setup"> {
 export async function unlock(input: string) {
   const crypto = client.getCrypto()!;
   const found = await client.secretStorage.getKey();
-  if (!found) throw new Error("بازیابی برای این حساب راه‌اندازی نشده است");
+  if (!found) throw new Error(t("recovery.notSetUp"));
   const [keyId, info] = found;
   let key: Uint8Array<ArrayBuffer> | undefined;
   try { key = decodeRecoveryKey(input.trim()); } catch {
     if (info.passphrase) key = await deriveRecoveryKeyFromPassphrase(input, info.passphrase.salt, info.passphrase.iterations);
   }
-  if (!key || !(await client.secretStorage.checkKey(key, info))) throw new Error("کلید یا عبارت امنیتی درست نیست");
+  if (!key || !(await client.secretStorage.checkKey(key, info))) throw new Error(t("recovery.wrongKey"));
   ssKey = [keyId, key];
   await crypto.bootstrapCrossSigning({}); // pulls cross-signing keys from secret storage, signs this device
   await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
@@ -335,7 +336,7 @@ export async function setupRecovery(password?: string) {
         const url = params?.["m.oauth"]?.url ?? params?.["org.matrix.cross_signing_reset"]?.url;
         if (!url) throw e;
         window.open(url, "_blank");
-        if (!(await confirmDialog("بازنشانی کلیدها را در صفحه‌ی بازشده تأیید کنید، سپس «تأیید» را بزنید."))) throw new Error("لغو شد");
+        if (!(await confirmDialog(t("recovery.confirmReset")))) throw new Error(t("common.cancelled"));
         await makeRequest(null);
       }
     },
@@ -779,7 +780,7 @@ export function setPackGlobal(p: Pack, on: boolean) {
 /** Packs usable here: mine, this room's, then the ones I've turned on for every chat (rooms I've left drop out). */
 export function packsFor(room?: Room): Pack[] {
   const mine = personalPack();
-  const list: Pack[] = [{ key: "me", name: mine.pack?.display_name || "بسته‌ی من", avatar: mine.pack?.avatar_url, content: mine }];
+  const list: Pack[] = [{ key: "me", name: mine.pack?.display_name || t("packs.mine"), avatar: mine.pack?.avatar_url, content: mine }];
   if (room) list.push(...roomPacks(room));
   for (const [id, keys] of Object.entries(globalRooms())) {
     const r = client.getRoom(id);
@@ -819,13 +820,13 @@ async function isAnimated(file: File) {
  *  Still images are padded with transparency to at most 2:1 and shrunk to LONGEST; animated ones go up as they are,
  *  so they must already be within 2:1 and ANIM_CAP. Throws a message for the user when a file can't be used. */
 export async function uploadEmote(file: File, use: Usage): Promise<PackImage> {
-  const bmp = await createImageBitmap(file).catch(() => { throw new Error("این فایل تصویر قابل استفاده نیست"); });
+  const bmp = await createImageBitmap(file).catch(() => { throw new Error(t("packs.badImage")); });
   let w = bmp.width, h = bmp.height, data: Blob = file;
   const box = padToRatio(w, h);
   if (await isAnimated(file)) {
     bmp.close();
-    if (box.w !== w || box.h !== h) throw new Error("نسبت طول و عرض گیف باید نزدیک به مربع باشد");
-    if (file.size > ANIM_CAP[use]) throw new Error(`انیمیشن ${use === "sticker" ? "استیکر" : "اموجی"} حداکثر ${num(ANIM_CAP[use] >> 20)} مگابایت می‌تواند باشد`);
+    if (box.w !== w || box.h !== h) throw new Error(t("packs.notSquare"));
+    if (file.size > ANIM_CAP[use]) throw new Error(t(use === "sticker" ? "packs.stickerAnimCap" : "packs.emojiAnimCap", { count: ANIM_CAP[use] >> 20 }));
   } else {
     const k = Math.min(1, LONGEST[use] / Math.max(box.w, box.h));
     if (box.w !== w || box.h !== h || k < 1) {
@@ -834,7 +835,7 @@ export async function uploadEmote(file: File, use: Usage): Promise<PackImage> {
       g.imageSmoothingQuality = "high";
       g.drawImage(bmp, ((box.w - w) / 2) * k, ((box.h - h) / 2) * k, w * k, h * k);
       // WebP keeps the transparent padding and stays small; browsers without a WebP encoder give PNG
-      data = await new Promise<Blob>((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error("پردازش تصویر نشد"))), "image/webp", 0.9));
+      data = await new Promise<Blob>((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error(t("packs.processFailed")))), "image/webp", 0.9));
       w = cv.width;
       h = cv.height;
     }
@@ -849,7 +850,7 @@ export const inMyPack = (url: string, use: Usage) => packImages(personalPack(), 
 export function addToMyPack(code: string, img: PackImage, use: Usage) {
   const p = personalPack();
   if (inMyPack(img.url, use)) return Promise.resolve();
-  if (packImages(p, use).length >= PACK_CAP[use]) return Promise.reject(new Error(`${use === "sticker" ? "استیکرهای" : "اموجی‌های"} شما پر است (${num(PACK_CAP[use])} تا)`));
+  if (packImages(p, use).length >= PACK_CAP[use]) return Promise.reject(new Error(t(use === "sticker" ? "packs.stickersFull" : "packs.emojiFull", { count: PACK_CAP[use] })));
   const images = { ...p.images };
   images[freeCode(cleanCode(code, "_").replace(/^_+|_+$/g, "") || "emoji", images)] = { url: img.url, ...(img.info && { info: img.info }), usage: [use] };
   return putPersonalPack({ ...p, images });
@@ -910,7 +911,7 @@ export async function withPassword<T>(run: (auth?: never) => Promise<T>, passwor
     try {
       return await run({ type: "m.login.password", identifier: { type: "m.id.user", user: client.getSafeUserId() }, password, session: err.data.session } as never);
     } catch (e2) {
-      if ([401, 403].includes((e2 as MatrixError).httpStatus ?? 0)) throw new Error("رمز عبور درست نیست");
+      if ([401, 403].includes((e2 as MatrixError).httpStatus ?? 0)) throw new Error(t("account.wrongPassword"));
       throw e2;
     }
   }
@@ -1013,7 +1014,7 @@ export async function scheduleMessage(room: Room, content: Record<string, unknow
   if (room.hasEncryptionStateEvent()) {
     // ponytail: the crypto backend's encryptEvent isn't public API (the SDK uses it to send); src/sdk.test.ts guards it
     const backend = client.getCrypto() as unknown as { encryptEvent?: (ev: MatrixEvent, room: Room) => Promise<void> };
-    if (!backend?.encryptEvent) throw new Error("زمان‌بندی در گفتگوهای رمزنگاری‌شده با این نسخه ممکن نیست");
+    if (!backend?.encryptEvent) throw new Error(t("schedule.noEncrypted"));
     const ev = new MatrixEvent({ type, content, room_id: room.roomId, sender: client.getSafeUserId(), event_id: "~scheduled" });
     await backend.encryptEvent(ev, room);
     wireType = ev.getWireType();
@@ -1029,7 +1030,7 @@ export async function scheduleMessage(room: Room, content: Record<string, unknow
     const d = (e as MatrixError).data ?? {};
     if (/MAX_DELAY_EXCEEDED|DELAY_TOO_LARGE/.test(d["org.matrix.msc4140.errcode"] ?? d.errcode ?? "")) {
       const max = d["org.matrix.msc4140.max_delay"] ?? d.max_delay ?? +(/maximum \((\d+)ms\)/.exec(d.error ?? "")?.[1] ?? NaN);
-      throw new Error(max > 0 ? `سرور فقط تا ${fmtSpan(max)} بعد را زمان‌بندی می‌کند` : "این زمان برای سرور خیلی دور است");
+      throw new Error(max > 0 ? t("schedule.max", { span: fmtSpan(max) }) : t("schedule.tooFar"));
     }
     throw e;
   }

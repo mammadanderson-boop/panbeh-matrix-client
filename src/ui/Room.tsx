@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KnownMembership, type MatrixEvent, type Room as SdkRoom } from "matrix-js-sdk";
 import { addDirect, client, dmPeer, isDirect, loadEvent } from "../matrix.ts";
@@ -87,7 +88,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   };
   const canDel = picked.length > 0 && picked.every((e) => e.getSender() === me() || room.currentState.maySendRedactionForEvent(e, me()));
   const delSel = async () => {
-    if (!(await confirmDialog(`${num(picked.length)} پیام برای همه حذف شود؟`, { danger: true }))) return;
+    if (!(await confirmDialog(t("msg.deleteN", { count: picked.length }), { danger: true }))) return;
     Promise.all(picked.map((e) => client.redactEvent(room.roomId, e.getId()!))).catch((e) => alertDialog(errText(e)));
     setSel(null);
   };
@@ -100,9 +101,9 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   const others = liveBeacons(room).filter((b) => b.userId !== me());
   const typing = useTyping(room).map((m) => bdi(m.name.split(" ")[0]));
   const subtitle = typing.length
-    ? `${typing.length > 2 ? `${typing.slice(0, 2).join("، ")} و ${num(typing.length - 2)} نفر دیگر` : typing.join(" و ")} در حال نوشتن`
-    : room.getMyMembership() === KnownMembership.Invite ? "دعوت‌نامه" // invites carry no member counts
-    : seen.text ?? `${num(room.getJoinedMemberCount())} عضو`;
+    ? (typing.length > 2 ? t("typing.more", { a: typing[0], b: typing[1], count: typing.length - 2 }) : typing.length === 2 ? t("typing.two", { a: typing[0], b: typing[1] }) : t("typing.single", { a: typing[0] }))
+    : room.getMyMembership() === KnownMembership.Invite ? t("room.invite") // invites carry no member counts
+    : seen.text ?? t("room.members", { count: room.getJoinedMemberCount() });
   useEffect(() => { // Android back closes the thread, back to the chat it was opened from
     if (threadId) return pushBack(() => (overlayOpen() ? false : setThreadId(null)));
   }, [threadId]);
@@ -124,7 +125,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
     return jumper.current?.(id, maxPages) ?? false;
   }
 
-  const searchJump = async (id: string, maxPages?: number) => { if (!(await jump(id, maxPages))) alertDialog("این پیام خیلی قدیمی است"); };
+  const searchJump = async (id: string, maxPages?: number) => { if (!(await jump(id, maxPages))) alertDialog(t("room.tooOld")); };
   // a result picked in the sidebar: on mount (room just opened) and via event (room already open)
   const jumpRef = useRef(searchJump);
   jumpRef.current = searchJump;
@@ -145,17 +146,17 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
     <section className={"room" + (thread ? " with-thread" : "") + (sel ? " selecting" : "")}>
       <div className="room-main">
         {sel ? (
-          <header className="room-head select-bar" role="toolbar" aria-label="انتخاب پیام‌ها">
-            <button className="icon-btn" onClick={() => setSel(null)} title="لغو انتخاب" aria-label="لغو انتخاب"><Icon name="close" /></button>
-            <b className="select-count">{num(sel.size)} پیام انتخاب شد</b>
-            <button className="icon-btn" onClick={copySel} title="کپی" aria-label="کپی"><Icon name="copy" /></button>
-            <button className="icon-btn" onClick={() => setForwarding(picked)} title="هدایت" aria-label="هدایت"><Icon name="forward" /></button>
-            <button className="icon-btn" disabled={!canDel} onClick={delSel} title="حذف" aria-label="حذف"><Icon name="trash" /></button>
+          <header className="room-head select-bar" role="toolbar" aria-label={t("select.bar")}>
+            <button className="icon-btn" onClick={() => setSel(null)} title={t("select.cancel")} aria-label={t("select.cancel")}><Icon name="close" /></button>
+            <b className="select-count">{t("select.count", { count: sel.size })}</b>
+            <button className="icon-btn" onClick={copySel} title={t("common.copy")} aria-label={t("common.copy")}><Icon name="copy" /></button>
+            <button className="icon-btn" onClick={() => setForwarding(picked)} title={t("msg.forward")} aria-label={t("msg.forward")}><Icon name="forward" /></button>
+            <button className="icon-btn" disabled={!canDel} onClick={delSel} title={t("common.delete")} aria-label={t("common.delete")}><Icon name="trash" /></button>
           </header>
         ) : (
         <header className="room-head">
-          <button className="icon-btn back" onClick={onBack} aria-label="بازگشت"><Icon name="back" /></button>
-          <button className="room-head-info" onClick={() => setInfo(true)} aria-label="اطلاعات گفتگو">
+          <button className="icon-btn back" onClick={onBack} aria-label={t("common.back")}><Icon name="back" /></button>
+          <button className="room-head-info" onClick={() => setInfo(true)} aria-label={t("room.info")}>
             <RoomAvatar room={room} size={40} />
             <div className="room-head-text">
               <b>{room.name}</b>
@@ -164,7 +165,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
           </button>
           {room.getMyMembership() !== KnownMembership.Invite && <>
             <CallButtons room={room} />
-            <button className="icon-btn" onClick={() => setSearch("")} title="جستجو" aria-label="جستجو"><Icon name="search" /></button>
+            <button className="icon-btn" onClick={() => setSearch("")} title={t("common.search")} aria-label={t("common.search")}><Icon name="search" /></button>
           </>}
         </header>
         )}
@@ -179,12 +180,12 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
               <div className="banner live-loc">
                 <Icon name="location" size={16} />
                 <span>
-                  {myShare && <>موقعیت زنده‌ی شما تا {clock(myShare.until)} فعال است{others.length ? " · " : ""}</>}
+                  {myShare && <>{t("loc.mineUntil", { time: clock(myShare.until) })}{others.length ? " · " : ""}</>}
                   {others.length === 1
-                    ? <><a href={neshanUrl(others[0].lat, others[0].lon)} target="_blank" rel="noreferrer noopener" onClick={geoClick(others[0].lat, others[0].lon, others[0].name)}>{bdi(others[0].name)}</a> در حال اشتراک موقعیت زنده</>
-                    : others.length > 1 ? <>{num(others.length)} نفر در حال اشتراک موقعیت زنده</> : null}
+                    ? <><a href={neshanUrl(others[0].lat, others[0].lon)} target="_blank" rel="noreferrer noopener" onClick={geoClick(others[0].lat, others[0].lon, others[0].name)}>{bdi(others[0].name)}</a> {t("loc.oneSharing")}</>
+                    : others.length > 1 ? <>{t("loc.nSharing", { count: others.length })}</> : null}
                 </span>
-                {myShare && <button onClick={() => stopSharing(client, room.roomId).catch((e) => alertDialog(errText(e)))}>قطع</button>}
+                {myShare && <button onClick={() => stopSharing(client, room.roomId).catch((e) => alertDialog(errText(e)))}>{t("loc.stop")}</button>}
               </div>
             )}
             <PinnedBar room={room} onJump={jump} />
@@ -196,8 +197,8 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
       {thread && (
         <aside className={"thread-panel" + (threadClosing ? " closing" : "")} inert={threadClosing}>
           <header className="room-head">
-            <div className="room-head-text"><b>رشته‌ی گفتگو</b><span>{num(thread.length)} پاسخ</span></div>
-            <button className="icon-btn" onClick={() => setThreadId(null)} aria-label="بستن رشته"><Icon name="close" /></button>
+            <div className="room-head-text"><b>{t("thread.title")}</b><span>{t("thread.replies", { count: thread.length })}</span></div>
+            <button className="icon-btn" onClick={() => setThreadId(null)} aria-label={t("thread.close")}><Icon name="close" /></button>
           </header>
           <ThreadView key={thread.id} room={room} threadId={thread.id} view={setViewing} info={setSeenFor} reactions={setReactionsFor} profile={setProfile} forward={forward1} />
         </aside>
@@ -244,10 +245,10 @@ function Invite({ room }: { room: SdkRoom }) {
     <div className="invite">
       <RoomAvatar room={room} size={88} />
       <h2>{room.name}</h2>
-      <p>{room.getDMInviter() ? `${bdi(room.getDMInviter()!)} شما را دعوت کرد` : "به این گفتگو دعوت شده‌اید"}</p>
+      <p>{room.getDMInviter() ? t("invite.by", { name: bdi(room.getDMInviter()!) }) : t("invite.you")}</p>
       <div className="invite-actions">
-        <button disabled={busy} onClick={() => act(() => client.leave(room.roomId))}>رد کردن</button>
-        <button className="primary" disabled={busy} onClick={() => act(() => join(room))}>پیوستن</button>
+        <button disabled={busy} onClick={() => act(() => client.leave(room.roomId))}>{t("invite.decline")}</button>
+        <button className="primary" disabled={busy} onClick={() => act(() => join(room))}>{t("invite.join")}</button>
       </div>
     </div>
   );

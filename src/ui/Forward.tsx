@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useState } from "react";
 import { M_POLL_START, type MatrixEvent } from "matrix-js-sdk";
 import { forwardTo } from "../matrix.ts";
@@ -29,10 +30,10 @@ export function ForwardSheet({ evs, onClose, onSent }: { evs: MatrixEvent[]; onC
     }
   };
   return (
-    <Sheet title="هدایت به…" onClose={onClose}>
+    <Sheet title={t("forward.title")} onClose={onClose}>
       <label className="search">
         <Icon name="search" size={16} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجو" aria-label="جستجو" autoFocus />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("common.search")} aria-label={t("common.search")} autoFocus />
       </label>
       {shown.map(({ room }) => (
         <button key={room.roomId} className="user-row" role="checkbox" aria-checked={sel.includes(room.roomId)} onClick={() => toggle(room.roomId)}>
@@ -42,7 +43,7 @@ export function ForwardSheet({ evs, onClose, onSent }: { evs: MatrixEvent[]; onC
       ))}
       <div className="sheet-foot">
         <button className="primary" disabled={!sel.length || busy} onClick={send}>
-          {busy ? "در حال ارسال…" : `ارسال به ${num(sel.length)} گفتگو`}
+          {busy ? t("common.sending") : t("forward.sendTo", { count: sel.length })}
         </button>
       </div>
     </Sheet>
@@ -55,10 +56,10 @@ export function ShareSheet({ onPick, onClose }: { onPick: (roomId: string) => vo
   const [q, setQ] = useState("");
   const shown = rows.filter((r) => !r.invite && normalize(r.room.name).includes(normalize(q.trim())));
   return (
-    <Sheet title="ارسال به…" onClose={onClose}>
+    <Sheet title={t("forward.shareTitle")} onClose={onClose}>
       <label className="search">
         <Icon name="search" size={16} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجو" aria-label="جستجو" autoFocus />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("common.search")} aria-label={t("common.search")} autoFocus />
       </label>
       {shown.map(({ room }) => (
         <button key={room.roomId} className="user-row" onClick={() => onPick(room.roomId)}>

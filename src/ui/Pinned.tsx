@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useMemo, useState } from "react";
 import { EventType, RoomStateEvent, type Room } from "matrix-js-sdk";
 import { client, loadEvent, pinnedIds, togglePin } from "../matrix.ts";
@@ -25,11 +26,11 @@ export function PinnedBar({ room, onJump }: { room: Room; onJump: (id: string) =
         <button className="pinned-main" onClick={() => { jump(ids[i]); setIdx((i - 1 + ids.length) % ids.length); }}>
           <span className="pinned-ticks">{ids.length > 1 && ids.slice(-4).map((id) => <i key={id} className={id === ids[i] ? "on" : ""} />)}</span>
           <span className="pinned-text" key={ids[i]}>
-            <b>پیام سنجاق‌شده{ids.length > 1 && ` ${num(i + 1)} از ${num(ids.length)}`}</b>
+            <b>{ids.length > 1 ? t("pinned.nOf", { n: i + 1, total: ids.length }) : t("pinned.single")}</b>
             <span dir="auto">{ev ? <PreviewText ev={ev} /> : "…"}</span>
           </span>
         </button>
-        <button className="icon-btn" onClick={() => setList(true)} title="همه‌ی پیام‌های سنجاق‌شده" aria-label="همه‌ی پیام‌های سنجاق‌شده"><Icon name="list" /></button>
+        <button className="icon-btn" onClick={() => setList(true)} title={t("pinned.all")} aria-label={t("pinned.all")}><Icon name="list" /></button>
       </div>
       {list && <PinnedList room={room} ids={ids} onJump={(id) => { setList(false); onJump(id); }} onClose={() => setList(false)} />}
     </>
@@ -39,7 +40,7 @@ export function PinnedBar({ room, onJump }: { room: Room; onJump: (id: string) =
 function PinnedList({ room, ids, onJump, onClose }: { room: Room; ids: string[]; onJump: (id: string) => void; onClose: () => void }) {
   const canPin = room.currentState.maySendStateEvent(EventType.RoomPinnedEvents, me());
   return (
-    <Sheet title={`پیام‌های سنجاق‌شده (${num(ids.length)})`} onClose={onClose}>
+    <Sheet title={t("pinned.title", { count: ids.length })} onClose={onClose}>
       {[...ids].reverse().map((id) => <PinnedRow key={id} room={room} id={id} canPin={canPin} onJump={onJump} />)}
     </Sheet>
   );
@@ -51,10 +52,10 @@ function PinnedRow({ room, id, canPin, onJump }: { room: Room; id: string; canPi
     <div className="user-row">
       <button className="pinned-row" onClick={() => onJump(id)}>
         {ev ? <Avatar mxc={senderMember(ev)?.getMxcAvatarUrl()} name={senderName(ev)} id={ev.getSender()!} size={42} /> : <Avatar name="…" id={id} size={42} />}
-        <span><b>{ev ? senderName(ev) : "…"}</b><small dir="auto">{ev ? <PreviewText ev={ev} /> : "در حال بارگذاری…"}</small></span>
+        <span><b>{ev ? senderName(ev) : "…"}</b><small dir="auto">{ev ? <PreviewText ev={ev} /> : t("common.loading")}</small></span>
       </button>
       {canPin && (
-        <button className="icon-btn" title="برداشتن سنجاق" aria-label="برداشتن سنجاق" onClick={() => togglePin(room, id).catch((e) => alertDialog(errText(e)))}>
+        <button className="icon-btn" title={t("msg.unpin")} aria-label={t("msg.unpin")} onClick={() => togglePin(room, id).catch((e) => alertDialog(errText(e)))}>
           <Icon name="close" size={18} />
         </button>
       )}

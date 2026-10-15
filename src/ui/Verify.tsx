@@ -1,3 +1,4 @@
+import { lang, t } from "../i18n.ts";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { renderSVG } from "uqr";
 import { CryptoEvent, VerificationPhase, VerificationRequestEvent, VerifierEvent, type ShowQrCodeCallbacks, type ShowSasCallbacks, type UserVerificationStatus, type VerificationRequest } from "matrix-js-sdk/lib/crypto-api/index.js";
@@ -106,7 +107,7 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
     showVerification(null);
   };
   const self = req.isSelfVerification;
-  const other = self ? "دستگاه دیگرتان" : bdi(client.getUser(req.otherUserId)?.displayName ?? req.otherUserId);
+  const other = self ? t("verify.otherDevice") : bdi(client.getUser(req.otherUserId)?.displayName ?? req.otherUserId);
 
   let body;
   switch (req.phase) {
@@ -114,15 +115,15 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
     case VerificationPhase.Requested:
       body = req.initiatedByMe ? (
         <>
-          <p>{self ? "پنبه یا برنامه‌ی دیگری را که با آن وارد شده‌اید باز کنید و درخواست تأیید را بپذیرید." : `منتظر پذیرش درخواست توسط ${other}…`}</p>
+          <p>{self ? t("verify.openOther") : t("verify.waitAccept", { other })}</p>
           <span className="spinner inline" />
         </>
       ) : (
         <>
-          <p>{self ? "یکی دیگر از دستگاه‌های شما می‌خواهد این دستگاه را تأیید کند." : `${other} می‌خواهد هویت شما را تأیید کند.`}</p>
+          <p>{self ? t("verify.incomingSelf") : t("verify.incoming", { other })}</p>
           <div className="verify-actions">
-            <button onClick={close}>رد کردن</button>
-            <button className="primary" disabled={req.accepting} onClick={() => run(() => req.accept())}>پذیرفتن</button>
+            <button onClick={close}>{t("invite.decline")}</button>
+            <button className="primary" disabled={req.accepting} onClick={() => run(() => req.accept())}>{t("verify.accept")}</button>
           </div>
         </>
       );
@@ -133,19 +134,19 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
       ) : qr || canScan ? (
         <>
           {qr && <>
-            <p>{`این کد را با ${other} اسکن کنید.`}</p>
-            <div className="qr" role="img" aria-label="کد QR تأیید" dangerouslySetInnerHTML={{ __html: qr }} />
+            <p>{t("verify.scanThis", { other })}</p>
+            <div className="qr" role="img" aria-label={t("verify.qr")} dangerouslySetInnerHTML={{ __html: qr }} />
           </>}
           <div className="verify-methods">
-            {canScan && <button className={qr ? "" : "primary"} onClick={() => setScanning(true)}><Icon name="camera" size={18} /> {`اسکن کد ${other}`}</button>}
-            <button onClick={() => run(() => req.startVerification("m.sas.v1"))}><Icon name="smile" size={18} /> تأیید به روش مقایسه‌ی شکلک‌ها</button>
+            {canScan && <button className={qr ? "" : "primary"} onClick={() => setScanning(true)}><Icon name="camera" size={18} /> {t("verify.scanTheirs", { other })}</button>}
+            <button onClick={() => run(() => req.startVerification("m.sas.v1"))}><Icon name="smile" size={18} /> {t("verify.byEmoji")}</button>
           </div>
         </>
       ) : req.initiatedByMe ? <span className="spinner inline" /> : (
         <>
-          <p>درخواست پذیرفته شد. شکلک‌ها را در هر دو دستگاه مقایسه کنید.</p>
+          <p>{t("verify.accepted")}</p>
           <div className="verify-methods">
-            <button className="primary" onClick={() => run(() => req.startVerification("m.sas.v1"))}><Icon name="smile" size={18} /> تأیید به روش مقایسه‌ی شکلک‌ها</button>
+            <button className="primary" onClick={() => run(() => req.startVerification("m.sas.v1"))}><Icon name="smile" size={18} /> {t("verify.byEmoji")}</button>
           </div>
         </>
       );
@@ -153,31 +154,31 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
     case VerificationPhase.Started:
       body = reciprocate && !sas ? (confirmed ? <span className="spinner inline" /> : (
         <>
-          <p>{`${other} کد شما را اسکن کرد. آیا آنجا «کد اسکن شد» با علامت تیک نمایش داده می‌شود؟`}</p>
+          <p>{t("verify.scannedQ", { other: self ? t("verify.otherDeviceCap") : other })}</p>
           <div className="verify-actions">
-            <button onClick={() => reciprocate.cancel()}>خیر</button>
-            <button className="primary" onClick={() => { setConfirmed(true); reciprocate.confirm(); }}>بله</button>
+            <button onClick={() => reciprocate.cancel()}>{t("common.no")}</button>
+            <button className="primary" onClick={() => { setConfirmed(true); reciprocate.confirm(); }}>{t("common.yes")}</button>
           </div>
         </>
       )) : !sas && scanned ? (
         <>
-          <p className="card ok"><Icon name="check" size={18} /> کد اسکن شد</p>
-          <p>{`در ${other} «بله» را بزنید.`}</p>
+          <p className="card ok"><Icon name="check" size={18} /> {t("verify.scanned")}</p>
+          <p>{t("verify.pressYes", { other })}</p>
           <span className="spinner inline" />
         </>
-      ) : !sas ? <><p>{`منتظر ${other}…`}</p><span className="spinner inline" /></> : confirmed ? (
-        <><p>{`منتظر تأیید ${other}…`}</p><span className="spinner inline" /></>
+      ) : !sas ? <><p>{t("verify.waiting", { other })}</p><span className="spinner inline" /></> : confirmed ? (
+        <><p>{t("verify.waitingConfirm", { other })}</p><span className="spinner inline" /></>
       ) : (
         <>
-          <p>{`تأیید کنید که شکلک‌های زیر در ${other} هم به همین ترتیب نمایش داده می‌شوند.`}</p>
+          <p>{t("verify.compare", { other })}</p>
           {sas.sas.emoji ? (
             <div className="sas-emoji" dir="ltr">
-              {sas.sas.emoji.map(([e, name], i) => <div key={i}><span>{e}</span><small>{EMOJI_FA[name.toLowerCase()] ?? name}</small></div>)}
+              {sas.sas.emoji.map(([e, name], i) => <div key={i}><span>{e}</span><small>{(lang === "fa" && EMOJI_FA[name.toLowerCase()]) || name}</small></div>)}
             </div>
           ) : <p className="sas-decimal" dir="ltr">{sas.sas.decimal?.map((n) => num(n)).join("  ")}</p>}
           <div className="verify-actions">
-            <button onClick={() => sas.mismatch()}>مطابقت ندارند</button>
-            <button className="primary" onClick={() => { setConfirmed(true); run(() => sas.confirm()); }}>مطابقت دارند</button>
+            <button onClick={() => sas.mismatch()}>{t("verify.noMatch")}</button>
+            <button className="primary" onClick={() => { setConfirmed(true); run(() => sas.confirm()); }}>{t("verify.match")}</button>
           </div>
         </>
       );
@@ -185,22 +186,22 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
     case VerificationPhase.Done:
       body = (
         <>
-          <p className="card ok"><Icon name="check" size={18} /> {self ? "این دستگاه تأیید شد." : `هویت ${other} تأیید شد.`}</p>
-          <button className="primary" onClick={close}>بستن</button>
+          <p className="card ok"><Icon name="check" size={18} /> {self ? t("verify.doneSelf") : t("verify.done", { other })}</p>
+          <button className="primary" onClick={close}>{t("common.close")}</button>
         </>
       );
       break;
     default:
       body = (
         <>
-          <p className="error">{CANCEL_REASONS[req.cancellationCode ?? ""] ?? "تأیید لغو شد."}</p>
-          <button className="primary" onClick={close}>بستن</button>
+          <p className="error">{CANCEL_REASONS[req.cancellationCode ?? ""] ?? t("verify.cancelled")}</p>
+          <button className="primary" onClick={close}>{t("common.close")}</button>
         </>
       );
   }
 
   return (
-    <Sheet title={self ? "تأیید دستگاه" : "تأیید هویت"} onClose={close}>
+    <Sheet title={self ? t("verify.titleSelf") : t("verify.title")} onClose={close}>
       <div className="verify">
         {body}
         {error && <p className="error">{error}</p>}
@@ -210,13 +211,13 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
 }
 
 const CANCEL_REASONS: Record<string, string> = {
-  "m.mismatched_sas": "شکلک‌ها مطابقت نداشتند؛ تأیید لغو شد.",
-  "m.user": "تأیید لغو شد.",
-  "m.timeout": "مهلت تأیید تمام شد.",
-  "m.accepted": "درخواست در دستگاه دیگری پاسخ داده شد.",
+  "m.mismatched_sas": t("verify.mismatch"),
+  "m.user": t("verify.cancelled"),
+  "m.timeout": t("verify.timeout"),
+  "m.accepted": t("verify.elsewhere"),
 };
 
-// SAS emoji names (spec order), keyed by the SDK's English name
+// Persian SAS emoji names (spec order), keyed by the SDK's English name
 const EMOJI_FA: Record<string, string> = {
   dog: "سگ", cat: "گربه", lion: "شیر", horse: "اسب", unicorn: "تک‌شاخ", pig: "خوک", elephant: "فیل", rabbit: "خرگوش",
   panda: "پاندا", rooster: "خروس", penguin: "پنگوئن", turtle: "لاک‌پشت", fish: "ماهی", octopus: "هشت‌پا", butterfly: "پروانه", flower: "گل",

@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useEffect, useState } from "react";
 import { EventTimeline, KnownMembership, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, isEncrypted, searchOlder, searchServer } from "../matrix.ts";
@@ -69,7 +70,7 @@ function useResults(term: string, run: (t: string, failed: () => void) => Promis
   return res;
 }
 
-const ServerFailed = () => <p className="muted">جستجو روی سرور انجام نشد؛ فقط پیام‌های روی همین دستگاه جستجو شدند</p>;
+const ServerFailed = () => <p className="muted">{t("search.serverFailed")}</p>;
 
 export function SearchSheet({ room, initial = "", onJump, onClose }: { room: Room; initial?: string; onJump: (eventId: string, fromServer: boolean) => void; onClose: () => void }) {
   const [q, setQ] = useState(initial);
@@ -96,23 +97,23 @@ export function SearchSheet({ room, initial = "", onJump, onClose }: { room: Roo
   };
   const ready = q.trim().length >= MIN;
   return (
-    <Sheet title="جستجو در گفتگو" onClose={onClose}>
+    <Sheet title={t("search.inChat")} onClose={onClose}>
       <div className="picker">
         <label className="search">
           <Icon name="search" size={16} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجو" aria-label="جستجو در گفتگو" autoFocus={!initial} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("common.search")} aria-label={t("search.inChat")} autoFocus={!initial} />
         </label>
         <div className="segmented" data-pill ref={pill}>
-          <button className={all ? "" : "on"} onClick={() => setAll(false)}>این گفتگو</button>
-          <button className={all ? "on" : ""} onClick={() => setAll(true)}>همه‌ی گفتگوها</button>
+          <button className={all ? "" : "on"} onClick={() => setAll(false)}>{t("search.thisChat")}</button>
+          <button className={all ? "on" : ""} onClick={() => setAll(true)}>{t("search.allChats")}</button>
         </div>
         {all ? <MessageResults term={q} onPick={(roomId, eventId) => { onClose(); requestJump(roomId, eventId); location.hash = roomId; }} /> : <>
-        {enc && <p className="muted">{indexed ? "پیام‌های رمزنگاری‌شده در نمایه‌ی همین دستگاه جستجو می‌شوند" : "در گفتگوهای رمزنگاری‌شده فقط پیام‌های بارگذاری‌شده جستجو می‌شوند"}</p>}
-        {ready && !res && <p className="muted">در حال جستجو…</p>}
+        {enc && <p className="muted">{indexed ? t("search.indexed") : t("search.loadedOnly")}</p>}
+        {ready && !res && <p className="muted">{t("search.searching")}</p>}
         {found?.failed && <ServerFailed />}
-        {res?.length === 0 && <p className="muted">پیامی پیدا نشد</p>}
+        {res?.length === 0 && <p className="muted">{t("search.none")}</p>}
         {res?.map((ev) => <ResultRow key={ev.getId()} ev={ev} term={q} onClick={() => { onClose(); onJump(ev.getId()!, !enc); }} />)}
-        {enc && ready && more && <button className="primary" disabled={paging} onClick={older}>{paging ? "در حال جستجو…" : "جستجو در پیام‌های قدیمی‌تر"}</button>}
+        {enc && ready && more && <button className="primary" disabled={paging} onClick={older}>{paging ? t("search.searching") : t("search.older")}</button>}
         </>}
       </div>
     </Sheet>
@@ -133,10 +134,10 @@ export function MessageResults({ term, onPick }: { term: string; onPick: (roomId
   const res = found?.evs;
   return (
     <div className="msg-results">
-      <h3>پیام‌ها</h3>
-      {!res && <p className="muted">در حال جستجو…</p>}
+      <h3>{t("search.messages")}</h3>
+      {!res && <p className="muted">{t("search.searching")}</p>}
       {found?.failed && <ServerFailed />}
-      {res?.length === 0 && <p className="muted">پیامی پیدا نشد</p>}
+      {res?.length === 0 && <p className="muted">{t("search.none")}</p>}
       {res?.map((ev) => <ResultRow key={ev.getId()} ev={ev} term={term} showRoom onClick={() => onPick(ev.getRoomId()!, ev.getId()!)} />)}
     </div>
   );

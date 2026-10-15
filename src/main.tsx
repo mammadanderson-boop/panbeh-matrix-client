@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ClientEvent, SyncState } from "matrix-js-sdk";
@@ -62,14 +63,14 @@ function App() {
     } else if (s && !isAdding()) start(s).then(() => setPhase("ready"), (e) => { console.error(e); setBootError(e); setPhase("error"); });
   }, []);
   if (phase === "login") return <Login onDone={() => setPhase("ready")} initialError={loginError} onCancel={savedSession() ? cancelAdd : undefined} />;
-  if (phase === "boot") return <Splash text="در حال راه‌اندازی…" />;
+  if (phase === "boot") return <Splash text={t("boot.starting")} />;
   if (phase === "error") return (
     <div className="splash wallpaper">
       <img className="login-logo" src={logo} alt="" />
-      راه‌اندازی ممکن نشد.
+      {t("boot.failed")}
       {bootError !== undefined && <small className="muted boot-error" dir="auto">{errText(bootError)}</small>}
-      <button className="primary" onClick={() => location.reload()}>تلاش دوباره</button>
-      <button className="danger" onClick={() => logout()}>خروج</button>
+      <button className="primary" onClick={() => location.reload()}>{t("common.retry")}</button>
+      <button className="danger" onClick={() => logout()}>{t("common.signOut")}</button>
     </div>
   );
   return <Shell />;
@@ -142,18 +143,18 @@ function Shell() {
     <div className={"app" + (room ? " room-open" : "")} inert={locked}>
       <Sidebar loading={!synced} selected={roomId} onSelect={open} onSettings={() => setSettings("main")}
         banner={<>
-          {(sync === SyncState.Error || sync === SyncState.Reconnecting) && <div className="banner warn">در حال اتصال…</div>}
+          {(sync === SyncState.Error || sync === SyncState.Reconnecting) && <div className="banner warn">{t("boot.connecting")}</div>}
           <UpdateBanner />
           {security !== "ok" && (
             <button className="banner" onClick={() => setSettings("privacy")}>
-              <Icon name="lock" size={16} /> {security === "unlock" ? "برای خواندن پیام‌های رمزنگاری‌شده‌ی قبلی، این دستگاه را تأیید کنید" : "بازیابی رمزنگاری را راه‌اندازی کنید"}
+              <Icon name="lock" size={16} /> {security === "unlock" ? t("banner.verify") : t("banner.setupRecovery")}
             </button>
           )}
           {!room && <NowPlaying />}
           {!room && <CallBar />}
         </>} />
       <main className="main wallpaper" inert={!room && !!shown}>
-        {shown ? <Room key={shown.roomId + ":" + shareN} room={shown} onBack={() => open()} /> : <div className="pill center">برای شروع پیام‌رسانی یک گفتگو را انتخاب کنید</div>}
+        {shown ? <Room key={shown.roomId + ":" + shareN} room={shown} onBack={() => open()} /> : <div className="pill center">{t("main.pick")}</div>}
       </main>
       {share && <ShareSheet onClose={() => setShare(null)} onPick={(id) => { shareInto(id, share.text, share.files); setShare(null); setShareN((n) => n + 1); open(id); }} />}
       {settings && <Settings start={settings} security={security} onClose={() => setSettings(null)} onSecurityChange={refreshSecurity} />}

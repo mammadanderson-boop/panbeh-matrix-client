@@ -1,3 +1,4 @@
+import { rtl, t } from "../i18n.ts";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import DOMPurify from "dompurify";
@@ -51,7 +52,7 @@ export function copyTextOf(ev: MatrixEvent): string {
   return stripReplyFallback(String(c.body ?? ""));
 }
 
-export const copyMessages = (text: string) => copyText(text).then(() => toast("کپی شد"), (e) => alertDialog(errText(e)));
+export const copyMessages = (text: string) => copyText(text).then(() => toast(t("msg.copied")), (e) => alertDialog(errText(e)));
 
 let pillRoom: Room | null = null; // the room being rendered; sanitize() is synchronous
 
@@ -92,9 +93,9 @@ const EMOTES_ONLY = /^(\s*<span class="emote"[^>]*>[^<]*<\/span>){1,3}\s*$/;
 
 /** Someone's custom emoji or sticker into mine. */
 function grab(code: string, url: string, use: Usage, info?: Record<string, unknown>) {
-  if (inMyPack(url, use)) return toast(use === "sticker" ? "در استیکرهای شما هست" : "در اموجی‌های شما هست");
-  void confirmDialog(`«${code}» به ${use === "sticker" ? "استیکرهای" : "اموجی‌های"} شما اضافه شود؟`, { ok: "افزودن" }).then((y) => {
-    if (y) addToMyPack(code, { url, info }, use).then(() => toast(use === "sticker" ? "به استیکرها اضافه شد" : "به اموجی‌ها اضافه شد"), (e) => alertDialog(errText(e)));
+  if (inMyPack(url, use)) return toast(use === "sticker" ? t("msg.inStickers") : t("msg.inEmoji"));
+  void confirmDialog(t(use === "sticker" ? "msg.addStickerQ" : "msg.addEmojiQ", { code }), { ok: t("common.add") }).then((y) => {
+    if (y) addToMyPack(code, { url, info }, use).then(() => toast(use === "sticker" ? t("packs.addedSticker") : t("packs.addedEmoji")), (e) => alertDialog(errText(e)));
   });
 }
 
@@ -120,7 +121,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   const mine = ev.getSender() === me();
   const [deleting, setDeleting] = useState(false);
   const items = album ?? [ev];
-  const remove = () => void confirmDialog(album ? `${num(album.length)} پیام برای همه حذف شود؟` : "این پیام برای همه حذف شود؟", { danger: true }).then((y) => { // the bubble shrinks away, then the redaction removes the row
+  const remove = () => void confirmDialog(album ? t("msg.deleteN", { count: album.length }) : t("msg.deleteQ"), { danger: true }).then((y) => { // the bubble shrinks away, then the redaction removes the row
     if (!y) return;
     setDeleting(true);
     setTimeout(() => { Promise.all(items.map((e) => client.redactEvent(room.roomId, e.getId()!))).catch((e) => { setDeleting(false); alertDialog(errText(e)); }); }, reducedMotion() ? 0 : 200);
@@ -229,15 +230,15 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
             onClick={(e) => { e.stopPropagation(); actions.profile(ev.getSender()!); }}>{senderName(ev)}</button>}
           {fwd && (
             <button className="fwd-from" onClick={(e) => { e.stopPropagation(); actions.profile(fwd.sender); }}>
-              هدایت‌شده از <b dir="auto">{room.getMember(fwd.sender)?.name ?? fwd.name ?? fwd.sender}</b>
+              {t("msg.forwardedFrom")} <b dir="auto">{room.getMember(fwd.sender)?.name ?? fwd.name ?? fwd.sender}</b>
             </button>
           )}
           {replyTo && <ReplyQuote room={room} id={replyTo} onJump={actions.jump} />}
           <Body ev={ev} room={room} onView={actions.view} onUser={actions.profile} album={album} />
           <LinkPreview ev={ev} />
-          <span className="msg-meta" dir="rtl">
+          <span className="msg-meta" dir={rtl ? "rtl" : "ltr"}>
             {pinned && <Icon name="pin" size={12} />}
-            {ev.replacingEvent() && <span>ویرایش‌شده</span>}
+            {ev.replacingEvent() && <span>{t("msg.edited")}</span>}
             <span>{clock(ev.getTs())}</span>
             {mine && <Ticks ev={ev} room={room} />}
           </span>
@@ -245,56 +246,56 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
         {items.map((e) => <Reactions key={e.getTxnId() ?? e.getId()} ev={e} room={room} />)}
         {thread && thread.length > 0 && (
           <button className="thread-link" onClick={() => actions.thread?.(ev)}>
-            <Icon name="thread" size={15} /> {num(thread.length)} پاسخ
+            <Icon name="thread" size={15} /> {t("thread.replies", { count: thread.length })}
             {room.getThreadUnreadNotificationCount(thread.id) > 0 && <span className="badge">{num(room.getThreadUnreadNotificationCount(thread.id))}</span>}
           </button>
         )}
       </div>
       {failed && (
         <div className="msg-actions">
-          <button title="ارسال دوباره" aria-label="ارسال دوباره" onClick={() => client.resendEvent(ev, room).catch(() => {})}><Icon name="send" size={17} /></button>
-          <button title="حذف" aria-label="حذف" onClick={() => client.cancelPendingEvent(ev)}><Icon name="trash" size={17} /></button>
+          <button title={t("msg.resend")} aria-label={t("msg.resend")} onClick={() => client.resendEvent(ev, room).catch(() => {})}><Icon name="send" size={17} /></button>
+          <button title={t("common.delete")} aria-label={t("common.delete")} onClick={() => client.cancelPendingEvent(ev)}><Icon name="trash" size={17} /></button>
         </div>
       )}
       {!ev.isDecryptionFailure() && ev.status == null && (
         <div className="msg-actions">
-          <button title="واکنش" aria-label="واکنش" onClick={() => setPicker((p) => !p)}><Icon name="smile" size={17} /></button>
-          <button title="پاسخ" aria-label="پاسخ" onClick={() => actions.reply(ev)}><Icon name="reply" size={17} /></button>
-          {ev.getId() && !M_POLL_START.matches(ev.getType()) && <button title="هدایت" aria-label="هدایت" onClick={forward}><Icon name="forward" size={17} /></button>}
-          {ev.getId() && <button title="کپی پیوند" aria-label="کپی پیوند" onClick={copyLink}><Icon name="link" size={17} /></button>}
-          {actions.thread && <button title="پاسخ در رشته" aria-label="پاسخ در رشته" onClick={() => actions.thread!(ev)}><Icon name="thread" size={17} /></button>}
-          {mine && <button title="دیده‌شده توسط" aria-label="دیده‌شده توسط" onClick={() => actions.info(ev)}><Icon name="info" size={17} /></button>}
-          {canPin && <button title={pinned ? "برداشتن سنجاق" : "سنجاق"} aria-label={pinned ? "برداشتن سنجاق" : "سنجاق"}
+          <button title={t("msg.react")} aria-label={t("msg.react")} onClick={() => setPicker((p) => !p)}><Icon name="smile" size={17} /></button>
+          <button title={t("msg.reply")} aria-label={t("msg.reply")} onClick={() => actions.reply(ev)}><Icon name="reply" size={17} /></button>
+          {ev.getId() && !M_POLL_START.matches(ev.getType()) && <button title={t("msg.forward")} aria-label={t("msg.forward")} onClick={forward}><Icon name="forward" size={17} /></button>}
+          {ev.getId() && <button title={t("common.copyLink")} aria-label={t("common.copyLink")} onClick={copyLink}><Icon name="link" size={17} /></button>}
+          {actions.thread && <button title={t("msg.replyThread")} aria-label={t("msg.replyThread")} onClick={() => actions.thread!(ev)}><Icon name="thread" size={17} /></button>}
+          {mine && <button title={t("msg.seenBy")} aria-label={t("msg.seenBy")} onClick={() => actions.info(ev)}><Icon name="info" size={17} /></button>}
+          {canPin && <button title={pinned ? t("msg.unpin") : t("msg.pin")} aria-label={pinned ? t("msg.unpin") : t("msg.pin")}
             onClick={() => togglePin(room, ev.getId()!).catch((e) => alertDialog(errText(e)))}><Icon name="pin" size={17} /></button>}
-          {mine && EDITABLE.includes(content.msgtype ?? "") && <button title="ویرایش" aria-label="ویرایش" onClick={() => actions.edit(ev)}><Icon name="edit" size={17} /></button>}
-          {canDelete && <button title="حذف" aria-label="حذف" onClick={() => remove()}><Icon name="trash" size={17} /></button>}
+          {mine && EDITABLE.includes(content.msgtype ?? "") && <button title={t("msg.edit")} aria-label={t("msg.edit")} onClick={() => actions.edit(ev)}><Icon name="edit" size={17} /></button>}
+          {canDelete && <button title={t("common.delete")} aria-label={t("common.delete")} onClick={() => remove()}><Icon name="trash" size={17} /></button>}
           {picker && (
             <div className="quick-react" onMouseLeave={() => setPicker(false)}>
               {QUICK.map((k) => <button key={k} onClick={() => { toggleReaction(room, ev, k); setPicker(false); }}>{k}</button>)}
-              <button className="more" title="اموجی‌های بیشتر" aria-label="اموجی‌های بیشتر" onClick={() => { setPicker(false); setFullPicker(true); }}><Icon name="plus" size={18} /></button>
+              <button className="more" title={t("msg.moreEmoji")} aria-label={t("msg.moreEmoji")} onClick={() => { setPicker(false); setFullPicker(true); }}><Icon name="plus" size={18} /></button>
             </div>
           )}
         </div>
       )}
       {menu && (
         <MsgMenu {...menu} onClose={() => setMenu(null)} onReact={(k) => toggleReaction(room, ev, k)} onMore={() => setFullPicker(true)} items={[
-          { icon: "reply", label: "پاسخ", run: () => actions.reply(ev) },
-          text && { icon: "copy", label: "کپی", run: () => void copyMessages(text) },
-          ev.getId() && { icon: "link", label: "کپی پیوند", run: copyLink },
-          !M_POLL_START.matches(ev.getType()) && { icon: "forward", label: "هدایت", run: forward },
-          actions.thread && { icon: "thread", label: "پاسخ در رشته", run: () => actions.thread!(ev) },
+          { icon: "reply", label: t("msg.reply"), run: () => actions.reply(ev) },
+          text && { icon: "copy", label: t("common.copy"), run: () => void copyMessages(text) },
+          ev.getId() && { icon: "link", label: t("common.copyLink"), run: copyLink },
+          !M_POLL_START.matches(ev.getType()) && { icon: "forward", label: t("msg.forward"), run: forward },
+          actions.thread && { icon: "thread", label: t("msg.replyThread"), run: () => actions.thread!(ev) },
           ev.getType() === EventType.Sticker && content.url?.startsWith("mxc://") && !inMyPack(content.url, "sticker") &&
-            { icon: "plus", label: "افزودن به استیکرهای من", run: () => grab(content.body || "sticker", content.url, "sticker", content.info) },
+            { icon: "plus", label: t("msg.addToMyStickers"), run: () => grab(content.body || "sticker", content.url, "sticker", content.info) },
           isGif(content) && (isSavedGif(content)
-            ? { icon: "close", label: "حذف از گیف‌ها", run: () => toggleGif(content).catch((e) => alertDialog(errText(e))) }
-            : { icon: "plus", label: "ذخیره‌ی گیف", run: () => toggleGif(content).then(() => toast("به گیف‌ها اضافه شد"), (e) => alertDialog(errText(e))) }),
-          canPin && { icon: "pin", label: pinned ? "برداشتن سنجاق" : "سنجاق", run: () => togglePin(room, ev.getId()!).catch((e) => alertDialog(errText(e))) },
-          mine && EDITABLE.includes(content.msgtype ?? "") && { icon: "edit", label: "ویرایش", run: () => actions.edit(ev) },
-          mine && { icon: "info", label: "دیده‌شده توسط", run: () => actions.info(ev) },
-          reacted && { icon: "smile", label: "واکنش‌ها", run: () => actions.reactions(ev) },
-          actions.select && !touched && { icon: "select", label: "انتخاب", run: select }, // touch selects by holding
-          !mine && ev.getId() && { icon: "flag", label: "گزارش", run: () => void report(room, ev) },
-          canDelete && { icon: "trash", label: "حذف", danger: true, run: remove },
+            ? { icon: "close", label: t("msg.removeGif"), run: () => toggleGif(content).catch((e) => alertDialog(errText(e))) }
+            : { icon: "plus", label: t("msg.saveGif"), run: () => toggleGif(content).then(() => toast(t("msg.gifAdded")), (e) => alertDialog(errText(e))) }),
+          canPin && { icon: "pin", label: pinned ? t("msg.unpin") : t("msg.pin"), run: () => togglePin(room, ev.getId()!).catch((e) => alertDialog(errText(e))) },
+          mine && EDITABLE.includes(content.msgtype ?? "") && { icon: "edit", label: t("msg.edit"), run: () => actions.edit(ev) },
+          mine && { icon: "info", label: t("msg.seenBy"), run: () => actions.info(ev) },
+          reacted && { icon: "smile", label: t("reactions.title"), run: () => actions.reactions(ev) },
+          actions.select && !touched && { icon: "select", label: t("msg.select"), run: select }, // touch selects by holding
+          !mine && ev.getId() && { icon: "flag", label: t("msg.report"), run: () => void report(room, ev) },
+          canDelete && { icon: "trash", label: t("common.delete"), danger: true, run: remove },
         ]} />
       )}
       {/* portal: .msg-actions fades out when the pointer leaves the message */}
@@ -326,10 +327,10 @@ function MsgMenu({ x, y, items, onReact, onMore, onClose }: { x: number; y: numb
   const backdrop = useBackdropHold(onClose, ".msg", close); // right-clicking another message switches the menu to it (a finger hold just closes)
   return createPortal(
     <div className={"chat-menu-backdrop msg-menu-backdrop" + (closing ? " closing" : "")} {...backdrop}>
-      <div className="chat-menu msg-menu" role="menu" aria-label="گزینه‌های پیام" tabIndex={-1} ref={ref} style={pos ?? { left: x, top: y, visibility: "hidden" }} onClick={(e) => e.stopPropagation()}>
+      <div className="chat-menu msg-menu" role="menu" aria-label={t("msg.options")} tabIndex={-1} ref={ref} style={pos ?? { left: x, top: y, visibility: "hidden" }} onClick={(e) => e.stopPropagation()}>
         <div className="quick-react">
           {QUICK.map((k) => <button key={k} role="menuitem" onClick={() => act(() => onReact(k))}>{k}</button>)}
-          <button className="more" role="menuitem" title="اموجی‌های بیشتر" aria-label="اموجی‌های بیشتر" onClick={() => act(onMore)}><Icon name="plus" size={18} /></button>
+          <button className="more" role="menuitem" title={t("msg.moreEmoji")} aria-label={t("msg.moreEmoji")} onClick={() => act(onMore)}><Icon name="plus" size={18} /></button>
         </div>
         {items.map((it) => it && (
           <button key={it.label} role="menuitem" className={it.danger ? "danger-item" : undefined} onClick={() => act(it.run)}><Icon name={it.icon} /> {it.label}</button>
@@ -352,8 +353,8 @@ function Body({ ev, room, onView, onUser, album }: { ev: MatrixEvent; room: Room
       : c.msgtype === "m.audio" ? (isVoice(c) ? "voice" : "files") : null;
     if (kind && autoDl(room, kind, c)) prefetch(c);
   }, [ev, room]);
-  if (ev.isDecryptionFailure()) return <p className="msg-text muted"><Icon name="lock" size={14} /> فعلاً رمزگشایی نشد. رمزنگاری را در تنظیمات باز کنید.</p>;
-  if (ev.getType() === EventType.RoomMessageEncrypted) return <p className="msg-text muted">در حال رمزگشایی…</p>;
+  if (ev.isDecryptionFailure()) return <p className="msg-text muted"><Icon name="lock" size={14} /> {t("msg.undecryptable")}</p>;
+  if (ev.getType() === EventType.RoomMessageEncrypted) return <p className="msg-text muted">{t("preview.decrypting")}</p>;
   const c = ev.getContent();
   if (M_POLL_START.matches(ev.getType())) return <PollBody ev={ev} room={room} />;
   const rich = c.format === "org.matrix.custom.html" && typeof c.formatted_body === "string" ? cleanHtml(c.formatted_body, room) : null;
@@ -450,7 +451,7 @@ function Html({ html, room, onUser }: { html: string; room: Room; onUser: (id: s
     ref.current?.querySelectorAll("pre").forEach((pre) => {
       const b = document.createElement("button");
       b.className = "code-copy";
-      b.title = b.ariaLabel = "کپی";
+      b.title = b.ariaLabel = t("common.copy");
       b.innerHTML = iconSvg("copy", 16);
       pre.append(b);
     });
@@ -565,12 +566,12 @@ function Pending({ c, dl, label, noBg }: { c: Content; dl: ReturnType<typeof use
     <>
       {bg ? <img className="media-blur" src={bg} alt="" /> : !dl.idle && dl.prog === null && <span className="shimmer" />}
       {dl.idle ? (
-        <button className="dl-btn" onClick={(e) => { e.stopPropagation(); dl.start(); }} aria-label="دانلود">
+        <button className="dl-btn" onClick={(e) => { e.stopPropagation(); dl.start(); }} aria-label={t("media.download")}>
           <Icon name="download" size={22} />
           {(label || c.info?.size > 0) && <small>{[label, c.info?.size > 0 && formatSize(c.info.size)].filter(Boolean).join(" · ")}</small>}
         </button>
       ) : dl.prog !== null && (
-        <span className="dl-ring" onClick={(e) => e.stopPropagation()}><ProgressRing f={dl.prog || 0.04} label="لغو دانلود" onClick={dl.cancel} /></span>
+        <span className="dl-ring" onClick={(e) => e.stopPropagation()}><ProgressRing f={dl.prog || 0.04} label={t("media.cancelDownload")} onClick={dl.cancel} /></span>
       )}
     </>
   );
@@ -606,7 +607,7 @@ function Video({ c, onView, tile }: { c: Content; onView: () => void; tile?: boo
   const thumb = usePromise(thumbFor(c));
   const poster = thumb ?? blurUrl(c.info?.[BLURHASH]);
   return (
-    <button className="media-box video-box" style={tile ? undefined : fit(c.info)} onClick={onView} aria-label="پخش ویدیو">
+    <button className="media-box video-box" style={tile ? undefined : fit(c.info)} onClick={onView} aria-label={t("media.playVideo")}>
       {poster && <img src={poster} alt="" />}
       <span className="play-badge"><Icon name="play" size={26} /></span>
       {c.info?.duration > 0 && <span className="dur-badge">{fmtDuration(c.info.duration)}</span>}
@@ -657,7 +658,7 @@ function VideoNote({ c, room }: { c: Content; room: Room }) {
   };
   const left = sound && dur ? Math.max(0, dur - pos * 1000) : dur;
   return (
-    <div className={"note" + (sound ? " sound" : "")} onClick={tap} role="button" tabIndex={0} aria-label={sound && !paused ? "توقف" : "پخش پیام ویدیویی"}
+    <div className={"note" + (sound ? " sound" : "")} onClick={tap} role="button" tabIndex={0} aria-label={sound && !paused ? t("media.pause") : t("media.playNote")}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(e as unknown as MouseEvent); } }}>
       {dl.url ? <video ref={v} src={dl.url} poster={poster ?? undefined} autoPlay={auto} muted loop playsInline disablePictureInPicture
         onTimeUpdate={(e) => sound && setPos(e.currentTarget.currentTime)} onEnded={quiet} />
@@ -709,9 +710,9 @@ export function ProgressRing({ f, label, onClick, icon = "close" }: { f: number;
 }
 
 /** The toast after a save; the browser shows its own download. */
-export function savedToast(t: SaveTarget | null) {
-  if (t?.where === "downloads") toast("در پوشه‌ی دانلودها ذخیره شد");
-  else if (t?.where === "picked") toast("ذخیره شد");
+export function savedToast(to: SaveTarget | null) {
+  if (to?.where === "downloads") toast(t("save.downloads"));
+  else if (to?.where === "picked") toast(t("save.saved"));
 }
 
 export function FileRow({ c }: { c: Content }) {
@@ -740,11 +741,11 @@ export function FileRow({ c }: { c: Content }) {
     }
   };
   const f = prog?.total ? Math.min(1, prog.loaded / prog.total) : 0;
-  const state = !prog ? (c.info?.size ? formatSize(c.info.size) : "فایل")
-    : prog.total ? `${num(Math.floor(f * 100))}٪ · ${formatSize(prog.loaded)} / ${formatSize(prog.total)}` : "در حال دانلود…";
+  const state = !prog ? (c.info?.size ? formatSize(c.info.size) : t("composer.file"))
+    : prog.total ? `${t("poll.pct", { n: Math.floor(f * 100) })} · ${formatSize(prog.loaded)} / ${formatSize(prog.total)}` : t("media.downloading");
   return (
     <button className="file-row" onClick={download}>
-      {prog ? <ProgressRing f={f || 0.04} label="لغو دانلود" /> : <span className="file-icon"><Icon name="file" /></span>}
+      {prog ? <ProgressRing f={f || 0.04} label={t("media.cancelDownload")} /> : <span className="file-icon"><Icon name="file" /></span>}
       <span><b>{c.filename ?? c.body}</b><small dir="auto">{state}</small></span>
     </button>
   );
@@ -758,12 +759,12 @@ function LocationCard({ c }: { c: Content }) {
     <div className="file-row location">
       <span className="file-icon"><Icon name="location" /></span>
       <span>
-        <b dir="auto">{loc?.description || "موقعیت مکانی"}</b>
-        <small><bdi dir="ltr">{g.lat.toFixed(5)}, {g.lon.toFixed(5)}</bdi>{g.acc ? ` · دقت ${num(Math.round(g.acc))} متر` : ""}</small>
+        <b dir="auto">{loc?.description || t("loc.title")}</b>
+        <small><bdi dir="ltr">{g.lat.toFixed(5)}, {g.lon.toFixed(5)}</bdi>{g.acc ? " · " + t("loc.accuracy", { count: Math.round(g.acc) }) : ""}</small>
         <span className="location-links">
-          {isNative ? <a href={neshanUrl(g.lat, g.lon)} onClick={geoClick(g.lat, g.lon, loc?.description)}>باز کردن در نقشه</a> : <>
-            <a href={neshanUrl(g.lat, g.lon)} target="_blank" rel="noreferrer noopener">نشان</a>
-            <a href={`https://www.google.com/maps?q=${g.lat},${g.lon}`} target="_blank" rel="noreferrer noopener">گوگل مپ</a>
+          {isNative ? <a href={neshanUrl(g.lat, g.lon)} onClick={geoClick(g.lat, g.lon, loc?.description)}>{t("loc.openMap")}</a> : <>
+            <a href={neshanUrl(g.lat, g.lon)} target="_blank" rel="noreferrer noopener">{t("loc.neshan")}</a>
+            <a href={`https://www.google.com/maps?q=${g.lat},${g.lon}`} target="_blank" rel="noreferrer noopener">{t("loc.google")}</a>
           </>}
         </span>
       </span>
@@ -779,8 +780,8 @@ function ReplyQuote({ room, id, onJump }: { room: Room; id: string; onJump?: (id
   return (
     <div className="reply-quote" dir="auto" style={{ borderColor: ev ? colorFor(ev.getSender()!) : undefined }}
       role={go && "button"} tabIndex={go && 0} onClick={go} onKeyDown={(e) => e.key === "Enter" && go?.(e)}>
-      <b dir="auto" style={{ color: ev ? colorFor(ev.getSender()!) : undefined }}>{ev ? senderName(ev) : "پاسخ"}</b>
-      <span>{ev ? <PreviewText ev={ev} /> : "پیام اصلی بارگذاری نشده"}</span>
+      <b dir="auto" style={{ color: ev ? colorFor(ev.getSender()!) : undefined }}>{ev ? senderName(ev) : t("msg.reply")}</b>
+      <span>{ev ? <PreviewText ev={ev} /> : t("msg.originalNotLoaded")}</span>
     </div>
   );
 }
@@ -790,11 +791,11 @@ function Ticks({ ev, room }: { ev: MatrixEvent; room: Room }) {
   const sending = !failed && !!ev.status;
   const seen = failed || sending ? [] : seenBy(room, ev);
   const changed = useChange(failed ? 0 : sending ? 1 : seen.length ? 3 : 2); // clock → check → checks pop when they change
-  if (failed) return <span className="tick failed" title="ارسال نشد">!</span>;
+  if (failed) return <span className="tick failed" title={t("upload.failed")}>!</span>;
   if (sending) return <span className="tick"><Icon name="clock" size={13} /></span>;
-  const title = !seen.length ? "ارسال شد"
-    : isGroupChat(room) ? `دیده‌شده توسط ${num(seen.length)} نفر`
-    : seen[0].ts ? `دیده‌شده ${stamp(seen[0].ts)}` : "دیده‌شده";
+  const title = !seen.length ? t("tick.sent")
+    : isGroupChat(room) ? t("tick.seenByN", { count: seen.length })
+    : seen[0].ts ? t("tick.seenAt", { when: stamp(seen[0].ts) }) : t("tick.seen");
   return <span className={"tick" + (seen.length ? " read" : "") + (changed ? " changed" : "")} title={title}><Icon name={seen.length ? "checks" : "check"} size={15} /></span>;
 }
 
@@ -827,9 +828,9 @@ function ReactionChip({ room, ev, emoji, users, added }: { room: Room; ev: Matri
 
 /** To the homeserver's admins, not the room's moderators. Score -100 = most offensive (the spec's scale). */
 async function report(room: Room, ev: MatrixEvent) {
-  const reason = await promptDialog("این پیام به مدیران سرور گزارش شود؟", { ok: "گزارش", danger: true, placeholder: "دلیل (اختیاری)" });
+  const reason = await promptDialog(t("msg.reportQ"), { ok: t("msg.report"), danger: true, placeholder: t("msg.reportReason") });
   if (reason === null) return;
-  client.reportEvent(room.roomId, ev.getId()!, -100, reason).then(() => toast("گزارش برای مدیران سرور فرستاده شد"), (e) => alertDialog(errText(e)));
+  client.reportEvent(room.roomId, ev.getId()!, -100, reason).then(() => toast(t("msg.reported")), (e) => alertDialog(errText(e)));
 }
 
 const shortcodeOf = (reaction?: MatrixEvent) => String(reaction?.getContent()["com.beeper.reaction.shortcode"] ?? "");

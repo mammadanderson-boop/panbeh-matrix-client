@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EventType, type Room } from "matrix-js-sdk";
 import { MatrixRTCSessionEvent } from "matrix-js-sdk/lib/matrixrtc/index.js";
@@ -27,11 +28,11 @@ const canShare = !isNative && !!navigator.mediaDevices?.getDisplayMedia;
  */
 export async function start(room: Room, video: boolean, legacy?: boolean) {
   const { active } = getCall();
-  if (active && active.room !== room && !(await confirmDialog("تماس فعلی پایان یابد؟", { ok: "پایان و تماس", danger: true }))) return;
+  if (active && active.room !== room && !(await confirmDialog(t("call.endCurrentQ"), { ok: t("call.endAndCall"), danger: true }))) return;
   legacy ??= loadPrefs().dev && isDirect(room) && !(await ourTransport());
   if (!legacy && !room.currentState.maySendStateEvent(EventType.GroupCallMemberPrefix, me())) {
-    if (!room.currentState.maySendStateEvent(EventType.RoomPowerLevels, me())) return alertDialog("مدیر گروه هنوز تماس را برای اعضا فعال نکرده است");
-    if (!(await confirmDialog("تماس در این گروه فعال شود؟ اعضا می‌توانند به تماس بپیوندند."))) return;
+    if (!room.currentState.maySendStateEvent(EventType.RoomPowerLevels, me())) return alertDialog(t("call.notEnabled"));
+    if (!(await confirmDialog(t("call.enableQ")))) return;
     await allowCalls(room.roomId);
   }
   await call(room, video, true, legacy);
@@ -51,15 +52,15 @@ export function CallButtons({ room }: { room: Room }) {
   const pick = (video: boolean) => dm && sfu && dev ? (e: React.MouseEvent) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, video }); } : undefined;
   return (
     <>
-      <button className="icon-btn" onClick={() => run(start(room, false))} onContextMenu={pick(false)} title="تماس صوتی" aria-label="تماس صوتی"><Icon name="phone" /></button>
-      <button className="icon-btn" onClick={() => run(start(room, true))} onContextMenu={pick(true)} title="تماس تصویری" aria-label="تماس تصویری"><Icon name="video" /></button>
+      <button className="icon-btn" onClick={() => run(start(room, false))} onContextMenu={pick(false)} title={t("call.voice")} aria-label={t("call.voice")}><Icon name="phone" /></button>
+      <button className="icon-btn" onClick={() => run(start(room, true))} onContextMenu={pick(true)} title={t("call.video")} aria-label={t("call.video")}><Icon name="video" /></button>
       {menuShown && m && (
         <div className={"chat-menu-backdrop msg-menu-backdrop" + (menuClosing ? " closing" : "")} onClick={() => setMenu(null)}>
           <div className="chat-menu msg-menu" role="menu" style={{ left: Math.max(8, Math.min(m.x - 260, innerWidth - 268)), top: m.y }}>
             <button role="menuitem" onClick={() => { setMenu(null); run(start(room, m.video, false)); }}>
-              <Icon name={m.video ? "video" : "phone"} /> تماس</button>
+              <Icon name={m.video ? "video" : "phone"} /> {t("call.call")}</button>
             <button role="menuitem" onClick={() => { setMenu(null); run(start(room, m.video, true)); }}>
-              <Icon name={m.video ? "video" : "phone"} /> تماس با روش قدیمی</button>
+              <Icon name={m.video ? "video" : "phone"} /> {t("call.legacy")}</button>
           </div>
         </div>
       )}
@@ -76,14 +77,14 @@ export function CallBar({ room }: { room?: Room }) {
   if (active?.min) return (
     <button className="call-bar" onClick={() => minimize(false)}>
       <Icon name="phone" size={18} /> <b>{active.room.name}</b>
-      <span>{active.since ? fmtDuration(now - active.since) : "در حال اتصال…"}</span>
+      <span>{active.since ? fmtDuration(now - active.since) : t("boot.connecting")}</span>
     </button>
   );
   if (!room || active || !session?.memberships.length) return null;
   return (
     <button className="call-bar" onClick={() => run(start(room, false, false))}>
-      <Icon name="phone" size={18} /> <b>تماس در جریان است</b>
-      <span>{num(new Set(session.memberships.map((m) => m.userId)).size)} نفر · پیوستن</span>
+      <Icon name="phone" size={18} /> <b>{t("call.ongoing")}</b>
+      <span>{t("call.peopleJoin", { count: new Set(session.memberships.map((m) => m.userId)).size })}</span>
     </button>
   );
 }
@@ -118,12 +119,12 @@ function SourcePicker({ sources, onDone }: { sources: ShareSource[]; onDone: (id
     </div>
   );
   return (
-    <div className="source-picker" role="dialog" aria-label="اشتراک صفحه" onClick={() => onDone(null)}>
+    <div className="source-picker" role="dialog" aria-label={t("call.share")} onClick={() => onDone(null)}>
       <div onClick={(e) => e.stopPropagation()}>
-        <h3>چه چیزی به اشتراک گذاشته شود؟</h3>
-        {screens.length > 0 && <><h4>صفحه‌نمایش</h4>{grid(screens)}</>}
-        {windows.length > 0 && <><h4>پنجره</h4>{grid(windows)}</>}
-        <button className="source-cancel" onClick={() => onDone(null)}>انصراف</button>
+        <h3>{t("call.shareWhat")}</h3>
+        {screens.length > 0 && <><h4>{t("call.screens")}</h4>{grid(screens)}</>}
+        {windows.length > 0 && <><h4>{t("call.windows")}</h4>{grid(windows)}</>}
+        <button className="source-cancel" onClick={() => onDone(null)}>{t("common.cancel")}</button>
       </div>
     </div>
   );
@@ -132,11 +133,11 @@ function SourcePicker({ sources, onDone }: { sources: ShareSource[]; onDone: (id
 /** Call waiting: someone else rings while we're in a call. */
 function Waiting({ i }: { i: Incoming }) {
   return (
-    <div className="call-waiting" role="alertdialog" aria-label="تماس ورودی">
+    <div className="call-waiting" role="alertdialog" aria-label={t("call.incoming")}>
       <RoomAvatar room={i.room} size={40} />
-      <div><b>{i.room.name}</b><span>{i.video ? "تماس تصویری ورودی…" : "تماس صوتی ورودی…"}</span></div>
-      <button className="call-btn end" onClick={decline} title="رد کردن" aria-label="رد کردن"><Icon name="hangup" size={22} /></button>
-      <button className="call-btn ok" onClick={() => run(answer(false))} title="پایان تماس فعلی و پاسخ" aria-label="پایان تماس فعلی و پاسخ"><Icon name="phone" size={22} /></button>
+      <div><b>{i.room.name}</b><span>{i.video ? t("call.incomingVideo") : t("call.incomingVoice")}</span></div>
+      <button className="call-btn end" onClick={decline} title={t("invite.decline")} aria-label={t("invite.decline")}><Icon name="hangup" size={22} /></button>
+      <button className="call-btn ok" onClick={() => run(answer(false))} title={t("call.endAndAnswer")} aria-label={t("call.endAndAnswer")}><Icon name="phone" size={22} /></button>
     </div>
   );
 }
@@ -144,16 +145,16 @@ function Waiting({ i }: { i: Incoming }) {
 function IncomingCall({ room, video }: { room: Room; video: boolean }) {
   useEffect(() => pushBack(() => { decline(); }), []);
   return (
-    <div className="call-screen incoming" role="dialog" aria-label="تماس ورودی">
+    <div className="call-screen incoming" role="dialog" aria-label={t("call.incoming")}>
       <div className="call-who">
         <RoomAvatar room={room} size={112} />
         <h2>{room.name}</h2>
-        <span>{video ? "تماس تصویری ورودی…" : "تماس صوتی ورودی…"}</span>
+        <span>{video ? t("call.incomingVideo") : t("call.incomingVoice")}</span>
       </div>
       <div className="call-controls">
-        <CallBtn icon="hangup" label="رد کردن" danger onClick={decline} />
-        <CallBtn icon="phone" label="پاسخ" ok onClick={() => run(answer(false))} />
-        {video && <CallBtn icon="video" label="پاسخ تصویری" ok onClick={() => run(answer(true))} />}
+        <CallBtn icon="hangup" label={t("invite.decline")} danger onClick={decline} />
+        <CallBtn icon="phone" label={t("call.answer")} ok onClick={() => run(answer(false))} />
+        {video && <CallBtn icon="video" label={t("call.answerVideo")} ok onClick={() => run(answer(true))} />}
       </div>
     </div>
   );
@@ -165,11 +166,11 @@ function CallScreen({ a, closing }: { a: Active; closing?: boolean }) {
   const now = useClock(!!a.since);
   const { tiles, others } = tilesOf(a);
   const m = myMedia(a);
-  const status = a.held ? "در انتظار (تماس تلفنی)" : a.reconnecting ? "در حال اتصال دوباره…" : a.notice ? a.notice : a.kind === "legacy"
-    ? (a.since ? fmtDuration(now - a.since) : a.mc.state === CallState.InviteSent ? "در حال زنگ زدن…" : "در حال اتصال…")
-    : a.lk.state !== LK.ConnectionState.Connected ? "در حال اتصال…"
-    : !a.since ? (isDirect(a.room) ? "در حال زنگ زدن…" : "در انتظار دیگران…")
-    : !others ? "تنها هستید" : fmtDuration(now - a.since);
+  const status = a.held ? t("call.held") : a.reconnecting ? t("call.reconnecting") : a.notice ? a.notice : a.kind === "legacy"
+    ? (a.since ? fmtDuration(now - a.since) : a.mc.state === CallState.InviteSent ? t("call.ringing") : t("boot.connecting"))
+    : a.lk.state !== LK.ConnectionState.Connected ? t("boot.connecting")
+    : !a.since ? (isDirect(a.room) ? t("call.ringing") : t("call.waitingOthers"))
+    : !others ? t("call.alone") : fmtDuration(now - a.since);
   const [stats, setStats] = useState(false); // tap the status line: numbers on every feed
   const [focus, setFocus] = useState<string | null>(null); // a feed blown up to most of the screen
   const main = tiles.find((t) => t.key === focus); // gone (left, stopped sharing) = back to the grid
@@ -223,13 +224,13 @@ function CallScreen({ a, closing }: { a: Active; closing?: boolean }) {
   const tile = (t: TileData, focused = false) =>
     <Tile key={t.key} room={a.room} t={t} mirror={t.local && !t.screen && a.facing === "user"} focused={focused} stats={stats} onFocus={() => setFocus(focused ? null : t.key)} />;
   return (
-    <div className={"call-screen" + (closing ? " closing" : "") + (immersive ? " immersive" : "") + (bare ? " bare" : "")} role="dialog" aria-label="تماس" onClick={onTap} ref={screen}
+    <div className={"call-screen" + (closing ? " closing" : "") + (immersive ? " immersive" : "") + (bare ? " bare" : "")} role="dialog" aria-label={t("call.call")} onClick={onTap} ref={screen}
       onPointerMove={(e) => { if (bare && e.pointerType === "mouse") setBare(false); }}>
       <header className="call-head">
-        <button className="icon-btn" onClick={hide} title="کوچک کردن" aria-label="کوچک کردن"><Icon name="down" /></button>
-        <div role="button" tabIndex={0} aria-pressed={stats} title="آمار اتصال" onClick={() => setStats(!stats)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setStats(!stats); }}>
+        <button className="icon-btn" onClick={hide} title={t("call.minimize")} aria-label={t("call.minimize")}><Icon name="down" /></button>
+        <div role="button" tabIndex={0} aria-pressed={stats} title={t("call.stats")} onClick={() => setStats(!stats)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setStats(!stats); }}>
           <b>{a.room.name}</b><span>{status}</span></div>
-        {a.lowData && <button className="call-chip" onClick={() => run(setLowData(false, true))} title="خاموش کردن تصویر کم‌مصرف برای این تماس">کم‌مصرف ✕</button>}
+        {a.lowData && <button className="call-chip" onClick={() => run(setLowData(false, true))} title={t("call.lowDataOff")}>{t("call.lowData")} ✕</button>}
       </header>
       {main ? (
         <div className="call-grid focus">
@@ -245,16 +246,16 @@ function CallScreen({ a, closing }: { a: Active; closing?: boolean }) {
         </div>
       )}
       <div className="call-controls">
-        <CallBtn icon={m.mic ? "mic" : "micOff"} label="میکروفون" on={!m.mic} onClick={() => run(toggleMic())} />
-        <CallBtn icon={m.cam ? "video" : "videoOff"} label="دوربین" on={!m.cam} onClick={() => run(toggleCam())} />
-        {isNative && m.cam && <CallBtn icon="flip" label="چرخش دوربین" onClick={() => run(flipCam())} />}
-        {isNative && <CallBtn icon={ROUTE_ICONS[route]} label={headset ? "خروجی صدا: " + ROUTE_LABELS[route] : "بلندگو"} on={headset ? panel === "routes" || route !== "earpiece" : a.speaker} onClick={speakerBtn} />}
-        {canShare && <CallBtn icon="screen" label="اشتراک صفحه" on={m.screen} onClick={() => run(toggleScreen())} />}
-        {group && <CallBtn icon="hand" label="بالا بردن دست" on={handOf(membershipOf(a.session, a.lk.localParticipant.identity)?.eventId)} onClick={() => run(toggleHand())} />}
-        {a.kind === "rtc" && <CallBtn icon="smile" label="واکنش" on={panel === "reactions"} onClick={() => toggle("reactions")} />}
-        {group && <CallBtn icon="group" label="شرکت‌کنندگان" on={panel === "people"} onClick={() => toggle("people")} />}
-        {!isNative && <CallBtn icon="settings" label="میکروفون، دوربین و بلندگو" on={panel === "devices"} onClick={() => toggle("devices")} />}
-        <CallBtn icon="hangup" label="پایان" danger onClick={() => run(hangup())} />
+        <CallBtn icon={m.mic ? "mic" : "micOff"} label={t("call.mic")} on={!m.mic} onClick={() => run(toggleMic())} />
+        <CallBtn icon={m.cam ? "video" : "videoOff"} label={t("composer.camera")} on={!m.cam} onClick={() => run(toggleCam())} />
+        {isNative && m.cam && <CallBtn icon="flip" label={t("call.flip")} onClick={() => run(flipCam())} />}
+        {isNative && <CallBtn icon={ROUTE_ICONS[route]} label={headset ? t("call.output", { route: ROUTE_LABELS[route] }) : t("call.speaker")} on={headset ? panel === "routes" || route !== "earpiece" : a.speaker} onClick={speakerBtn} />}
+        {canShare && <CallBtn icon="screen" label={t("call.share")} on={m.screen} onClick={() => run(toggleScreen())} />}
+        {group && <CallBtn icon="hand" label={t("call.raiseHand")} on={handOf(membershipOf(a.session, a.lk.localParticipant.identity)?.eventId)} onClick={() => run(toggleHand())} />}
+        {a.kind === "rtc" && <CallBtn icon="smile" label={t("msg.react")} on={panel === "reactions"} onClick={() => toggle("reactions")} />}
+        {group && <CallBtn icon="group" label={t("call.participants")} on={panel === "people"} onClick={() => toggle("people")} />}
+        {!isNative && <CallBtn icon="settings" label={t("call.devices")} on={panel === "devices"} onClick={() => toggle("devices")} />}
+        <CallBtn icon="hangup" label={t("call.end")} danger onClick={() => run(hangup())} />
       </div>
       {panel === "emoji" && (
         <div className="react-picker"><EmojiPanel onEmoji={(e) => { setPanel(null); run(react(e)); }} onClose={() => setPanel(null)} /></div>
@@ -266,7 +267,7 @@ function CallScreen({ a, closing }: { a: Active; closing?: boolean }) {
               : panel === "people" ? <People room={a.room} tiles={tiles} />
               : panel === "reactions" ? <div className="call-reactions">{REACTIONS.map(([emoji, name]) => (
                 <button key={name} onClick={() => { setPanel(null); run(react(emoji, name)); }} aria-label={emoji}>{emoji}</button>
-              ))}<button onClick={() => setPanel("emoji")} title="همه‌ی اموجی‌ها" aria-label="همه‌ی اموجی‌ها"><Icon name="plus" /></button></div>
+              ))}<button onClick={() => setPanel("emoji")} title={t("call.allEmoji")} aria-label={t("call.allEmoji")}><Icon name="plus" /></button></div>
               : <Routes routes={routes} current={a.routes?.current ?? -1} onPick={(r) => { setPanel(null); run(setAudioRoute(r.id)); }} />}
           </div>
         </div>
@@ -276,25 +277,25 @@ function CallScreen({ a, closing }: { a: Active; closing?: boolean }) {
 }
 
 const MAX_TILES = 9;
-const QUALITY: Partial<Record<string, string>> = { poor: "اتصال ضعیف", lost: "اتصال قطع شده" };
+const QUALITY: Partial<Record<string, string>> = { poor: t("call.poor"), lost: t("call.lost") };
 
 /** Everyone in a group call: name, hand, mic, connection. */
 function People({ room, tiles }: { room: Room; tiles: TileData[] }) {
-  const people = tiles.filter((t) => !t.screen).sort((x, y) => Number(!!y.hand) - Number(!!x.hand)); // hands first, like a queue
-  return <div className="call-people">{people.map((t) => {
-    const m = room.getMember(t.userId);
+  const people = tiles.filter((p) => !p.screen).sort((x, y) => Number(!!y.hand) - Number(!!x.hand)); // hands first, like a queue
+  return <div className="call-people">{people.map((p) => {
+    const m = room.getMember(p.userId);
     return (
-      <div key={t.key}>
-        <Avatar mxc={m?.getMxcAvatarUrl()} name={m?.name ?? t.userId} id={t.userId} size={32} />
-        <span>{t.local ? "شما" : m?.name ?? t.userId}{t.quality && QUALITY[t.quality] && <small>{QUALITY[t.quality]}</small>}</span>
-        {t.hand && <span aria-label="دست بالا">🖐️</span>}
-        {t.micOff && <Icon name="micOff" size={16} />}
+      <div key={p.key}>
+        <Avatar mxc={m?.getMxcAvatarUrl()} name={m?.name ?? p.userId} id={p.userId} size={32} />
+        <span>{p.local ? t("common.you") : m?.name ?? p.userId}{p.quality && QUALITY[p.quality] && <small>{QUALITY[p.quality]}</small>}</span>
+        {p.hand && <span aria-label={t("call.handUp")}>🖐️</span>}
+        {p.micOff && <Icon name="micOff" size={16} />}
       </div>
     );
   })}</div>;
 }
 
-const DEVICE_KINDS: [MediaDeviceKind, string][] = [["audioinput", "میکروفون"], ["videoinput", "دوربین"], ["audiooutput", "بلندگو"]];
+const DEVICE_KINDS: [MediaDeviceKind, string][] = [["audioinput", t("call.mic")], ["videoinput", t("composer.camera")], ["audiooutput", t("call.speaker")]];
 const canPickOutput = "setSinkId" in HTMLMediaElement.prototype;
 
 /** Desktop/web: which mic, camera and speaker the call uses (remembered for later calls), and noise suppression. */
@@ -308,16 +309,16 @@ function Devices() {
       return (
         <label key={kind}>{label}
           <Select value={d[kind] ?? ""} onChange={(v) => run(setDevice(kind, v))}
-            options={[...(d[kind] ? [] : [["", "پیش‌فرض سیستم"] as [string, string]]), ...list.map((x, i): [string, string] => [x.deviceId, x.label || `${label} ${num(i + 1)}`])]} />
+            options={[...(d[kind] ? [] : [["", t("call.systemDefault")] as [string, string]]), ...list.map((x, i): [string, string] => [x.deviceId, x.label || `${label} ${num(i + 1)}`])]} />
         </label>
       );
     })}
-    <label className="switch-row"><span>حذف نویز</span>
+    <label className="switch-row"><span>{t("call.noise")}</span>
       <input type="checkbox" role="switch" checked={d.noiseSuppression ?? true} onChange={(e) => run(setNoiseSuppression(e.target.checked))} /></label>
   </>;
 }
 
-const ROUTE_LABELS: Record<AudioRoute["kind"], string> = { earpiece: "گوشی", speaker: "بلندگو", wired: "هدفون", bluetooth: "بلوتوث" };
+const ROUTE_LABELS: Record<AudioRoute["kind"], string> = { earpiece: t("route.earpiece"), speaker: t("call.speaker"), wired: t("route.wired"), bluetooth: t("route.bluetooth") };
 const ROUTE_ICONS: Record<AudioRoute["kind"], IconName> = { earpiece: "phone", speaker: "speaker", wired: "headphones", bluetooth: "bluetooth" };
 
 /** Android: where call audio goes. */
@@ -379,9 +380,9 @@ function tilesOf(a: Active): { tiles: TileData[]; others: number } {
   return { tiles, others: others.length };
 }
 
-function Tile({ room, t, mirror, focused, stats, onFocus }: { room: Room; t: TileData; mirror: boolean; focused: boolean; stats: boolean; onFocus: () => void }) {
+function Tile({ room, t: td, mirror, focused, stats, onFocus }: { room: Room; t: TileData; mirror: boolean; focused: boolean; stats: boolean; onFocus: () => void }) {
   const ref = useRef<HTMLVideoElement>(null);
-  const { video } = t;
+  const { video } = td;
   useEffect(() => {
     const el = ref.current;
     if (!video || !el) return;
@@ -392,19 +393,19 @@ function Tile({ room, t, mirror, focused, stats, onFocus }: { room: Room; t: Til
     video.attach(el);
     return () => { video.detach(el); };
   }, [video]);
-  const m = room.getMember(t.userId);
+  const m = room.getMember(td.userId);
   return (
-    <div className={"call-tile" + (t.local ? " local" : "") + (t.speaking ? " speaking" : "") + (focused ? " main" : "")}>
-      {video ? <video ref={ref} autoPlay playsInline muted className={(t.screen || focused ? "contain" : "") + (mirror ? " mirror" : "")} />
-        : <Avatar mxc={m?.getMxcAvatarUrl()} name={m?.name ?? t.userId} id={t.userId} size={88} />}
+    <div className={"call-tile" + (td.local ? " local" : "") + (td.speaking ? " speaking" : "") + (focused ? " main" : "")}>
+      {video ? <video ref={ref} autoPlay playsInline muted className={(td.screen || focused ? "contain" : "") + (mirror ? " mirror" : "")} />
+        : <Avatar mxc={m?.getMxcAvatarUrl()} name={m?.name ?? td.userId} id={td.userId} size={88} />}
       <span className="call-name">
-        {t.quality && QUALITY[t.quality] && <i className={"call-quality " + t.quality} title={QUALITY[t.quality]} />}
-        {t.local ? "شما" : m?.name ?? t.userId}{t.micOff && <Icon name="micOff" size={14} />}
+        {td.quality && QUALITY[td.quality] && <i className={"call-quality " + td.quality} title={QUALITY[td.quality]} />}
+        {td.local ? t("common.you") : m?.name ?? td.userId}{td.micOff && <Icon name="micOff" size={14} />}
       </span>
-      {stats && t.stats && <StatsBox get={t.stats} local={t.local} />}
-      {t.hand && !t.screen && <span className="call-hand" aria-label="دست بالا">🖐️</span>}
-      {t.reaction && !t.screen && <span key={t.reaction} className="call-reaction" aria-hidden>{t.reaction}</span>}
-      <button className="call-focus" onClick={onFocus} title={focused ? "بازگشت به همه" : "بزرگ‌نمایی"} aria-label={focused ? "بازگشت به همه" : "بزرگ‌نمایی"}>
+      {stats && td.stats && <StatsBox get={td.stats} local={td.local} />}
+      {td.hand && !td.screen && <span className="call-hand" aria-label={t("call.handUp")}>🖐️</span>}
+      {td.reaction && !td.screen && <span key={td.reaction} className="call-reaction" aria-hidden>{td.reaction}</span>}
+      <button className="call-focus" onClick={onFocus} title={focused ? t("call.backToAll") : t("call.focus")} aria-label={focused ? t("call.backToAll") : t("call.focus")}>
         <Icon name={focused ? "shrink" : "expand"} size={18} />
       </button>
     </div>

@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("panbehDesktop", {
   setBadge: (n) => ipcRenderer.send("badge", n),
+  setLang: (lang) => ipcRenderer.send("lang", lang),
   focus: () => ipcRenderer.send("focus"),
   openExternal: (url) => ipcRenderer.send("open-external", url),
   /** Pass a boolean to change it; resolves to the current setting. */

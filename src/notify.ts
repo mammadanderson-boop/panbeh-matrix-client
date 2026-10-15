@@ -1,3 +1,4 @@
+import { LOCALE, t } from "./i18n.ts";
 import { EventType, MatrixEventEvent, MsgType, PushRuleActionName, PushRuleKind, ReceiptType, RoomEvent, type IRoomTimelineData, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { avatarUrl, client, pastFirstSync } from "./matrix.ts";
 import { isGroupChat, previewText, senderMember, senderName, roomAvatarMxc } from "./ui/common.tsx";
@@ -112,11 +113,11 @@ async function show(room: Room, sender: string, text: string, sound: boolean, ts
   if (!isNative && isAttentive() && location.hash.slice(1) === room.roomId) return;
   const preview = loadPrefs().notifyPreview;
   const hidden = preview === "none";
-  if (preview !== "all" && !more.notice) text = "پیام تازه"; // a notice (missed call, failed reply) isn't someone's message
+  if (preview !== "all" && !more.notice) text = t("notify.newMessage"); // a notice (missed call, failed reply) isn't someone's message
   if (hidden) sender = "";
   // the sync recalculates names only after emitting the batch's events: a member that names this room may have just arrived
   room.recalculate();
-  const title = hidden ? "پنبه" : room.name, group = isGroupChat(room); // still a group when hidden: it picks the channel
+  const title = hidden ? t("app.name") : room.name, group = isGroupChat(room); // still a group when hidden: it picks the channel
   const body = (sender ? sender + ": " : "") + text;
   const [icon, senderIcon] = hidden ? [] : await Promise.all([notifyIcon(roomAvatarMxc(room)), group && more.senderMxc ? notifyIcon(more.senderMxc) : undefined]);
   if (isNative) {
@@ -131,7 +132,7 @@ async function show(room: Room, sender: string, text: string, sound: boolean, ts
   const n = new Notification(title, {
     body,
     tag: room.roomId, // newest message per chat replaces the previous one
-    icon, lang: "fa", dir: "rtl",
+    icon, lang: LOCALE, dir: "auto",
   });
   open.set(room.roomId, { n, eventId: more.eventId });
   n.onclose = () => { if (open.get(room.roomId)?.n === n) open.delete(room.roomId); };
@@ -155,7 +156,7 @@ export async function onNotifyButton(a: NotifyAction) {
     try {
       await client.sendMessage(room.roomId, { msgtype: MsgType.Text, body: a.text });
     } catch {
-      return void show(room, "", `پاسخ شما ارسال نشد: «${a.text}»`, false, Date.now(), { notice: true });
+      return void show(room, "", t("notify.replyFailed", { text: a.text }), false, Date.now(), { notice: true });
     }
   }
   await markRead(room).catch(() => {});

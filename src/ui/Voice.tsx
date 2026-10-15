@@ -1,3 +1,4 @@
+import { rtl, t } from "../i18n.ts";
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import type { MatrixEvent } from "matrix-js-sdk";
 import { downsample, fmtDuration, num } from "../logic.ts";
@@ -40,18 +41,18 @@ export function stopPlayer() {
   set({ track: null, state: "idle", pos: 0, dur: 0 });
 }
 
-async function start(t: Track) {
-  set({ track: t, state: "loading", pos: 0, dur: t.duration / 1000 });
+async function start(tr: Track) {
+  set({ track: tr, state: "loading", pos: 0, dur: tr.duration / 1000 });
   audio.pause(); // the previous one stops while this one loads
   try {
-    const url = await t.load();
-    if (!url) throw new Error("فایل صوتی در دسترس نیست");
-    if (snap.track !== t) return; // user picked something else meanwhile
+    const url = await tr.load();
+    if (!url) throw new Error(t("voice.unavailable"));
+    if (snap.track !== tr) return; // user picked something else meanwhile
     audio.src = url;
     audio.playbackRate = speed;
     await audio.play();
   } catch (e) {
-    if (snap.track === t) set({ state: "idle" });
+    if (snap.track === tr) set({ state: "idle" });
     alertDialog(errText(e));
   }
 }
@@ -110,19 +111,19 @@ export function AudioPlayer({ track, lead }: { track: Track; lead?: ReactNode })
   return (
     <div className="voice" dir="ltr">
       {lead ?? (
-        <button className="voice-play" onClick={() => toggle(track)} aria-label={state === "playing" ? "توقف" : "پخش"}>
+        <button className="voice-play" onClick={() => toggle(track)} aria-label={state === "playing" ? t("media.pause") : t("media.play")}>
           {state === "loading" ? <span className="spinner inline" /> : <Icon name={state === "playing" ? "pause" : "play"} size={22} />}
         </button>
       )}
       <div className="voice-body">
         {track.title && <b className="voice-title" dir="auto">{track.title}</b>}
-        <div className="wave" onClick={onWave} onKeyDown={onKey} tabIndex={0} role="slider" aria-label="موقعیت پخش"
+        <div className="wave" onClick={onWave} onKeyDown={onKey} tabIndex={0} role="slider" aria-label={t("media.position")}
           aria-valuemin={0} aria-valuemax={Math.round(dur)} aria-valuenow={Math.round(pos)}>
           {bars.map((h, i) => <span key={i} className={i / BARS < progress ? "on" : ""} style={{ height: `${15 + (h / 1024) * 85}%` }} />)}
         </div>
         <div className="voice-meta">
           <span>{fmtDuration((state === "idle" ? dur : pos) * 1000)}</span>
-          <button className="speed" onClick={cycleSpeed} aria-label="سرعت پخش">{num(speed)}×</button>
+          <button className="speed" onClick={cycleSpeed} aria-label={t("media.speed")}>{num(speed)}×</button>
         </div>
       </div>
     </div>
@@ -137,16 +138,16 @@ export function NowPlaying({ onJump }: { onJump?: (id: string) => void }) {
   const go = () => (ev.getRoomId() === location.hash.slice(1) && onJump ? onJump(ev.getId()!) : void (location.hash = ev.getRoomId()!));
   return (
     <div className="now-playing">
-      <button className="icon-btn" onClick={() => toggle(track)} aria-label={state === "playing" ? "توقف" : "پخش"}>
+      <button className="icon-btn" onClick={() => toggle(track)} aria-label={state === "playing" ? t("media.pause") : t("media.play")}>
         {state === "loading" ? <span className="spinner inline" /> : <Icon name={state === "playing" ? "pause" : "play"} size={22} />}
       </button>
       <button className="now-playing-text" onClick={go}>
         <b>{senderName(ev)}</b>
-        <span>{track.title ?? "پیام صوتی"}</span>
+        <span>{track.title ?? t("voice.message")}</span>
       </button>
       <span className="now-playing-time">{fmtDuration(pos * 1000)}</span>
-      <button className="speed" onClick={cycleSpeed} aria-label="سرعت پخش">{num(speed)}×</button>
-      <button className="icon-btn" onClick={stopPlayer} aria-label="بستن"><Icon name="close" /></button>
+      <button className="speed" onClick={cycleSpeed} aria-label={t("media.speed")}>{num(speed)}×</button>
+      <button className="icon-btn" onClick={stopPlayer} aria-label={t("common.close")}><Icon name="close" /></button>
       <i className="now-playing-line" style={{ width: dur ? `${Math.min(100, (pos / dur) * 100)}%` : 0 }} />
     </div>
   );
@@ -168,7 +169,7 @@ const voiceOf = (r: { blob: Blob; duration: number; waveform: number[] }): Voice
   return {
     file: new File([r.blob], `voice.${ext}`, { type }),
     extra: {
-      msgtype: "m.audio", body: "پیام صوتی", info: { duration },
+      msgtype: "m.audio", body: t("voice.message"), info: { duration },
       // what Element reads to show it as a voice message with a waveform
       "org.matrix.msc1767.audio": { duration, waveform: r.waveform },
       "org.matrix.msc3245.voice": {},
@@ -183,7 +184,7 @@ function HeldRow({ elapsed, dx, icon }: { elapsed: number; dx: number; icon: "mi
       <div className="recorder-live" dir="ltr">
         <span className="rec-dot" />
         <span className="rec-time">{fmtDuration(elapsed)}</span>
-        <span className="rec-hint" dir="rtl" style={{ transform: `translateX(${dx}px)`, opacity: Math.max(0, 1 + dx / 120) }}><Icon name="back" size={16} /> برای لغو بکشید</span>
+        <span className="rec-hint" dir={rtl ? "rtl" : "ltr"} style={{ transform: `translateX(${dx}px)`, opacity: Math.max(0, 1 + dx / 120) }}><Icon name="back" size={16} /> {t("voice.slideCancel")}</span>
       </div>
       <span className="rec-mic"><Icon name={icon} /><span className="rec-lock" aria-hidden><Icon name="lock" size={16} /></span></span>
     </div>
@@ -214,8 +215,8 @@ export function VoiceRecorder({ onDone, locked, dx, control }: RecProps) {
         stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 } }) // nothing plays while recording;
       } catch {
         alertDialog(window.isSecureContext
-          ? "دسترسی به میکروفون ممکن نشد. اجازه‌ی میکروفون را در تنظیمات مرورگر یا برنامه بدهید."
-          : "دسترسی به میکروفون ممکن نشد. ضبط صدا فقط روی https یا localhost کار می‌کند.");
+          ? t("voice.micDenied")
+          : t("voice.micInsecure"));
         return onDone();
       }
       if (!live) return release();
@@ -253,7 +254,7 @@ export function VoiceRecorder({ onDone, locked, dx, control }: RecProps) {
   const recent = levels.current.slice(-BARS);
   return (
     <div className="composer-row recorder">
-      <button className="icon-btn" onClick={() => onDone()} title="حذف" aria-label="حذف"><Icon name="trash" /></button>
+      <button className="icon-btn" onClick={() => onDone()} title={t("common.delete")} aria-label={t("common.delete")}><Icon name="trash" /></button>
       {rec ? (
         <div className="recorder-preview"><AudioPlayer track={{ id: "preview:" + rec.url, load: () => Promise.resolve(rec.url), duration: rec.duration, waveform: rec.waveform }} /></div>
       ) : (
@@ -264,9 +265,9 @@ export function VoiceRecorder({ onDone, locked, dx, control }: RecProps) {
         </div>
       )}
       {rec ? (
-        <button className="send-btn ready" onClick={() => onDone(voiceOf(rec))} aria-label="ارسال"><Icon name="send" /></button>
+        <button className="send-btn ready" onClick={() => onDone(voiceOf(rec))} aria-label={t("composer.send")}><Icon name="send" /></button>
       ) : (
-        <button className="send-btn ready rec-stop" onClick={() => stop.current(true)} aria-label="پایان ضبط"><Icon name="stop" /></button>
+        <button className="send-btn ready rec-stop" onClick={() => stop.current(true)} aria-label={t("voice.stop")}><Icon name="stop" /></button>
       )}
     </div>
   );
@@ -302,7 +303,7 @@ const noteOf = (blob: Blob, duration: number, px: number): Voice => {
   return {
     file: new File([blob], `video-note.${type.includes("mp4") ? "mp4" : "webm"}`, { type }),
     // other clients show an ordinary (square) video
-    extra: { body: "پیام ویدیویی", "app.panbeh.video_note": true, info: { duration: Math.round(duration), w: px, h: px } },
+    extra: { body: t("voice.videoMessage"), "app.panbeh.video_note": true, info: { duration: Math.round(duration), w: px, h: px } },
   };
 };
 
@@ -336,7 +337,7 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 } }); // like VoiceRecorder: echo cancelling puts Android's mic in call mode
       } catch {
-        alertDialog("دسترسی به دوربین یا میکروفون ممکن نشد. اجازه‌ی آن‌ها را در تنظیمات مرورگر یا برنامه بدهید.");
+        alertDialog(t("voice.camDenied"));
         return onDone();
       }
       if (!live) return release();
@@ -415,18 +416,18 @@ export function VideoNoteRecorder({ onDone, locked, dx, control }: RecProps) {
           : <svg viewBox="0 0 100 100" aria-hidden><circle cx="50" cy="50" r={R} strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(1, elapsed / NOTE_MAX))} /></svg>}
         {rec && !play && <span className="play-badge" aria-hidden><Icon name="play" size={26} /></span>}
       </div>
-      {!rec && cams > 1 && <button className="note-flip" onClick={() => void flip.current()} title="چرخش دوربین" aria-label="چرخش دوربین"><Icon name="flip" /></button>}
+      {!rec && cams > 1 && <button className="note-flip" onClick={() => void flip.current()} title={t("call.flip")} aria-label={t("call.flip")}><Icon name="flip" /></button>}
       {!locked && !rec ? <HeldRow elapsed={elapsed} dx={dx} icon="camera" /> : (
         <div className="composer-row recorder">
-          <button className="icon-btn" onClick={() => onDone()} title="حذف" aria-label="حذف"><Icon name="trash" /></button>
+          <button className="icon-btn" onClick={() => onDone()} title={t("common.delete")} aria-label={t("common.delete")}><Icon name="trash" /></button>
           <div className="recorder-live" dir="ltr">
             {!rec && <span className="rec-dot" />}
             <span className="rec-time">{fmtDuration(rec?.duration ?? elapsed)}</span>
           </div>
           {rec ? (
-            <button className="send-btn ready" onClick={() => onDone(noteOf(rec.blob, rec.duration, rec.px))} aria-label="ارسال"><Icon name="send" /></button>
+            <button className="send-btn ready" onClick={() => onDone(noteOf(rec.blob, rec.duration, rec.px))} aria-label={t("composer.send")}><Icon name="send" /></button>
           ) : (
-            <button className="send-btn ready rec-stop" onClick={() => stop.current(true)} aria-label="پایان ضبط"><Icon name="stop" /></button>
+            <button className="send-btn ready rec-stop" onClick={() => stop.current(true)} aria-label={t("voice.stop")}><Icon name="stop" /></button>
           )}
         </div>
       )}

@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { pushBack } from "../back.ts";
@@ -30,8 +31,8 @@ function Dialog({ text, ok, danger, cancel, input, done }: Opts & { text: string
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } }} />}
         {input?.hint && <small className="muted">{input.hint}</small>}
         <div className="modal-actions">
-          {cancel && <button onClick={() => finish(false)}>لغو</button>}
-          <button className={danger ? "danger" : "primary"} autoFocus={!input} onClick={() => finish(true)}>{ok ?? (cancel ? "تأیید" : "باشه")}</button>
+          {cancel && <button onClick={() => finish(false)}>{t("common.cancel")}</button>}
+          <button className={danger ? "danger" : "primary"} autoFocus={!input} onClick={() => finish(true)}>{ok ?? (cancel ? t("common.confirm") : t("common.ok"))}</button>
         </div>
       </div>
     </div>

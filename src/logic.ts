@@ -1,4 +1,5 @@
 // Pure helpers — no SDK imports so `node --test` can run them directly.
+import { LOCALE, t } from "./i18n.ts";
 
 /** album: "t:<id>" for Panbeh's tagged albums, "h" for media that may group by the heuristic (uncaptioned, close in time). */
 export type Msg = { id: string; sender: string; ts: number; kind: "msg" | "notice"; album?: string };
@@ -10,10 +11,9 @@ export type Row =
   /** photos/videos shown as one grid; id is the last one's */
   | { type: "album"; key: string; id: string; ids: string[]; first: boolean; last: boolean };
 
-const LOCALE = "fa-IR"; // Jalali calendar + Persian digits
 // formatters built once: toLocale*String builds a new one per call
 const fmt = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(LOCALE, o);
-const NUM = new Intl.NumberFormat(LOCALE), TIME = fmt({ hour: "2-digit", minute: "2-digit" }), YEAR = fmt({ year: "numeric" }),
+const NUM = new Intl.NumberFormat(LOCALE), TIME = fmt({ hour: LOCALE === "fa-IR" ? "2-digit" : "numeric", minute: "2-digit" }), YEAR = fmt({ year: "numeric" }),
   DAY_MONTH = fmt({ month: "long", day: "numeric" }), DAY_MONTH_YEAR = fmt({ month: "long", day: "numeric", year: "numeric" }),
   WEEKDAY = fmt({ weekday: "short" }), SHORT_DATE = fmt({ day: "numeric", month: "short" });
 export const num = (n: number) => NUM.format(n);
@@ -60,8 +60,8 @@ export function buildRows(msgs: Msg[], now = Date.now(), unreadAfter?: string): 
 export function dayLabel(ts: number, now = Date.now()) {
   const d = new Date(ts), n = new Date(now);
   const diff = Math.round((new Date(n.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
-  if (diff === 0) return "امروز";
-  if (diff === 1) return "دیروز";
+  if (diff === 0) return t("day.today");
+  if (diff === 1) return t("day.yesterday");
   // Jalali years roll over at Nowruz, not Jan 1, so compare them in that calendar
   return (YEAR.format(d) === YEAR.format(n) ? DAY_MONTH : DAY_MONTH_YEAR).format(d);
 }
@@ -84,10 +84,10 @@ export type RoomInfo = {
 export type Folder = { id: string; label: string };
 
 export const BASE_FOLDERS: Folder[] = [
-  { id: "all", label: "همه" },
-  { id: "unread", label: "خوانده‌نشده" },
-  { id: "dms", label: "شخصی" },
-  { id: "groups", label: "گروه‌ها" },
+  { id: "all", label: t("folder.all") },
+  { id: "unread", label: t("folder.unread") },
+  { id: "dms", label: t("folder.dms") },
+  { id: "groups", label: t("folder.groups") },
 ];
 
 /** Folders in the user's saved order. "all" always leads; folders the order doesn't know (a newly joined space)
@@ -138,18 +138,18 @@ export const isUserId = (s: string) => /^@[^\s:]+:[^\s:]+(:\d+)?$/.test(s.trim()
 /** The SDK's RoomNameState, structurally (count includes us). */
 type NameState = { name: string } | { names: string[]; count: number; subtype?: "Inviting" } | { oldName?: string };
 
-/** Farsi room names for the SDK's roomNameGenerator; null keeps an actual name. `inviter` names an invite with no members known. */
+/** Room names for the SDK's roomNameGenerator; null keeps an actual name. `inviter` names an invite with no members known. */
 export function roomName(s: NameState, inviter?: string): string | null {
   if ("name" in s) return null;
   if ("names" in s && s.names.length) {
     const [a, b] = s.names, others = s.count - 1;
     const names = s.names.length === 1 && others <= 1 ? a
-      : s.names.length === 2 && others <= 2 ? `${a} و ${b}`
-      : `${a} و ${num(others - 1)} نفر دیگر`;
-    return s.subtype === "Inviting" ? `در حال دعوت از ${names}` : names;
+      : s.names.length === 2 && others <= 2 ? t("roomName.two", { a, b })
+      : t("roomName.more", { a, count: others - 1 });
+    return s.subtype === "Inviting" ? t("roomName.inviting", { names }) : names;
   }
   const old = "oldName" in s && s.oldName;
-  return inviter ?? (old ? `گفتگوی خالی (قبلاً ${old})` : "گفتگوی خالی");
+  return inviter ?? (old ? t("roomName.emptyWas", { old }) : t("roomName.empty"));
 }
 
 /** Suggested #address localpart from a room name; Latin letters/digits only (Farsi names give ""). */
@@ -174,22 +174,22 @@ export function matchRange(text: string, term: string): [number, number] | null 
   return i < 0 ? null : [at[i], at[i + t.length - 1] + 1];
 }
 
-export const stamp = (ts: number, now = Date.now()) => `${dayLabel(ts, now)}، ${clock(ts)}`;
+export const stamp = (ts: number, now = Date.now()) => t("time.dayClock", { day: dayLabel(ts, now), time: clock(ts) });
 
 /** Last-seen text from m.presence; null when the server told us nothing. */
 export function lastSeen(online: boolean, activeTs: number | undefined, now = Date.now()) {
-  if (online) return "آنلاین";
+  if (online) return t("seen.online");
   if (!activeTs || activeTs <= 0) return null;
   const min = Math.floor((now - activeTs) / 60_000);
-  if (min < 1) return "چند لحظه پیش";
-  if (min < 60) return `آخرین بازدید ${num(min)} دقیقه پیش`;
-  return `آخرین بازدید ${day(activeTs) === day(now) ? "امروز" : dayLabel(activeTs, now)}، ${clock(activeTs)}`;
+  if (min < 1) return t("seen.justNow");
+  if (min < 60) return t("seen.minutes", { count: min });
+  return t("seen.at", { day: day(activeTs) === day(now) ? t("day.today") : dayLabel(activeTs, now), time: clock(activeTs) });
 }
 
 /** "۱:۰۵" from milliseconds. */
 export function fmtDuration(ms: number) {
   const s = Math.max(0, Math.round(ms / 1000));
-  return `${num(Math.floor(s / 60))}:${num(s % 60).padStart(2, "۰")}`;
+  return `${num(Math.floor(s / 60))}:${num(s % 60).padStart(2, num(0))}`;
 }
 
 /** `n` bars (peak of each slice), scaled 0..1024 like MSC1767 waveforms. Also rescales a received waveform for display. */
@@ -445,7 +445,7 @@ export const hasGif = (list: Gif[], g: Gif) => list.some((x) => gifKey(x) === gi
 
 /** "مدیر" / "ناظر" / "سطح ۲۵"; null for plain members. */
 // Infinity = a room v12 creator, who outranks everyone
-export const roleLabel = (level: number) => (level === Infinity ? "مالک" : level >= 100 ? "مدیر" : level >= 50 ? "ناظر" : level > 0 ? `سطح ${num(level)}` : null);
+export const roleLabel = (level: number) => (level === Infinity ? t("role.owner") : level >= 100 ? t("role.admin") : level >= 50 ? t("role.mod") : level > 0 ? t("role.level", { level }) : null);
 
 export type PowerLevels = {
   users?: Record<string, number>; users_default?: number; events?: Record<string, number>; events_default?: number; state_default?: number;
@@ -476,7 +476,7 @@ export function withLevel(pl: PowerLevels, key: string, level: number): PowerLev
 /** Select options for a level: the presets I may grant, plus the current value if it's a custom one. */
 export function levelOptions(presets: [number, string][], mine: number, current: number): [number, string][] {
   const o = presets.filter(([l]) => l <= mine || l === current);
-  if (!o.some(([l]) => l === current)) o.push([current, current === Infinity ? "مالک" : current > 0 ? `سطح ${num(current)}` : "عضو"]);
+  if (!o.some(([l]) => l === current)) o.push([current, current === Infinity ? t("role.owner") : current > 0 ? t("role.level", { level: current }) : t("role.member")]);
   return o.sort((a, b) => a[0] - b[0]);
 }
 
@@ -495,29 +495,29 @@ export function upgradeTarget(version: string, rv?: { default: string; available
 }
 
 export const JOIN_RULES: Record<string, string> = {
-  public: "عمومی؛ هر کسی می‌تواند بپیوندد", invite: "خصوصی؛ فقط با دعوت", knock: "با درخواست عضویت",
-  restricted: "اعضای فضا", knock_restricted: "اعضای فضا، یا با درخواست عضویت",
+  public: t("join.public"), invite: t("join.invite"), knock: t("join.knock"),
+  restricted: t("join.restricted"), knock_restricted: t("join.knockRestricted"),
 };
-export const HISTORY: Record<string, string> = { shared: "اعضا، از ابتدا", invited: "اعضا، از زمان دعوت", joined: "اعضا، از زمان پیوستن", world_readable: "همه، حتی بدون عضویت" };
+export const HISTORY: Record<string, string> = { shared: t("history.shared"), invited: t("history.invited"), joined: t("history.joined"), world_readable: t("history.world") };
 
 const ERRORS: Record<string, string> = {
-  M_FORBIDDEN: "اجازه‌ی این کار را ندارید.",
-  M_ROOM_IN_USE: "این نشانی قبلاً گرفته شده است.",
-  M_EXCLUSIVE: "این نشانی برای سرویس دیگری (مثل پل ارتباطی) رزرو شده است.",
-  M_UNSUPPORTED_ROOM_VERSION: "سرور از این نسخه‌ی گفتگو پشتیبانی نمی‌کند.",
-  M_TOO_LARGE: "حجم آن برای سرور زیاد است.",
-  M_RESOURCE_LIMIT_EXCEEDED: "سرور به سقف منابع خود رسیده است؛ با مدیر سرور تماس بگیرید.",
-  M_NOT_FOUND: "پیدا نشد.",
-  M_UNKNOWN_TOKEN: "نشست شما منقضی شده است؛ دوباره وارد شوید.",
-  M_CANNOT_LEAVE_SERVER_NOTICE_ROOM: "نمی‌توان از گفتگوی اطلاعیه‌های سرور خارج شد.",
-  M_GUEST_ACCESS_FORBIDDEN: "مهمان‌ها به این گفتگو دسترسی ندارند.",
+  M_FORBIDDEN: t("err.forbidden"),
+  M_ROOM_IN_USE: t("err.roomInUse"),
+  M_EXCLUSIVE: t("err.exclusive"),
+  M_UNSUPPORTED_ROOM_VERSION: t("err.roomVersion"),
+  M_TOO_LARGE: t("err.tooLarge"),
+  M_RESOURCE_LIMIT_EXCEEDED: t("err.resourceLimit"),
+  M_NOT_FOUND: t("err.notFound"),
+  M_UNKNOWN_TOKEN: t("err.unknownToken"),
+  M_CANNOT_LEAVE_SERVER_NOTICE_ROOM: t("err.noticeRoom"),
+  M_GUEST_ACCESS_FORBIDDEN: t("err.guest"),
 };
 
-/** Persian text for a Matrix error code; undefined = show the server's own message. */
+/** Our text for a Matrix error code; undefined = show the server's own message. */
 export function errorText(errcode: string | undefined, data?: { retry_after_ms?: number }): string | undefined {
   if (errcode === "M_LIMIT_EXCEEDED") {
     const s = Math.ceil((data?.retry_after_ms ?? 0) / 1000);
-    return "درخواست‌ها زیاد بود" + (s > 0 ? `؛ ${num(s)} ثانیه‌ی دیگر دوباره امتحان کنید.` : "؛ کمی بعد دوباره امتحان کنید.");
+    return s > 0 ? t("err.rateLimitIn", { count: s }) : t("err.rateLimit");
   }
   return errcode ? ERRORS[errcode] : undefined;
 }
@@ -741,18 +741,18 @@ export function scheduleDays(now = Date.now(), n = 31) {
   const d = new Date(now);
   return Array.from({ length: n }, (_, i) => {
     const day = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i).getTime();
-    return { ts: day, label: i === 0 ? "امروز" : i === 1 ? "فردا" : `${WEEKDAY.format(day)}، ${DAY_MONTH.format(day)}` };
+    return { ts: day, label: i === 0 ? t("day.today") : i === 1 ? t("day.tomorrow") : t("day.weekdayDate", { weekday: WEEKDAY.format(day), date: DAY_MONTH.format(day) }) };
   });
 }
 
 /** A length of time in its biggest whole unit: "۳۰ روز", "۵ ساعت", "۱۰ دقیقه". */
 export function fmtSpan(ms: number) {
-  const [n, unit] = ms >= 86_400_000 ? [ms / 86_400_000, "روز"] : ms >= 3_600_000 ? [ms / 3_600_000, "ساعت"] : [ms / 60_000, "دقیقه"];
-  return `${num(Math.floor(n as number))} ${unit}`;
+  const [n, unit] = ms >= 86_400_000 ? [ms / 86_400_000, "span.days" as const] : ms >= 3_600_000 ? [ms / 3_600_000, "span.hours" as const] : [ms / 60_000, "span.minutes" as const];
+  return t(unit, { count: Math.floor(n) });
 }
 
 /** When a scheduled message goes out, for its list row: "امروز ساعت ۲۱:۰۰", "۱۹ مهر ساعت ۰۹:۳۰". */
-export const scheduleLabel = (ts: number, now = Date.now()) => `${dayLabel(ts, now)} ساعت ${TIME.format(ts)}`;
+export const scheduleLabel = (ts: number, now = Date.now()) => t("time.dayAt", { day: dayLabel(ts, now), time: TIME.format(ts) });
 
 // ---------- synced drafts ----------
 // In encrypted rooms a draft goes to account data sealed with AES-GCM, under a key HKDF-derived from the key-backup private key:

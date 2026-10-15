@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../icons.tsx";
 
@@ -14,7 +15,7 @@ export function QrScan({ onCode, onClose }: { onCode: (bytes: Uint8ClampedArray)
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       } catch {
-        if (live) setError("دوربین در دسترس نیست. اجازه‌ی دوربین را بدهید یا شکلک‌ها را مقایسه کنید.");
+        if (live) setError(t("qr.noCamera"));
         return;
       }
       const jsQR = (await import("jsqr")).default;
@@ -42,7 +43,7 @@ export function QrScan({ onCode, onClose }: { onCode: (bytes: Uint8ClampedArray)
   return (
     <div className="qr-scan">
       {error ? <p className="error">{error}</p> : <><video ref={video} muted playsInline /><span className="qr-frame" aria-hidden /></>}
-      <button className="icon-btn qr-scan-close" onClick={onClose} title="بستن" aria-label="بستن"><Icon name="close" /></button>
+      <button className="icon-btn qr-scan-close" onClick={onClose} title={t("common.close")} aria-label={t("common.close")}><Icon name="close" /></button>
     </div>
   );
 }

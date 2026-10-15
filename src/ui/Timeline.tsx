@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { ClientEvent, EventStatus, EventTimeline, RoomEvent, RoomStateEvent, ThreadEvent, type MatrixEvent, type Room, type Thread } from "matrix-js-sdk";
@@ -329,7 +330,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
   return (
     <div className="timeline-wrap">
     {loading && <span className="spinner" />}
-    <button className={"jump-bottom" + (atBottom && atLive ? " away" : "")} onClick={toBottom} title="آخرین پیام" aria-label="رفتن به آخرین پیام" inert={atBottom && atLive}>
+    <button className={"jump-bottom" + (atBottom && atLive ? " away" : "")} onClick={toBottom} title={t("timeline.latest")} aria-label={t("timeline.toLatest")} inert={atBottom && atLive}>
       <Icon name="down" />
       {unread > 0 && <span className="badge">{num(unread)}</span>}
     </button>
@@ -367,7 +368,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
       itemContent={(_, r: Row) => <div className="row">{
         r.type === "day" ? <div className="pill day">{r.label}</div>
         : r.type === "notice" ? <div className="pill">{noticeText(byId.get(r.id)!)}</div>
-        : r.type === "unread" ? <div className="unread-divider">پیام‌های خوانده‌نشده</div>
+        : r.type === "unread" ? <div className="unread-divider">{t("timeline.unread")}</div>
         : r.type === "album" ? (() => {
           const evs = r.ids.map((id) => byId.get(id)!);
           return <Message ev={albumMain(evs)} album={evs} room={room} first={r.first} last={r.last} actions={actions} flash={evs.some((e) => flash === e.getId())} enter={enterKey === r.key} />;
@@ -389,12 +390,12 @@ function PendingUploads({ roomId, threadId }: Ctx) {
 }
 
 function Ring({ u }: { u: Upload }) {
-  return <ProgressRing f={u.error ? 0 : u.loaded ? Math.min(1, u.loaded / (u.total || 1)) : 0.04} label="لغو ارسال" onClick={() => cancelUpload(u.id)} />;
+  return <ProgressRing f={u.error ? 0 : u.loaded ? Math.min(1, u.loaded / (u.total || 1)) : 0.04} label={t("upload.cancel")} onClick={() => cancelUpload(u.id)} />;
 }
 
 function PendingUpload({ u }: { u: Upload }) {
   const queued = !u.loaded && !u.error;
-  const state = u.error ? "ارسال نشد" : queued ? "در صف…" : `${formatSize(u.loaded)} / ${formatSize(u.total)}`;
+  const state = u.error ? t("upload.failed") : queued ? t("upload.queued") : `${formatSize(u.loaded)} / ${formatSize(u.total)}`;
   const voice = !!u.extra && isVoice(u.extra);
   return (
     <div className="row"><div className={"msg mine first last" + (u.error ? " failed" : "")}><div className="msg-col">
@@ -420,8 +421,8 @@ function PendingUpload({ u }: { u: Upload }) {
     </div>
     {u.error && (
       <div className="msg-actions">
-        <button title="ارسال دوباره" aria-label="ارسال دوباره" onClick={u.retry}><Icon name="send" size={17} /></button>
-        <button title="حذف" aria-label="حذف" onClick={() => cancelUpload(u.id)}><Icon name="trash" size={17} /></button>
+        <button title={t("msg.resend")} aria-label={t("msg.resend")} onClick={u.retry}><Icon name="send" size={17} /></button>
+        <button title={t("common.delete")} aria-label={t("common.delete")} onClick={() => cancelUpload(u.id)}><Icon name="trash" size={17} /></button>
       </div>
     )}
     </div></div>

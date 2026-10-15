@@ -114,11 +114,25 @@ function deliverLink(url) {
 /** Right-click in text fields and on selections: Chromium shows nothing by default. */
 function editMenu(p) {
   const items = [];
-  if (p.isEditable) items.push({ role: "undo", label: "واگرد" }, { type: "separator" }, { role: "cut", label: "برش" }, { role: "copy", label: "رونوشت" }, { role: "paste", label: "چسباندن" }, { role: "selectAll", label: "انتخاب همه" });
-  else if (p.selectionText) items.push({ role: "copy", label: "رونوشت" });
-  else if (p.linkURL && /^https?:/.test(p.linkURL)) items.push({ label: "رونوشت پیوند", click: () => require("electron").clipboard.writeText(p.linkURL) });
+  const s = tr();
+  if (p.isEditable) items.push({ role: "undo", label: s.undo }, { type: "separator" }, { role: "cut", label: s.cut }, { role: "copy", label: s.copy }, { role: "paste", label: s.paste }, { role: "selectAll", label: s.selectAll });
+  else if (p.selectionText) items.push({ role: "copy", label: s.copy });
+  else if (p.linkURL && /^https?:/.test(p.linkURL)) items.push({ label: s.copyLink, click: () => require("electron").clipboard.writeText(p.linkURL) });
   if (items.length) Menu.buildFromTemplate(items).popup({ window: win });
 }
+
+// ---------- language: the page's choice, sent on every start; remembered so the tray has it before the page loads ----------
+
+const T = {
+  fa: { undo: "واگرد", cut: "برش", copy: "رونوشت", paste: "چسباندن", selectAll: "انتخاب همه", copyLink: "رونوشت پیوند", name: "پنبه", show: "نمایش پنبه", quit: "خروج", unread: (n) => `${n} گفتگوی خوانده‌نشده` },
+  en: { undo: "Undo", cut: "Cut", copy: "Copy", paste: "Paste", selectAll: "Select all", copyLink: "Copy link", name: "Panbeh", show: "Show Panbeh", quit: "Quit", unread: (n) => `${n} unread chats` },
+};
+const langFile = () => path.join(app.getPath("userData"), "lang");
+let lang = null; // read once the app is ready (getLocale needs it)
+const tr = () => T[lang ??= (() => {
+  try { const l = fs.readFileSync(langFile(), "utf8").trim(); if (T[l]) return l; } catch { /* first start */ }
+  return app.getLocale().startsWith("fa") ? "fa" : "en";
+})()];
 
 // ---------- tray and badge ----------
 
@@ -126,22 +140,24 @@ const trayIcon = () => nativeImage.createFromPath(asset(unread ? "tray-unread.pn
 
 function createTray() {
   tray = new Tray(trayIcon());
-  tray.setToolTip("پنبه");
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "نمایش پنبه", click: show },
-    { type: "separator" },
-    { label: "خروج", click: () => { quitting = true; app.quit(); } },
-  ]));
+  tray.setToolTip(tr().name);
+  tray.setContextMenu(trayMenu());
   // Windows/Linux: a click shows the window (macOS opens the menu, as menu bar items do)
   tray.on("click", () => (win?.isVisible() && win.isFocused() ? win.hide() : show()));
 }
 
+const trayMenu = () => Menu.buildFromTemplate([
+  { label: tr().show, click: show },
+  { type: "separator" },
+  { label: tr().quit, click: () => { quitting = true; app.quit(); } },
+]);
+
 function setBadge(n) {
   unread = Math.max(0, n | 0);
-  if (isWin) win?.setOverlayIcon(unread ? nativeImage.createFromPath(asset("badge.png")) : null, unread ? `${unread} گفتگوی خوانده‌نشده` : "");
+  if (isWin) win?.setOverlayIcon(unread ? nativeImage.createFromPath(asset("badge.png")) : null, unread ? tr().unread(unread) : "");
   else app.setBadgeCount(unread); // macOS dock, Unity/KDE launchers
   tray?.setImage(trayIcon());
-  tray?.setToolTip(unread ? `پنبه (${unread})` : "پنبه");
+  tray?.setToolTip(unread ? `${tr().name} (${unread})` : tr().name);
 }
 
 // ---------- start on login ----------
@@ -269,6 +285,14 @@ function pickSource(frame, sources) {
 }
 
 ipcMain.on("badge", (_e, n) => setBadge(n));
+ipcMain.on("lang", (_e, l) => {
+  if (!T[l]) return;
+  fs.writeFile(langFile(), l, () => {});
+  if (tr() === T[l]) return;
+  lang = l;
+  tray?.setContextMenu(trayMenu());
+  setBadge(unread); // the tooltips
+});
 ipcMain.on("focus", show);
 ipcMain.on("links-ready", (e) => {
   if (e.sender !== win?.webContents) return;

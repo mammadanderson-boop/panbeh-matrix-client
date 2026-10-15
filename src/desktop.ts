@@ -1,9 +1,11 @@
 import { useSyncExternalStore } from "react";
 import { isLocked, onLockChange } from "./lock.ts";
+import { lang } from "./i18n.ts";
 
 /** The desktop app (Electron): desktop/preload.cjs exposes this bridge. */
 type Bridge = {
   setBadge(n: number): void;
+  setLang?(lang: string): void; // older desktop builds lack it
   focus(): void;
   openExternal(url: string): void;
   autostart(on?: boolean): Promise<boolean>;
@@ -31,6 +33,7 @@ const bridge = (window as unknown as { panbehDesktop?: Bridge }).panbehDesktop;
 
 /** Running inside the desktop app. */
 export const isDesktop = !!bridge;
+bridge?.setLang?.(lang); // the tray and context menus follow the page's language
 
 export const setBadge = (n: number) => bridge?.setBadge(n);
 /** Brings the window back, even from the tray (window.focus() can't). */

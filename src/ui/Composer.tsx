@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, emoteMap, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
@@ -223,7 +224,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       }
     }
     suggestions.push(...[...used].filter(([k]) => k.startsWith(q) && k !== q).sort((a, b) => b[1].n - a[1].n).slice(0, 6)
-      .map(([, u]) => ({ id: "#" + u.tag, name: num(u.n) + " بار", tag: true })));
+      .map(([, u]) => ({ id: "#" + u.tag, name: t("composer.tagUses", { count: u.n }), tag: true })));
   }
   useEffect(() => { if (at) room.loadMembersIfNeeded().catch(() => {}); }, [!!at, room]);
 
@@ -307,7 +308,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     typing(false);
     mentions.current = [];
     setMode(null);
-    scheduleMessage(room, content, sendAt).then(() => toast(`برای ${scheduleLabel(sendAt)} زمان‌بندی شد`), (e) => {
+    scheduleMessage(room, content, sendAt).then(() => toast(t("composer.scheduledFor", { when: scheduleLabel(sendAt) })), (e) => {
       alertDialog(errText(e));
       setText((t) => t || body); // not lost, unless they've started another
     });
@@ -344,13 +345,13 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   /** The GPS position is the user (m.self, with its accuracy); a spot chosen on the map is a pin (m.pin). */
   function sendLocation(lat: number, lon: number, asset: LocationAssetType, acc?: number) {
     // body keeps a map link for clients that don't show locations
-    const content: Record<string, unknown> = ContentHelpers.makeLocationContent(`موقعیت مکانی ${neshanUrl(lat, lon)}`, `geo:${lat},${lon}${acc ? `;u=${acc}` : ""}`, Date.now(), null, asset);
+    const content: Record<string, unknown> = ContentHelpers.makeLocationContent(t("loc.body", { url: neshanUrl(lat, lon) }), `geo:${lat},${lon}${acc ? `;u=${acc}` : ""}`, Date.now(), null, asset);
     if (mode?.kind === "reply") content["m.relates_to"] = { "m.in_reply_to": { event_id: mode.ev.getId() } };
     setMode(null);
     client.sendMessage(room.roomId, threadId, content as never).catch((e) => alertDialog(errText(e)));
   }
 
-  /** عکس: on Android the gallery opens straight away (the system photo picker on 13+, the gallery app before);
+  /** Photos: on Android the gallery opens straight away (the system photo picker on 13+, the gallery app before);
    *  elsewhere a file dialog filtered to images. */
   async function pickPhotos() {
     if (isNative) {
@@ -360,7 +361,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     imgInput.current?.click();
   }
 
-  /** دوربین: on Android the camera app opens straight away and the full-size capture lands in the send dialog;
+  /** Camera: on Android the camera app opens straight away and the full-size capture lands in the send dialog;
    *  on mobile web the capture input does it (the item is hidden on desktop, which ignores capture). */
   async function takePhoto() {
     if (isNative) {
@@ -370,12 +371,12 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     camInput.current?.click();
   }
 
-  /** چسباندن از کلیپ‌بورد: the image copied in another app. Android's WebView hides it from the paste event, so it's
+  /** Paste from clipboard: the image copied in another app. Android's WebView hides it from the paste event, so it's
    *  read straight off the clipboard through the plugin; anything else there is nothing to send. */
   async function pasteClipboard() {
     const f = await clipboardImages();
     if (f?.length) setFiles((x) => [...x, ...f]);
-    else toast("عکسی در کلیپ‌بورد نیست");
+    else toast(t("composer.noClipImage"));
   }
 
   /** Markdown markers around the selection (or "> " before its lines), the same text left selected. */
@@ -391,7 +392,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   async function addLink() {
     const el = ta.current!, [a, b] = caretOf(el), label = text.slice(a, b).trim();
     if (!label) return;
-    const url = await promptDialog("نشانی لینک", { placeholder: "https://…", ok: "افزودن" });
+    const url = await promptDialog(t("composer.linkUrl"), { placeholder: "https://…", ok: t("common.add") });
     if (url) {
       const link = `[${label}](${/^https?:\/\//i.test(url) ? url : "https://" + url})`;
       setText(text.slice(0, a) + link + text.slice(b));
@@ -487,7 +488,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
         const next = kind === "voice" ? "video" : "voice";
         setRecordMode(next);
         localStorage.setItem("panbeh.prefs", JSON.stringify({ ...loadPrefs(), recordMode: next }));
-        toast(next === "video" ? "برای ضبط پیام ویدیویی نگه دارید" : "برای ضبط پیام صوتی نگه دارید");
+        toast(next === "video" ? t("composer.holdVideo") : t("composer.holdVoice"));
       } else recControl.current?.finish(ev.type === "pointerup");
     }
     addEventListener("pointermove", move);
@@ -500,25 +501,25 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const hasSched = canSched && sched.list.length > 0; // its button sits by attach and slides away with it
   const canCamera = isNative || matchMedia("(pointer: coarse)").matches; // a desktop file dialog can't take a photo
 
-  const FORMATS: [string, string, ReactNode][] = [["**", "پررنگ", <b>B</b>], ["*", "کج", <i>I</i>], ["__", "زیرخط", <u>U</u>],
-    ["~~", "خط‌خورده", <s>S</s>], ["`", "کد", <code>{"</>"}</code>], ["||", "اسپویلر", <span className="fmt-spoiler">S</span>], ["> ", "نقل‌قول", "”"]];
+  const FORMATS: [string, string, ReactNode][] = [["**", t("fmt.bold"), <b>B</b>], ["*", t("fmt.italic"), <i>I</i>], ["__", t("fmt.underline"), <u>U</u>],
+    ["~~", t("fmt.strike"), <s>S</s>], ["`", t("fmt.code"), <code>{"</>"}</code>], ["||", t("fmt.spoiler"), <span className="fmt-spoiler">S</span>], ["> ", t("fmt.quote"), "”"]];
   const bar = (
     <>
       {selEnd > caret && (
         // onMouseDown: focus (the phone's keyboard, the selection) stays in the text box
-        <div className="format-bar" role="toolbar" aria-label="قالب‌بندی" onMouseDown={(e) => e.preventDefault()}>
+        <div className="format-bar" role="toolbar" aria-label={t("fmt.bar")} onMouseDown={(e) => e.preventDefault()}>
           {FORMATS.map(([mark, label, glyph]) => <button key={mark} className="icon-btn" title={label} aria-label={label} onClick={() => format(mark)}>{glyph}</button>)}
-          <button className="icon-btn" title="لینک" aria-label="لینک" onClick={addLink}><Icon name="link" /></button>
+          <button className="icon-btn" title={t("fmt.link")} aria-label={t("fmt.link")} onClick={addLink}><Icon name="link" /></button>
         </div>
       )}
       {mode && (
         <div className="composer-mode">
           <Icon name={mode.kind === "edit" ? "edit" : "reply"} />
           <div>
-            <b>{mode.kind === "edit" ? "ویرایش پیام" : `پاسخ به ${bdi(senderName(mode.ev))}`}</b>
+            <b>{mode.kind === "edit" ? t("composer.editing") : t("composer.replyTo", { name: bdi(senderName(mode.ev)) })}</b>
             <span><PreviewText ev={mode.ev} /></span>
           </div>
-          <button className="icon-btn" aria-label="لغو" onClick={() => setMode(null)}><Icon name="close" /></button>
+          <button className="icon-btn" aria-label={t("common.cancel")} onClick={() => setMode(null)}><Icon name="close" /></button>
         </div>
       )}
     </>
@@ -531,7 +532,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   return (
     <div className="composer" ref={root}>
       {suggestions.length > 0 && (
-        <div className="mention-list" role="listbox" aria-label={colon ? "اموجی" : hash ? "برچسب" : "نام بردن"}>
+        <div className="mention-list" role="listbox" aria-label={colon ? t("emoji.emoji") : hash ? t("composer.tags") : t("composer.mention")}>
           {suggestions.map((s, i) => (
             <button key={s.id} role="option" aria-selected={i === sel % suggestions.length} className={"user-row" + (i === sel % suggestions.length ? " on" : "")}
               onMouseDown={(e) => e.preventDefault()} onClick={() => pick(s)}>
@@ -539,7 +540,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                 : s.emote ? <span className="mention-room emote-sug"><EmoteImg url={s.emote.img.url} alt="" /></span>
                 : s.id === "@room" ? <span className="mention-room"><Icon name="group" /></span> : <Avatar mxc={s.mxc} name={s.name} id={s.id} size={32} />}
               {s.emote || s.tag ? <span><b dir={s.tag ? "auto" : "ltr"}>{s.id}</b><small>{s.name}</small></span>
-                : <span><b>{s.id === "@room" ? "@room" : s.name}</b><small dir="ltr">{s.id === "@room" ? "همه‌ی اعضای گفتگو" : s.id}</small></span>}
+                : <span><b>{s.id === "@room" ? "@room" : s.name}</b><small dir="ltr">{s.id === "@room" ? t("composer.everyone") : s.id}</small></span>}
             </button>
           ))}
         </div>
@@ -553,11 +554,11 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
         {canRecord ? (
           <button className="send-btn rec-btn" onPointerDown={holdRecord} onContextMenu={(e) => e.preventDefault()}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRec({ kind: recordMode, locked: true, dx: 0 }); } }}
-            title={recordMode === "video" ? "پیام ویدیویی: نگه دارید" : "پیام صوتی: نگه دارید"} aria-label={recordMode === "video" ? "ضبط پیام ویدیویی" : "ضبط پیام صوتی"}>
+            title={recordMode === "video" ? t("composer.videoHold") : t("composer.voiceHold")} aria-label={recordMode === "video" ? t("composer.recVideo") : t("composer.recVoice")}>
             <Icon key={recordMode} name={recordMode === "video" ? "camera" : "mic"} />
           </button>
         ) : (
-          <button className={"send-btn" + (text.trim() || mediaEdit ? " ready" : "")} onClick={sendPress.click(send)} {...sendPress.handlers} aria-label="ارسال"
+          <button className={"send-btn" + (text.trim() || mediaEdit ? " ready" : "")} onClick={sendPress.click(send)} {...sendPress.handlers} aria-label={t("composer.send")}
             onMouseDown={(e) => e.preventDefault()} /* keeps focus (and the phone's keyboard) in the textarea */ disabled={!text.trim() && !mediaEdit}>
             <Icon key={mode?.kind === "edit" ? "check" : "send"} name={mode?.kind === "edit" ? "check" : "send"} />
           </button>
@@ -570,31 +571,31 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
             <input ref={fileInput} type="file" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
             <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
             <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
-            <button className="icon-btn" title="پیوست" aria-label="پیوست" aria-expanded={menu} aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined} onClick={() => setMenu((m) => !m)}><Icon name="attach" /></button>
-            {hasSched && <button className="icon-btn" title="پیام‌های زمان‌بندی‌شده" aria-label="پیام‌های زمان‌بندی‌شده" aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined}
+            <button className="icon-btn" title={t("composer.attach")} aria-label={t("composer.attach")} aria-expanded={menu} aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined} onClick={() => setMenu((m) => !m)}><Icon name="attach" /></button>
+            {hasSched && <button className="icon-btn" title={t("composer.scheduled")} aria-label={t("composer.scheduled")} aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined}
               onClick={() => setSchedList(true)}><Icon name="clock" /></button>}
             {menuShown && (
               <>
                 <div className="menu-backdrop" onClick={() => setMenu(false)} />
                 <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
-                  {canCamera && <button role="menuitem" onClick={takePhoto}><Icon name="camera" /> دوربین</button>}
-                  <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس و ویدیو</button>
-                  {isNative && <button role="menuitem" onClick={pasteClipboard}><Icon name="clipboard" /> چسباندن از کلیپ‌بورد</button>}
-                  <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل</button>
+                  {canCamera && <button role="menuitem" onClick={takePhoto}><Icon name="camera" /> {t("composer.camera")}</button>}
+                  <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> {t("media.tabMedia")}</button>
+                  {isNative && <button role="menuitem" onClick={pasteClipboard}><Icon name="clipboard" /> {t("composer.paste")}</button>}
+                  <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> {t("composer.file")}</button>
                   {/* one location entry: the map opens first, then it's a spot chosen on it, the GPS position or live sharing */}
-                  <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="location" /> موقعیت مکانی</button>
-                  <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
+                  <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="location" /> {t("loc.title")}</button>
+                  <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> {t("poll.poll")}</button>
                 </div>
               </>
             )}
           </div>
-          <EmoteInput inputRef={ta} className="composer-text" value={text} emotes={emotes} placeholder={mediaEdit ? "کپشن…" : "پیام"} aria-label="پیام"
+          <EmoteInput inputRef={ta} className="composer-text" value={text} emotes={emotes} placeholder={mediaEdit ? t("composer.caption") : t("composer.message")} aria-label={t("composer.message")}
             onChange={(t, c) => { if (recording) return; setText(t); setCaret(c); setSelEnd(c); setSel(0); typing(!!t); }}
             onCaret={(c, end) => { setCaret(c); setSelEnd(end); }}
             // a keyboard that doesn't resize the page (a browser tab, a hardware one) never closes the panel by itself
             onFocus={() => { if (DOCK && emoji) backToKb.current = window.setTimeout(() => setEmoji(false), 700); }}
             onKeyDown={onKey} onPaste={(e) => pasteFiles(e, setFiles)} onBlur={() => { setSelEnd(0); if (typingAt.current) typing(false); }} />
-          <button className="icon-btn emoji-toggle" title={kbBtn ? "صفحه‌کلید" : "اموجی و استیکر"} aria-label={kbBtn ? "صفحه‌کلید" : "اموجی و استیکر"} aria-expanded={kbBtn ? undefined : emoji}
+          <button className="icon-btn emoji-toggle" title={kbBtn ? t("composer.keyboard") : t("packs.both")} aria-label={kbBtn ? t("composer.keyboard") : t("packs.both")} aria-expanded={kbBtn ? undefined : emoji}
             onMouseDown={(e) => e.preventDefault()} /* the keyboard stays up until the panel is in its place */ onClick={toggleEmoji}><Icon name={kbBtn ? "keyboard" : "smile"} /></button>
         </div>
       </div>
@@ -602,7 +603,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       {files.length > 0 && <SendFiles room={room} files={files} setFiles={setFiles} onSend={sendFiles} canSchedule={canSched} />}
       {sendMenu && (
         <ContextMenu {...sendMenu} target=".send-btn" onClose={() => setSendMenu(null)}>
-          <button role="menuitem" onClick={() => { setSendMenu(null); setPicking(true); }}><Icon name="clock" /> ارسال زمان‌بندی‌شده</button>
+          <button role="menuitem" onClick={() => { setSendMenu(null); setPicking(true); }}><Icon name="clock" /> {t("schedule.title")}</button>
         </ContextMenu>
       )}
       {picking && <SchedulePicker onPick={(ts) => { setPicking(false); schedule(ts); }} onClose={() => setPicking(false)} />}
@@ -642,8 +643,8 @@ function SendFiles({ room, files, setFiles, onSend, canSchedule }: { room: Room;
   const imgs = files.map((f, i) => i).filter((i) => urls[i]);
   const others = files.map((f, i) => i).filter((i) => !urls[i]);
   const photos = files.every((f) => f.type.startsWith("image/"));
-  const title = files.length === 1 && photos ? "ارسال عکس" : `ارسال ${num(files.length)} ${photos && !asFile ? "عکس" : "فایل"}`;
-  const x = (i: number) => <button className="icon-btn send-x" aria-label="حذف" onClick={() => remove(i)}><Icon name="close" size={14} /></button>;
+  const title = files.length === 1 && photos ? t("send.photo") : t(photos && !asFile ? "send.photos" : "send.files", { count: files.length });
+  const x = (i: number) => <button className="icon-btn send-x" aria-label={t("common.delete")} onClick={() => remove(i)}><Icon name="close" size={14} /></button>;
   return (
     <div className="modal-backdrop" onClick={close}>
       <div className="modal" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}
@@ -661,28 +662,28 @@ function SendFiles({ room, files, setFiles, onSend, canSchedule }: { room: Room;
             {x(i)}
           </div>
         ))}
-        <EmoteInput className="send-caption" autoFocus value={caption} emotes={emoteMap(room)} placeholder="کپشن…" aria-label="کپشن"
+        <EmoteInput className="send-caption" autoFocus value={caption} emotes={emoteMap(room)} placeholder={t("composer.caption")} aria-label={t("send.caption")}
           onChange={setCaption}
           onPaste={(e) => pasteFiles(e, setFiles)}
           onKeyDown={(e) => { if (isSendKey(e)) { e.preventDefault(); send(); } }} />
         {imgs.length > 0 && (
-          <label className="switch-row"><span>ارسال به صورت فایل<small>بدون فشرده‌سازی</small></span>
+          <label className="switch-row"><span>{t("send.asFile")}<small>{t("send.asFileHint")}</small></span>
             <input type="checkbox" role="switch" checked={asFile} onChange={(e) => setAsFile(e.target.checked)} /></label>
         )}
         {files.some((f) => f.type.startsWith("video/")) && (
-          <label className="switch-row"><span>ارسال به صورت گیف<small>پخش خودکار و تکرار، بدون صدا</small></span>
+          <label className="switch-row"><span>{t("send.asGif")}<small>{t("send.asGifHint")}</small></span>
             <input type="checkbox" role="switch" checked={asGif} onChange={(e) => setAsGif(e.target.checked)} /></label>
         )}
         <div className="modal-actions">
-          <button onClick={close}>لغو</button>
-          <button className="primary" onClick={press.click(send)} {...press.handlers}>ارسال</button>
+          <button onClick={close}>{t("common.cancel")}</button>
+          <button className="primary" onClick={press.click(send)} {...press.handlers}>{t("composer.send")}</button>
         </div>
       </div>
       {/* clicks in these must not reach the backdrop, which closes the dialog */}
       <div onClick={(e) => e.stopPropagation()}>
         {menu && (
           <ContextMenu {...menu} target=".modal .primary" onClose={() => setMenu(null)}>
-            <button role="menuitem" onClick={() => { setMenu(null); setPicking(true); }}><Icon name="clock" /> ارسال زمان‌بندی‌شده</button>
+            <button role="menuitem" onClick={() => { setMenu(null); setPicking(true); }}><Icon name="clock" /> {t("schedule.title")}</button>
           </ContextMenu>
         )}
         {picking && <SchedulePicker onPick={(ts) => { setPicking(false); onSend(files, caption.trim(), asFile, asGif, ts); }} onClose={() => setPicking(false)} />}
@@ -703,7 +704,7 @@ export function DropZone({ onFiles, children }: { onFiles: (f: File[]) => void; 
       onDragOver={(e) => has(e) && e.preventDefault()}
       onDrop={(e) => { if (!has(e)) return; e.preventDefault(); depth.current = 0; setOver(false); onFiles([...e.dataTransfer.files]); }}>
       {children}
-      {over && <div className="drop-overlay"><Icon name="attach" size={40} />فایل‌ها را اینجا رها کنید</div>}
+      {over && <div className="drop-overlay"><Icon name="attach" size={40} />{t("composer.drop")}</div>}
     </div>
   );
 }
@@ -713,21 +714,21 @@ function LiveLocationPicker({ room, onClose }: { room: Room; onClose: () => void
   const active = sharingIn(room.roomId);
   const pick = (ms: number) => {
     onClose();
-    if (!active) toast("در حال پیدا کردن موقعیت…"); // a first GPS fix can take a while
+    if (!active) toast(t("loc.locating")); // a first GPS fix can take a while
     startSharing(client, room, ms).then(
-      () => toast(active ? "اشتراک موقعیت زنده تمدید شد" : "اشتراک موقعیت زنده آغاز شد"),
+      () => toast(active ? t("loc.extended") : t("loc.started")),
       (e) => alertDialog(errText(e)),
     );
   };
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-label="اشتراک موقعیت زنده" onClick={(e) => e.stopPropagation()}
+      <div className="modal" role="dialog" aria-label={t("loc.shareLive")} onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>اشتراک موقعیت زنده</h2>
-        <p className="muted">موقعیت شما هر ۳۰ ثانیه به‌روزرسانی می‌شود و تا پایان مهلت انتخابی دیده می‌شود.</p>
-        {active && <p className="card">اشتراک فعلی تا {clock(active.until)} ادامه دارد؛ انتخاب مهلت جدید آن را جایگزین می‌کند.</p>}
+        <h2>{t("loc.shareLive")}</h2>
+        <p className="muted">{t("loc.liveAbout")}</p>
+        {active && <p className="card">{t("loc.liveActive", { time: clock(active.until) })}</p>}
         <div className="modal-actions">
-          {active && <button className="danger" onClick={() => { onClose(); stopSharing(client, room.roomId).then(() => toast("اشتراک موقعیت زنده قطع شد"), (e) => alertDialog(errText(e))); }}>قطع اشتراک</button>}
+          {active && <button className="danger" onClick={() => { onClose(); stopSharing(client, room.roomId).then(() => toast(t("loc.stopped")), (e) => alertDialog(errText(e))); }}>{t("loc.stopSharing")}</button>}
           {DURATIONS.map(([ms, label]) => (
             <button key={ms} className="primary" onClick={() => pick(ms)}>{label}</button>
           ))}

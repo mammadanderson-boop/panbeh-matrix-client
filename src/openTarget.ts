@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { client, openDM } from "./matrix.ts";
 import { errText } from "./ui/common.tsx";
 import { requestJump } from "./ui/Search.tsx";
@@ -31,23 +32,23 @@ async function openLink(link: string) {
   if (t) await openTarget(t);
 }
 
-export async function openTarget(t: Target) {
-  if (t.kind === "user") {
-    if (t.id === client.getUserId()) return;
-    if (!(await confirmDialog(`گفتگوی خصوصی با ${t.id} باز شود؟`))) return;
-    location.hash = await openDM(t.id);
+export async function openTarget(to: Target) {
+  if (to.kind === "user") {
+    if (to.id === client.getUserId()) return;
+    if (!(await confirmDialog(t("open.dm", { id: to.id })))) return;
+    location.hash = await openDM(to.id);
     return;
   }
-  let roomId = joinedRoom(t.id)?.roomId;
-  let via = t.via;
+  let roomId = joinedRoom(to.id)?.roomId;
+  let via = to.via;
   if (!roomId) {
-    if (!(await confirmDialog(`به ${t.id} پیوسته شود؟`))) return;
-    if (t.kind === "roomAlias") {
-      const r = await client.getRoomIdForAlias(t.id);
+    if (!(await confirmDialog(t("open.join", { id: to.id })))) return;
+    if (to.kind === "roomAlias") {
+      const r = await client.getRoomIdForAlias(to.id);
       via = via.length ? via : r.servers;
     }
-    roomId = (await client.joinRoom(t.id, via.length ? { viaServers: via } : undefined)).roomId;
+    roomId = (await client.joinRoom(to.id, via.length ? { viaServers: via } : undefined)).roomId;
   }
   location.hash = roomId;
-  if (t.eventId) requestJump(roomId, t.eventId);
+  if (to.eventId) requestJump(roomId, to.eventId);
 }

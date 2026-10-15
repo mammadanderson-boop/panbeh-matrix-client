@@ -4,6 +4,7 @@
 // (the beacon goes stale server-side), and "stop" just turns it non-live. Other Panbeh (and
 // Element) clients read the beacon from room state; this file only *sends* and exposes the
 // local state.
+import { t } from "./i18n.ts";
 import { useSyncExternalStore } from "react";
 import { M_BEACON, BeaconEvent, ClientEvent, ContentHelpers, LocationAssetType, RoomStateEvent, SyncState,
   type MatrixClient, type Room } from "matrix-js-sdk";
@@ -13,9 +14,9 @@ import { alertDialog } from "./ui/dialog.tsx";
 type Sharing = { roomId: string; beaconId: string; ids: string[]; until: number; watchId: number; timer: number; lastBeat: number; lastError?: string };
 const BEAT_MS = 30_000;
 export const DURATIONS: [number, string][] = [
-  [15 * 60_000, "۱۵ دقیقه"],
-  [60 * 60_000, "۱ ساعت"],
-  [8 * 3600_000, "۸ ساعت"],
+  [15 * 60_000, t("span.minutes", { count: 15 })],
+  [60 * 60_000, t("span.hours", { count: 1 })],
+  [8 * 3600_000, t("span.hours", { count: 8 })],
 ];
 
 let sharings: Sharing[] = [];
@@ -54,7 +55,7 @@ function geoError(c: MatrixClient, roomId: string) {
   return (e: GeolocationPositionError) => {
     if (e.code !== e.PERMISSION_DENIED) return;
     void stopSharing(c, roomId);
-    alertDialog("اجازه‌ی دسترسی به موقعیت مکانی داده نشد.");
+    alertDialog(t("loc.denied"));
   };
 }
 
@@ -64,14 +65,14 @@ export async function startSharing(c: MatrixClient, room: Room, duration: number
   if (existing) return extendSharing(c, existing, duration);
   const roomId = room.roomId;
   // a position first: a denied permission or no fix must fail here, not after the room was told we're sharing
-  if (!navigator.geolocation) throw new Error("این مرورگر موقعیت مکانی را پشتیبانی نمی‌کند.");
+  if (!navigator.geolocation) throw new Error(t("loc.unsupported"));
   const first = await new Promise<GeolocationPosition>((ok, fail) => navigator.geolocation.getCurrentPosition(ok,
-    (e) => fail(new Error(e.code === e.PERMISSION_DENIED ? "اجازه‌ی دسترسی به موقعیت مکانی داده نشد." : "موقعیت مکانی پیدا نشد.")),
+    (e) => fail(new Error(e.code === e.PERMISSION_DENIED ? t("loc.denied") : t("loc.notFound"))),
     { enableHighAccuracy: true, timeout: 20_000 }));
   const until = Date.now() + duration;
 
   // the state event must exist before the first beat references it
-  const info = ContentHelpers.makeBeaconInfoContent(duration, true, "موقعیت زنده", LocationAssetType.Self, Date.now());
+  const info = ContentHelpers.makeBeaconInfoContent(duration, true, t("loc.live"), LocationAssetType.Self, Date.now());
   const { event_id: beaconId } = await c.unstable_setLiveBeacon(roomId, info as never);
 
   remember(c, roomId, beaconId);
@@ -94,7 +95,7 @@ export async function startSharing(c: MatrixClient, room: Room, duration: number
 
 /** An active share picks a new duration: the beacon_info is re-sent (the SDK swaps the beacon to the new event id) and the local timer resets; the GPS watch keeps going. */
 async function extendSharing(c: MatrixClient, s: Sharing, duration: number) {
-  const info = ContentHelpers.makeBeaconInfoContent(duration, true, "موقعیت زنده", LocationAssetType.Self, Date.now());
+  const info = ContentHelpers.makeBeaconInfoContent(duration, true, t("loc.live"), LocationAssetType.Self, Date.now());
   const { event_id: beaconId } = await c.unstable_setLiveBeacon(s.roomId, info as never);
   s.beaconId = beaconId; // beats from now on reference the new state event
   s.ids.push(beaconId);
@@ -121,7 +122,7 @@ export async function stopSharing(c: MatrixClient, roomId: string) {
   // No prev yet (stopped before sync echoed ours back) still turns ours off.
   if (prev && !s.ids.includes(prev.getId()!)) return;
   const timeout = (prev?.getContent() as { timeout?: number } | undefined)?.timeout ?? s.until - Date.now();
-  await c.unstable_setLiveBeacon(roomId, ContentHelpers.makeBeaconInfoContent(Math.max(timeout, 0), false, "موقعیت زنده", LocationAssetType.Self, Date.now()) as never).catch(() => {});
+  await c.unstable_setLiveBeacon(roomId, ContentHelpers.makeBeaconInfoContent(Math.max(timeout, 0), false, t("loc.live"), LocationAssetType.Self, Date.now()) as never).catch(() => {});
 }
 
 /** Stops everything (logout, account switch). */
@@ -142,7 +143,7 @@ export function clearStaleBeacons(c: MatrixClient) {
       const prev = c.getRoom(roomId)?.currentState.getStateEvents("m.beacon_info" as never, c.getSafeUserId());
       if (prev?.getId() !== beaconId || !(prev.getContent() as { live?: boolean }).live) continue; // replaced or already off
       const timeout = (prev.getContent() as { timeout?: number }).timeout ?? 0;
-      void c.unstable_setLiveBeacon(roomId, ContentHelpers.makeBeaconInfoContent(timeout, false, "موقعیت زنده", LocationAssetType.Self, Date.now()) as never).catch(() => {});
+      void c.unstable_setLiveBeacon(roomId, ContentHelpers.makeBeaconInfoContent(timeout, false, t("loc.live"), LocationAssetType.Self, Date.now()) as never).catch(() => {});
     }
   };
   c.on(ClientEvent.Sync, onSync);

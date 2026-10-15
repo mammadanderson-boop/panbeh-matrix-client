@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useMemo } from "react";
 import { renderSVG } from "uqr";
 import { Icon } from "../icons.tsx";
@@ -9,12 +10,12 @@ export function LinkSheet({ title, link, hint, onClose }: { title: string; link:
   const svg = useMemo(() => renderSVG(link, { border: 2 }), [link]);
   return (
     <Sheet title={title} onClose={onClose}>
-      <div className="qr" role="img" aria-label="کد QR" dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className="qr" role="img" aria-label={t("link.qr")} dangerouslySetInnerHTML={{ __html: svg }} />
       <bdi dir="ltr" className="qr-link">{link}</bdi>
       {hint && <p className="muted">{hint}</p>}
-      <button className="primary" onClick={() => void copyMessages(link)}><Icon name="copy" size={18} /> کپی پیوند</button>
+      <button className="primary" onClick={() => void copyMessages(link)}><Icon name="copy" size={18} /> {t("common.copyLink")}</button>
       {"share" in navigator && (
-        <button className="secondary" onClick={() => navigator.share({ url: link }).catch(() => { /* cancelled */ })}><Icon name="forward" size={18} /> اشتراک‌گذاری</button>
+        <button className="secondary" onClick={() => navigator.share({ url: link }).catch(() => { /* cancelled */ })}><Icon name="forward" size={18} /> {t("common.share")}</button>
       )}
     </Sheet>
   );

@@ -7,6 +7,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioAttributes;
@@ -19,6 +20,7 @@ import androidx.core.app.NotificationManagerCompat;
 import androidx.core.app.Person;
 import androidx.core.graphics.drawable.IconCompat;
 import androidx.core.graphics.drawable.RoundedBitmapDrawable;
+import java.util.Locale;
 
 /** Message notifications, shared by the app's WebView (plugin) and the headless one (JS interface). */
 final class Notifier {
@@ -33,22 +35,31 @@ final class Notifier {
 
     private Notifier() {}
 
+    /** ctx with the page's language (PanbehPlugin.setLanguage), else the phone's: its strings for everything the app shows itself. */
+    static Context localized(Context ctx) {
+        String lang = ctx.getSharedPreferences("panbeh", Context.MODE_PRIVATE).getString("lang", null);
+        if (lang == null) return ctx;
+        Configuration c = new Configuration(ctx.getResources().getConfiguration());
+        c.setLocale(Locale.forLanguageTag(lang));
+        return ctx.createConfigurationContext(c);
+    }
+
     static void createChannels(Context ctx) {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         nm.deleteNotificationChannel("messages"); // before the per-kind channels
-        for (String[] c : new String[][] { { CH_DMS, ctx.getString(R.string.channel_dms) }, { CH_GROUPS, ctx.getString(R.string.channel_groups) },
-                { CH_MENTIONS, ctx.getString(R.string.channel_mentions) } }) {
+        for (String[] c : new String[][] { { CH_DMS, localized(ctx).getString(R.string.channel_dms) }, { CH_GROUPS, localized(ctx).getString(R.string.channel_groups) },
+                { CH_MENTIONS, localized(ctx).getString(R.string.channel_mentions) } }) {
             NotificationChannel msg = new NotificationChannel(c[0], c[1], NotificationManager.IMPORTANCE_HIGH);
             msg.enableVibration(true);
             nm.createNotificationChannel(msg);
         }
-        NotificationChannel quiet = new NotificationChannel(CH_QUIET, ctx.getString(R.string.channel_quiet), NotificationManager.IMPORTANCE_LOW);
+        NotificationChannel quiet = new NotificationChannel(CH_QUIET, localized(ctx).getString(R.string.channel_quiet), NotificationManager.IMPORTANCE_LOW);
         nm.createNotificationChannel(quiet);
-        NotificationChannel svc = new NotificationChannel(CH_SERVICE, ctx.getString(R.string.channel_service), NotificationManager.IMPORTANCE_MIN);
+        NotificationChannel svc = new NotificationChannel(CH_SERVICE, localized(ctx).getString(R.string.channel_service), NotificationManager.IMPORTANCE_MIN);
         svc.setShowBadge(false);
         nm.createNotificationChannel(svc);
-        NotificationChannel calls = new NotificationChannel(CH_CALLS, ctx.getString(R.string.channel_calls), NotificationManager.IMPORTANCE_HIGH);
+        NotificationChannel calls = new NotificationChannel(CH_CALLS, localized(ctx).getString(R.string.channel_calls), NotificationManager.IMPORTANCE_HIGH);
         calls.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE), new AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
         calls.enableVibration(true);
@@ -60,7 +71,7 @@ final class Notifier {
     @SuppressLint("MissingPermission") // SecurityException caught
     static void showCall(Context ctx, String roomId, String eventId, String caller, boolean video, String iconDataUrl, long timeoutMs) {
         createChannels(ctx);
-        if (caller == null || caller.isEmpty()) caller = ctx.getString(R.string.app_name); // CallStyle throws on an unnamed caller
+        if (caller == null || caller.isEmpty()) caller = localized(ctx).getString(R.string.app_name); // CallStyle throws on an unnamed caller
         Person.Builder who = new Person.Builder().setName(caller).setImportant(true);
         Bitmap icon = decode(iconDataUrl);
         if (icon != null) who.setIcon(IconCompat.createWithBitmap(circle(ctx, icon)));
@@ -137,7 +148,7 @@ final class Notifier {
 
         android.service.notification.StatusBarNotification shown = active(ctx, roomId);
         NotificationCompat.MessagingStyle style = shown == null ? null : NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(shown.getNotification());
-        if (style == null) style = new NotificationCompat.MessagingStyle(new Person.Builder().setName(ctx.getString(R.string.notify_me)).setKey("me").build());
+        if (style == null) style = new NotificationCompat.MessagingStyle(new Person.Builder().setName(localized(ctx).getString(R.string.notify_me)).setKey("me").build());
         style.setConversationTitle(group ? title : null).setGroupConversation(group);
         Person.Builder from = new Person.Builder().setName(group && sender != null && !sender.isEmpty() ? sender : title).setKey(group ? "sender:" + sender : "room:" + roomId);
         if (group ? senderIcon != null : round != null) from.setIcon(IconCompat.createWithBitmap(group ? circle(ctx, senderIcon) : round));
@@ -160,16 +171,16 @@ final class Notifier {
             .setAutoCancel(true)
             .setOnlyAlertOnce(false)
             .setContentIntent(openRoom(ctx, roomId))
-            .addAction(new NotificationCompat.Action.Builder(0, ctx.getString(R.string.notify_reply), notifyIntent(ctx, "reply", roomId))
-                .addRemoteInput(new androidx.core.app.RemoteInput.Builder(KEY_REPLY).setLabel(ctx.getString(R.string.notify_reply_hint)).build())
+            .addAction(new NotificationCompat.Action.Builder(0, localized(ctx).getString(R.string.notify_reply), notifyIntent(ctx, "reply", roomId))
+                .addRemoteInput(new androidx.core.app.RemoteInput.Builder(KEY_REPLY).setLabel(localized(ctx).getString(R.string.notify_reply_hint)).build())
                 .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
                 .setShowsUserInterface(false)
                 .build())
-            .addAction(new NotificationCompat.Action.Builder(0, ctx.getString(R.string.notify_read), notifyIntent(ctx, "read", roomId))
+            .addAction(new NotificationCompat.Action.Builder(0, localized(ctx).getString(R.string.notify_read), notifyIntent(ctx, "read", roomId))
                 .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ)
                 .setShowsUserInterface(false)
                 .build())
-            .addAction(new NotificationCompat.Action.Builder(0, ctx.getString(R.string.notify_mute), notifyIntent(ctx, "mute", roomId))
+            .addAction(new NotificationCompat.Action.Builder(0, localized(ctx).getString(R.string.notify_mute), notifyIntent(ctx, "mute", roomId))
                 .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MUTE)
                 .setShowsUserInterface(false)
                 .build());
@@ -228,7 +239,7 @@ final class Notifier {
         if (shortcuts.add(roomId)) {
             try {
                 androidx.core.content.pm.ShortcutInfoCompat.Builder s = new androidx.core.content.pm.ShortcutInfoCompat.Builder(ctx, roomId)
-                    .setShortLabel(title.isEmpty() ? ctx.getString(R.string.app_name) : title)
+                    .setShortLabel(title.isEmpty() ? localized(ctx).getString(R.string.app_name) : title)
                     .setLongLived(true)
                     .setIntent(new Intent(ctx, MainActivity.class).setAction(Intent.ACTION_VIEW).putExtra(EXTRA_ROOM, roomId));
                 if (icon != null) s.setIcon(IconCompat.createWithBitmap(icon));
@@ -248,7 +259,7 @@ final class Notifier {
             NotificationManagerCompat.from(ctx).notify(roomId, 1, new NotificationCompat.Builder(ctx, CH_QUIET)
                 .setSmallIcon(R.drawable.ic_stat_panbeh)
                 .setColor(0xFF007DED)
-                .setContentTitle(ctx.getString(R.string.notify_failed))
+                .setContentTitle(localized(ctx).getString(R.string.notify_failed))
                 .setContentText(text)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
                 .setAutoCancel(true)

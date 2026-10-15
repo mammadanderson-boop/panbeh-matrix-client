@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { EventTimeline, EventType, RoomEvent, RoomStateEvent, Visibility, type Room, type RoomMember } from "matrix-js-sdk";
 import { addToSpace, client, removeFromSpace, spaceChildren } from "../matrix.ts";
@@ -28,10 +29,10 @@ const levelOf = (room: Room, id: string) => {
 };
 
 /** null on cancel, undefined for an empty reason */
-const askReason = (q: string) => promptDialog(q, { danger: true, placeholder: "دلیل (اختیاری)" }).then((r) => (r === null ? null : r || undefined));
+const askReason = (q: string) => promptDialog(q, { danger: true, placeholder: t("msg.reportReason") }).then((r) => (r === null ? null : r || undefined));
 
-const ROLES: [number, string][] = [[0, "عضو"], [50, "ناظر"], [100, "مدیر"]];
-const WHO: [number, string][] = [[0, "همه‌ی اعضا"], [50, "ناظران و مدیران"], [100, "فقط مدیران"]];
+const ROLES: [number, string][] = [[0, t("role.member")], [50, t("role.mod")], [100, t("role.admin")]];
+const WHO: [number, string][] = [[0, t("perm.everyone")], [50, t("perm.mods")], [100, t("perm.admins")]];
 
 // ---------- one member: role, kick, ban ----------
 
@@ -50,15 +51,15 @@ export function memberOps(room: Room, userId: string) {
     roles: levelOptions(ROLES, mine, theirs),
     setRole: async (l: number) => {
       // same level as mine can't be undone by me
-      if (l >= mine && !(await confirmDialog("هم‌سطح شما می‌شود و دیگر نمی‌توانید نقشش را تغییر دهید یا بیرونش کنید. ادامه می‌دهید؟", { danger: true }))) return;
+      if (l >= mine && !(await confirmDialog(t("admin.sameLevelQ"), { danger: true }))) return;
       await client.setPowerLevel(room.roomId, userId, l);
     },
     kick: async () => {
-      const r = await askReason(membership === "invite" ? "دعوت لغو شود؟" : "از گفتگو بیرون شود؟");
+      const r = await askReason(membership === "invite" ? t("admin.revokeQ") : t("admin.kickQ"));
       if (r !== null) await client.kick(room.roomId, userId, r);
     },
     ban: async () => {
-      const r = await askReason("مسدود شود؟ دیگر نمی‌تواند بپیوندد.");
+      const r = await askReason(t("admin.banQ"));
       if (r !== null) await client.ban(room.roomId, userId, r);
     },
     unban: () => client.unban(room.roomId, userId),
@@ -73,17 +74,17 @@ export function MemberAdmin({ room, userId }: { room: Room; userId: string }) {
   if (!ops) return null;
   return (
     <div className="admin">
-      <h3>مدیریت در این گفتگو</h3>
+      <h3>{t("admin.title")}</h3>
       {ops.mayRole && (
-        <label className="select-row">نقش
+        <label className="select-row">{t("admin.role")}
           <Select value={ops.theirs} disabled={busy} options={ops.roles} onChange={(l) => act(() => ops.setRole(l))} />
         </label>
       )}
       <div className="row-actions">
-        {ops.mayKick && <button className="warn" disabled={busy} onClick={() => act(ops.kick)}>{ops.membership === "invite" ? "لغو دعوت" : "بیرون کردن"}</button>}
+        {ops.mayKick && <button className="warn" disabled={busy} onClick={() => act(ops.kick)}>{ops.membership === "invite" ? t("admin.revoke") : t("admin.kick")}</button>}
         {ops.mayBan && (ops.membership === "ban"
-          ? <button disabled={busy} onClick={() => act(ops.unban)}>رفع مسدودیت در گروه</button>
-          : <button className="warn" disabled={busy} onClick={() => act(ops.ban)}>مسدود در این گروه</button>)}
+          ? <button disabled={busy} onClick={() => act(ops.unban)}>{t("admin.unbanHere")}</button>
+          : <button className="warn" disabled={busy} onClick={() => act(ops.ban)}>{t("admin.banHere")}</button>)}
       </div>
     </div>
   );
@@ -100,12 +101,12 @@ function MemberMenu({ room, userId, x, y, onClose, onProfile }: { room: Room; us
           <span className="menu-check">{l === ops.theirs && <Icon name="check" />}</span> {label}</button>
       ))}
       {ops?.mayKick && (
-        <button role="menuitem" className="danger-item" onClick={() => run(ops.kick)}><Icon name="close" /> {ops.membership === "invite" ? "لغو دعوت" : "بیرون کردن"}</button>
+        <button role="menuitem" className="danger-item" onClick={() => run(ops.kick)}><Icon name="close" /> {ops.membership === "invite" ? t("admin.revoke") : t("admin.kick")}</button>
       )}
       {ops?.mayBan && (ops.membership === "ban"
-        ? <button role="menuitem" onClick={() => run(ops.unban)}><Icon name="check" /> رفع مسدودیت</button>
-        : <button role="menuitem" className="danger-item" onClick={() => run(ops.ban)}><Icon name="flag" /> مسدود کردن</button>)}
-      <button role="menuitem" onClick={() => { onClose(); onProfile(); }}><Icon name="info" /> اطلاعات کاربر</button>
+        ? <button role="menuitem" onClick={() => run(ops.unban)}><Icon name="check" /> {t("profile.unblock")}</button>
+        : <button role="menuitem" className="danger-item" onClick={() => run(ops.ban)}><Icon name="flag" /> {t("admin.ban")}</button>)}
+      <button role="menuitem" onClick={() => { onClose(); onProfile(); }}><Icon name="info" /> {t("profile.title")}</button>
     </ContextMenu>
   );
 }
@@ -122,7 +123,7 @@ export function MemberRow({ room, m, sub, onUser, tapMenu }: { room: Room; m: Ro
         onClick={tapMenu && ops ? (e) => setMenu({ x: e.clientX, y: e.clientY }) : click(() => onUser(m.userId))}>
         <Avatar mxc={m.getMxcAvatarUrl()} name={m.name} id={m.userId} size={42} />
         <span><b>{m.name}</b>{sub}</span>
-        {m.membership === "invite" ? <em className="muted">دعوت‌شده</em> : role && <em>{role}</em>}
+        {m.membership === "invite" ? <em className="muted">{t("admin.invited")}</em> : role && <em>{role}</em>}
       </button>
       {menu && <MemberMenu room={room} userId={m.userId} {...menu} onClose={() => setMenu(null)} onProfile={() => onUser(m.userId)} />}
     </>
@@ -139,13 +140,13 @@ export function KnockRequests({ room, onUser }: { room: Room; onUser: (id: strin
   const mayDeny = levelOf(room, me()) >= levelAt(levels(room), "kick");
   return (
     <>
-      <h3>درخواست‌های عضویت ({num(knocks.length)})</h3>
+      <h3>{t("admin.knocks", { count: knocks.length })}</h3>
       {knocks.map((m) => (
         <div key={m.userId} className="user-row">
           <button className="plain" onClick={() => onUser(m.userId)} aria-label={m.name}><Avatar mxc={m.getMxcAvatarUrl()} name={m.name} id={m.userId} size={42} /></button>
           <span><b>{m.name}</b><small dir="auto">{m.events.member?.getContent().reason || m.userId}</small></span>
-          {mayDeny && <button className="icon-btn" disabled={busy} title="رد" aria-label="رد" onClick={() => act(() => client.kick(room.roomId, m.userId))}><Icon name="close" size={18} /></button>}
-          <button className="icon-btn accent" disabled={busy} title="پذیرفتن" aria-label="پذیرفتن" onClick={() => act(() => client.invite(room.roomId, m.userId))}><Icon name="check" size={18} /></button>
+          {mayDeny && <button className="icon-btn" disabled={busy} title={t("admin.deny")} aria-label={t("admin.deny")} onClick={() => act(() => client.kick(room.roomId, m.userId))}><Icon name="close" size={18} /></button>}
+          <button className="icon-btn accent" disabled={busy} title={t("verify.accept")} aria-label={t("verify.accept")} onClick={() => act(() => client.invite(room.roomId, m.userId))}><Icon name="check" size={18} /></button>
         </div>
       ))}
     </>
@@ -158,7 +159,7 @@ export function BannedList({ room, onUser }: { room: Room; onUser: (id: string) 
   if (!banned.length) return null;
   return (
     <>
-      <h3>مسدودشده‌ها ({num(banned.length)})</h3>
+      <h3>{t("admin.banned", { count: banned.length })}</h3>
       {banned.map((m) => (
         <MemberRow key={m.userId} room={room} m={m} onUser={onUser}
           sub={<small>{m.events.member?.getContent().reason || <bdi dir="ltr">{m.userId}</bdi>}</small>} />
@@ -205,7 +206,7 @@ export function GroupSettings({ room, onUser }: { room: Room; onUser: (id: strin
     ...(parent && supportsRestricted(v) ? ["restricted"] : []), ...(parent && supportsKnockRestricted(v) ? ["knock_restricted"] : [])];
   if (!rules.includes(rule)) rules.push(rule);
   const ruleLabel = (r: string) => (!parent || !r.endsWith("restricted") ? JOIN_RULES[r] ?? r
-    : r === "restricted" ? `اعضای فضای «${parent.name}»` : `اعضای فضای «${parent.name}»، یا با درخواست عضویت`);
+    : r === "restricted" ? t("admin.ruleSpace", { name: parent.name }) : t("admin.ruleSpaceKnock", { name: parent.name }));
   const setRule = (r: string) => send(EventType.RoomJoinRules, r.endsWith("restricted") && parent
     ? { join_rule: r, allow: [{ type: "m.room_membership", room_id: parent.roomId }] } : { join_rule: r });
   const history = room.getHistoryVisibility();
@@ -215,33 +216,33 @@ export function GroupSettings({ room, onUser }: { room: Room; onUser: (id: strin
       {can(EventType.RoomPowerLevels) && (
         <>
           <button type="button" className="user-row" onClick={() => setPage("admins")}>
-            <span className="device-box"><Icon name="user" /></span><span><b>مدیران</b><small>{num(adminsOf(room).length)} نفر</small></span>
+            <span className="device-box"><Icon name="user" /></span><span><b>{t("admin.admins")}</b><small>{t("admin.people", { count: adminsOf(room).length })}</small></span>
           </button>
           <button type="button" className="user-row" onClick={() => setPage("permissions")}>
-            <span className="device-box"><Icon name="lock" /></span><span><b>دسترسی‌ها</b><small>چه کسی چه کاری می‌تواند بکند</small></span>
+            <span className="device-box"><Icon name="lock" /></span><span><b>{t("admin.perms")}</b><small>{t("admin.permsHint")}</small></span>
           </button>
         </>
       )}
-      {page === "admins" && <Sheet title="مدیران" onClose={() => setPage(null)}><Admins room={room} onUser={onUser} /></Sheet>}
-      {page === "permissions" && <Sheet title="دسترسی‌ها" onClose={() => setPage(null)}><Permissions room={room} /></Sheet>}
+      {page === "admins" && <Sheet title={t("admin.admins")} onClose={() => setPage(null)}><Admins room={room} onUser={onUser} /></Sheet>}
+      {page === "permissions" && <Sheet title={t("admin.perms")} onClose={() => setPage(null)}><Permissions room={room} /></Sheet>}
       {can(EventType.RoomJoinRules) && (
-        <label className="select-row">پیوستن
+        <label className="select-row">{t("admin.joining")}
           <Select value={rule} disabled={busy} options={rules.map((r) => [r, ruleLabel(r)])} onChange={setRule} />
         </label>
       )}
       {!space && can(EventType.RoomHistoryVisibility) && (
-        <label className="select-row">چه کسی تاریخچه را می‌بیند
+        <label className="select-row">{t("admin.historyWho")}
           <Select value={history} disabled={busy} options={Object.entries(HISTORY)}
             onChange={(v) => send(EventType.RoomHistoryVisibility, { history_visibility: v })} />
         </label>
       )}
       {!space && (room.hasEncryptionStateEvent()
-        ? <p className="card ok"><Icon name="lock" size={16} /> رمزنگاری سرتاسری روشن است</p>
+        ? <p className="card ok"><Icon name="lock" size={16} /> {t("admin.e2eeOn")}</p>
         : can(EventType.RoomEncryption) && (
           <div className="row-actions">
-            <button disabled={busy} onClick={() => confirmDialog("رمزنگاری سرتاسری پس از روشن شدن خاموش نمی‌شود و جستجوی سرور و ربات‌ها شاید دیگر کار نکنند. روشن شود؟", { danger: true })
+            <button disabled={busy} onClick={() => confirmDialog(t("admin.e2eeQ"), { danger: true })
               .then((y) => y && send(EventType.RoomEncryption, { algorithm: "m.megolm.v1.aes-sha2" }))}>
-              <Icon name="lock" size={16} /> روشن کردن رمزنگاری سرتاسری
+              <Icon name="lock" size={16} /> {t("admin.e2eeEnable")}
             </button>
           </div>
         ))}
@@ -261,14 +262,14 @@ function Admins({ room, onUser }: { room: Room; onUser: (id: string) => void }) 
   return (
     <>
       {admins.map((m) => <MemberRow key={m.userId} room={room} m={m} onUser={onUser} tapMenu sub={<small dir="ltr">{m.userId}</small>} />)}
-      <div className="row-actions"><button onClick={() => setAdding(true)}><Icon name="plus" /> افزودن مدیر</button></div>
+      <div className="row-actions"><button onClick={() => setAdding(true)}><Icon name="plus" /> {t("admin.addAdmin")}</button></div>
       {adding && (
-        <Sheet title="افزودن مدیر" onClose={() => setAdding(false)}>
+        <Sheet title={t("admin.addAdmin")} onClose={() => setAdding(false)}>
           <label className="search">
             <Icon name="search" size={16} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی اعضا" aria-label="جستجوی اعضا" autoFocus />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("info.searchMembers")} aria-label={t("info.searchMembers")} autoFocus />
           </label>
-          {others.length === 0 && <p className="muted">عضو دیگری نیست</p>}
+          {others.length === 0 && <p className="muted">{t("admin.noOthers")}</p>}
           {others.map((m) => <MemberRow key={m.userId} room={room} m={m} onUser={onUser} tapMenu sub={<small dir="ltr">{m.userId}</small>} />)}
         </Sheet>
       )}
@@ -278,22 +279,22 @@ function Admins({ room, onUser }: { room: Room; onUser: (id: string) => void }) 
 
 /** Who may do what: one role select per action. Keys are levelAt's; several keys move together. */
 const PERMS: [string, string[]][] = [
-  ["ارسال پیام", ["events_default"]],
-  ["دعوت اعضا", ["invite"]],
-  ["بیرون کردن", ["kick"]],
-  ["مسدود کردن", ["ban"]],
-  ["حذف پیام دیگران", ["redact"]],
-  ["تغییر نام، عکس و توضیحات", ["events.m.room.name", "events.m.room.avatar", "events.m.room.topic"]],
-  ["سنجاق پیام", ["events.m.room.pinned_events"]],
-  ["نام بردن از همه (‎@room)", ["notifications.room"]],
-  ["تماس گروهی", [`events.${EventType.GroupCallMemberPrefix}`]],
+  [t("perm.send"), ["events_default"]],
+  [t("perm.invite"), ["invite"]],
+  [t("admin.kick"), ["kick"]],
+  [t("admin.ban"), ["ban"]],
+  [t("perm.redact"), ["redact"]],
+  [t("perm.profile"), ["events.m.room.name", "events.m.room.avatar", "events.m.room.topic"]],
+  [t("perm.pin"), ["events.m.room.pinned_events"]],
+  [t("perm.room"), ["notifications.room"]],
+  [t("perm.call"), [`events.${EventType.GroupCallMemberPrefix}`]],
 ];
 const SPACE_PERMS: [string, string[]][] = [
-  ["افزودن گفتگو به فضا", ["events.m.space.child"]],
-  ["دعوت اعضا", ["invite"]],
-  ["بیرون کردن", ["kick"]],
-  ["مسدود کردن", ["ban"]],
-  ["تغییر نام، عکس و توضیحات", ["events.m.room.name", "events.m.room.avatar", "events.m.room.topic"]],
+  [t("info.addToSpace"), ["events.m.space.child"]],
+  [t("perm.invite"), ["invite"]],
+  [t("admin.kick"), ["kick"]],
+  [t("admin.ban"), ["ban"]],
+  [t("perm.profile"), ["events.m.room.name", "events.m.room.avatar", "events.m.room.topic"]],
 ];
 
 function Permissions({ room }: { room: Room }) {
@@ -344,23 +345,23 @@ function Address({ room }: { room: Room }) {
 
   return (
     <>
-      <h3>نشانی عمومی</h3>
+      <h3>{t("admin.address")}</h3>
       {alias ? (
         <div className="user-row">
           <span className="device-box"><Icon name="link" /></span>
           <span><b dir="ltr">{alias}</b></span>
-          <button className="icon-btn" disabled={busy} title="حذف نشانی" aria-label="حذف نشانی" onClick={() => confirmDialog("نشانی حذف شود؟", { danger: true }).then((y) => y && act(remove))}><Icon name="trash" size={18} /></button>
+          <button className="icon-btn" disabled={busy} title={t("admin.removeAddress")} aria-label={t("admin.removeAddress")} onClick={() => confirmDialog(t("admin.removeAddressQ"), { danger: true }).then((y) => y && act(remove))}><Icon name="trash" size={18} /></button>
         </div>
       ) : (
         <form className="alias-input" dir="ltr" onSubmit={(e) => { e.preventDefault(); act(add); }}>
           <span>#</span>
           <input value={lp} onChange={(e) => setLp(e.target.value.replace(/[\s:#]/g, ""))} placeholder="address" required />
           <span>:{client.getDomain()}</span>
-          <button className="accent-btn" disabled={busy}>ثبت</button>
+          <button className="accent-btn" disabled={busy}>{t("admin.set")}</button>
         </form>
       )}
       {listed !== null && (
-        <label className="switch-row"><span>در فهرست گفتگوهای عمومی<small>دیگران با جستجو پیدایش می‌کنند</small></span>
+        <label className="switch-row"><span>{t("admin.directory")}<small>{t("admin.directoryHint")}</small></span>
           <input type="checkbox" role="switch" checked={listed} disabled={busy}
             onChange={(e) => { const on = e.target.checked; act(() => client.setRoomDirectoryVisibility(room.roomId, on ? Visibility.Public : Visibility.Private), () => setListed(on)); }} /></label>
       )}
@@ -384,7 +385,7 @@ export function RoomDetails({ room, onLeave }: { room: Room; onLeave: () => void
     && room.currentState.maySendStateEvent(EventType.RoomTombstone, me()) ? upgradeTarget(v, rv) : null;
 
   const upgrade = async () => {
-    if (!(await confirmDialog(`گروه به نسخه‌ی ${target} ارتقا می‌یابد: گروه تازه‌ای ساخته می‌شود و این یکی دیگر پیام نمی‌گیرد. اعضا با یک دکمه به گروه تازه می‌روند. ادامه می‌دهید؟`, { danger: true }))) return;
+    if (!(await confirmDialog(t("admin.upgradeQ", { v: target ?? "" }), { danger: true }))) return;
     const { replacement_room: to } = await client.upgradeRoom(room.roomId, target!);
     // best effort, one at a time so rate limits don't drop invites: a private room's members need one to follow
     if (room.getJoinRule() !== "public") {
@@ -404,25 +405,25 @@ export function RoomDetails({ room, onLeave }: { room: Room; onLeave: () => void
   return (
     <>
       <div className="user-row">
-        <span><small>شناسه</small><b dir="ltr" className="wrap-id">{room.roomId}</b></span>
-        <button className="icon-btn" title="کپی" aria-label="کپی شناسه"
-          onClick={() => copyText(room.roomId).then(() => toast("کپی شد"), () => alertDialog("کپی نشد"))}><Icon name="copy" size={18} /></button>
+        <span><small>{t("admin.id")}</small><b dir="ltr" className="wrap-id">{room.roomId}</b></span>
+        <button className="icon-btn" title={t("common.copy")} aria-label={t("admin.copyId")}
+          onClick={() => copyText(room.roomId).then(() => toast(t("msg.copied")), () => alertDialog(t("admin.copyFailed")))}><Icon name="copy" size={18} /></button>
       </div>
       <div className="user-row">
-        <span><small>نسخه</small><b dir="ltr">{v}{rv?.available[v] === "unstable" && <em> (ناپایدار)</em>}</b></span>
+        <span><small>{t("admin.version")}</small><b dir="ltr">{v}{rv?.available[v] === "unstable" && <em> {t("admin.unstable")}</em>}</b></span>
       </div>
       {creators.length > 0 && (
-        <div className="user-row"><span><small>سازنده</small><b>{creators.map(name).join("، ")}</b></span></div>
+        <div className="user-row"><span><small>{t("admin.creator")}</small><b>{creators.map(name).join(t("list.sep"))}</b></span></div>
       )}
-      {create && <div className="user-row"><span><small>تاریخ ساخت</small><b>{stamp(create.getTs())}</b></span></div>}
+      {create && <div className="user-row"><span><small>{t("admin.created")}</small><b>{stamp(create.getTs())}</b></span></div>}
       {!room.isSpaceRoom() && (
-        <div className="user-row"><span><small>رمزنگاری سرتاسری</small><b dir={enc ? "ltr" : undefined}>{enc ?? "خاموش"}</b></span></div>
+        <div className="user-row"><span><small>{t("new.e2ee")}</small><b dir={enc ? "ltr" : undefined}>{enc ?? t("common.off")}</b></span></div>
       )}
-      {old && <div className="row-actions"><button onClick={() => { location.hash = old; onLeave(); }}><Icon name="back" /> رفتن به گروه قبلی</button></div>}
+      {old && <div className="row-actions"><button onClick={() => { location.hash = old; onLeave(); }}><Icon name="back" /> {t("admin.toOld")}</button></div>}
       {target && (
         <>
-          <p className="muted">نسخه‌ی این گروه قدیمی یا آزمایشی است؛ نسخه‌ی پیش‌فرض سرور <bdi dir="ltr">{target}</bdi> است.</p>
-          <div className="row-actions"><button className="warn" disabled={busy} onClick={() => act(upgrade)}>ارتقای نسخه‌ی گروه</button></div>
+          <p className="muted">{t("admin.oldVersionA")}<bdi dir="ltr">{target}</bdi>{t("admin.oldVersionB")}</p>
+          <div className="row-actions"><button className="warn" disabled={busy} onClick={() => act(upgrade)}>{t("admin.upgrade")}</button></div>
         </>
       )}
     </>
@@ -438,7 +439,7 @@ export function Upgraded({ room, children }: { room: Room; children: ReactNode }
   const ev = room.currentState.getStateEvents(EventType.RoomTombstone, "");
   if (!ev) {
     if (room.currentState.maySendEvent(EventType.RoomMessage, me())) return children;
-    return <div className="upgraded"><span>فقط مدیران می‌توانند در این گروه پیام بفرستند</span></div>;
+    return <div className="upgraded"><span>{t("admin.adminsOnly")}</span></div>;
   }
   const to: string | undefined = ev.getContent().replacement_room;
   const go = async () => {
@@ -448,8 +449,8 @@ export function Upgraded({ room, children }: { room: Room; children: ReactNode }
   };
   return (
     <div className="upgraded">
-      <span>این گروه ارتقا یافته و دیگر پیامی در آن فرستاده نمی‌شود</span>
-      {to && <button className="primary" disabled={busy} onClick={() => act(go)}>رفتن به گروه جدید</button>}
+      <span>{t("admin.upgraded")}</span>
+      {to && <button className="primary" disabled={busy} onClick={() => act(go)}>{t("admin.toNew")}</button>}
     </div>
   );
 }
@@ -461,5 +462,5 @@ export function Predecessor({ room }: { room: Room }) {
   const old = pred && client.getRoom(pred.roomId);
   // ponytail: only rooms we're still in; joining a left predecessor needs via servers we may not have
   if (!old || old.getMyMembership() !== "join" || room.getLiveTimeline().getPaginationToken(EventTimeline.BACKWARDS)) return null;
-  return <button className="predecessor" onClick={() => { location.hash = old.roomId; }}>ادامه‌ی گروه قبلی؛ دیدن پیام‌های قدیمی‌تر</button>;
+  return <button className="predecessor" onClick={() => { location.hash = old.roomId; }}>{t("admin.predecessor")}</button>;
 }

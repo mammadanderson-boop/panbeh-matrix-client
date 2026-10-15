@@ -1,3 +1,4 @@
+import { rtl, t } from "../i18n.ts";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { EventType, M_POLL_START, type MatrixEvent, type Room } from "matrix-js-sdk";
@@ -80,16 +81,16 @@ export async function copyText(text: string) {
 /** Bidi-isolate a name inside a Farsi sentence so Latin names/punctuation don't reorder it. */
 export const bdi = (s: string) => "\u2068" + s + "\u2069";
 
-/** Farsi message for an SDK/fetch error. */
+/** Our message for an SDK/fetch error. */
 export function errText(e: unknown): string {
   const err = e as { errcode?: string; message?: string; name?: string; data?: { retry_after_ms?: number } };
   const known = errorText(err?.errcode, err?.data);
   if (known) return known;
   // getUserMedia (calls, voice messages)
-  if (err?.name === "NotAllowedError") return "اجازه‌ی دسترسی به میکروفون یا دوربین داده نشد. آن را از تنظیمات مرورگر یا دستگاه باز کنید.";
-  if (err?.name === "NotFoundError") return "میکروفون یا دوربینی پیدا نشد.";
+  if (err?.name === "NotAllowedError") return t("err.mediaDenied");
+  if (err?.name === "NotFoundError") return t("err.mediaNotFound");
   const m = err?.message ?? String(e);
-  return /fetch|network/i.test(m) ? "به سرور دسترسی نیست. نشانی و پورت را بررسی کنید." : m;
+  return /fetch|network/i.test(m) ? t("err.network") : m;
 }
 
 const cap = (c: Record<string, any>): string | undefined => (c.filename && c.body !== c.filename ? formattedPlain(c)?.text ?? c.body : undefined);
@@ -132,20 +133,20 @@ export function formattedPlain(c: Record<string, any>) {
 
 /** One-line text for list previews and reply quotes. */
 export function previewText(ev: MatrixEvent): string {
-  if (ev.isDecryptionFailure()) return "🔒 پیام رمزنگاری‌شده";
-  if (ev.getType() === EventType.RoomMessageEncrypted) return "🔒 در حال رمزگشایی…";
+  if (ev.isDecryptionFailure()) return "🔒 " + t("preview.encrypted");
+  if (ev.getType() === EventType.RoomMessageEncrypted) return "🔒 " + t("preview.decrypting");
   const c = ev.getContent();
   switch (c.msgtype) {
-    case "m.image": return "🖼 " + (cap(c) ?? "عکس");
-    case "m.video": return c["app.panbeh.video_note"] ? "📹 پیام ویدیویی " + fmtDuration(c.info?.duration ?? 0) : isGif(c) ? "🎞 " + (cap(c) ?? "گیف") : "🎬 " + (cap(c) ?? "ویدیو");
-    case "m.audio": return isVoice(c) ? "🎤 پیام صوتی " + fmtDuration(audioDuration(c)) : "🎵 صدا";
-    case "m.location": return "📍 موقعیت مکانی";
-    case "m.file": return "📎 " + (cap(c) ?? c.filename ?? c.body ?? "فایل");
+    case "m.image": return "🖼 " + (cap(c) ?? t("preview.photo"));
+    case "m.video": return c["app.panbeh.video_note"] ? "📹 " + t("voice.videoMessage") + " " + fmtDuration(c.info?.duration ?? 0) : isGif(c) ? "🎞 " + (cap(c) ?? t("preview.gif")) : "🎬 " + (cap(c) ?? t("preview.video"));
+    case "m.audio": return isVoice(c) ? "🎤 " + t("voice.message") + " " + fmtDuration(audioDuration(c)) : "🎵 " + t("preview.audio");
+    case "m.location": return "📍 " + t("loc.title");
+    case "m.file": return "📎 " + (cap(c) ?? c.filename ?? c.body ?? t("composer.file"));
     case "m.emote": return `* ${senderName(ev)} ${formattedPlain(c)?.text ?? c.body}`;
-    case VERIFY_REQUEST: return "🔐 درخواست تأیید هویت";
+    case VERIFY_REQUEST: return "🔐 " + t("preview.verify");
   }
-  if (ev.getType() === EventType.Sticker) return "استیکر";
-  if (M_POLL_START.matches(ev.getType())) return "📊 " + (parsePoll(ev)?.question.text ?? "نظرسنجی");
+  if (ev.getType() === EventType.Sticker) return t("preview.sticker");
+  if (M_POLL_START.matches(ev.getType())) return "📊 " + (parsePoll(ev)?.question.text ?? t("poll.poll"));
   return formattedPlain(c)?.text ?? stripReplyFallback(String(c.body ?? ""));
 }
 
@@ -169,44 +170,44 @@ export function noticeText(ev: MatrixEvent): string | null {
   const who = bdi(senderName(ev));
   const c = ev.getContent(), prev = ev.getPrevContent();
   switch (ev.getType()) {
-    case EventType.RoomMessage: return c.msgtype === VERIFY_REQUEST ? `${who} درخواست تأیید هویت فرستاد` : null;
+    case EventType.RoomMessage: return c.msgtype === VERIFY_REQUEST ? t("notice.verify", { who }) : null;
     case EventType.RoomCreate:
-      return c.predecessor?.room_id ? "ادامه‌ی گروه قبلی؛ این گروه ارتقا یافته است" : `${who} ${c.type === "m.space" ? "فضا" : "گفتگو"} را ایجاد کرد`;
-    case EventType.RoomName: return c.name ? `${who} نام گفتگو را به «${bdi(c.name)}» تغییر داد` : `${who} نام گفتگو را حذف کرد`;
+      return c.predecessor?.room_id ? t("notice.continued") : t(c.type === "m.space" ? "notice.createdSpace" : "notice.createdChat", { who });
+    case EventType.RoomName: return c.name ? t("notice.name", { who, name: bdi(c.name) }) : t("notice.nameRemoved", { who });
     case EventType.RoomTopic: {
-      const t: string = c.topic ?? "";
-      return t ? `${who} توضیحات را به «${bdi(t.length > 80 ? t.slice(0, 80) + "…" : t)}» تغییر داد` : `${who} توضیحات را حذف کرد`;
+      const topic: string = c.topic ?? "";
+      return topic ? t("notice.topic", { who, topic: bdi(topic.length > 80 ? topic.slice(0, 80) + "…" : topic) }) : t("notice.topicRemoved", { who });
     }
-    case EventType.RoomAvatar: return c.url ? `${who} عکس گفتگو را تغییر داد` : `${who} عکس گفتگو را حذف کرد`;
+    case EventType.RoomAvatar: return c.url ? t("notice.avatar", { who }) : t("notice.avatarRemoved", { who });
     case EventType.RoomCanonicalAlias:
       if (c.alias === prev.alias) return null; // alt_aliases only
-      return c.alias ? `${who} نشانی را به ${bdi(c.alias)} تغییر داد` : `${who} نشانی ${bdi(prev.alias)} را حذف کرد`;
-    case EventType.RoomServerAcl: return `${who} دسترسی سرورها به این گفتگو را تغییر داد`;
+      return c.alias ? t("notice.alias", { who, alias: bdi(c.alias) }) : t("notice.aliasRemoved", { who, alias: bdi(prev.alias) });
+    case EventType.RoomServerAcl: return t("notice.acl", { who });
     case EventType.RoomGuestAccess:
-      return prev.guest_access && c.guest_access !== prev.guest_access ? (c.guest_access === "can_join" ? `${who} پیوستن مهمان‌ها را آزاد کرد` : `${who} پیوستن مهمان‌ها را بست`) : null;
-    case EventType.RoomEncryption: return "پیام‌ها رمزنگاری سرتاسری شده‌اند";
+      return prev.guest_access && c.guest_access !== prev.guest_access ? (c.guest_access === "can_join" ? t("notice.guestsOn", { who }) : t("notice.guestsOff", { who })) : null;
+    case EventType.RoomEncryption: return t("notice.encrypted");
     case EventType.RoomPinnedEvents: {
       const n = c.pinned?.length ?? 0, was = prev.pinned?.length ?? 0;
-      return n > was ? `${who} پیامی را سنجاق کرد` : n < was ? `${who} سنجاق پیامی را برداشت` : null;
+      return n > was ? t("notice.pinned", { who }) : n < was ? t("notice.unpinned", { who }) : null;
     }
     case EventType.RoomMember: {
       const target = bdi(c.displayname ?? ev.getStateKey() ?? "");
       const prevName = bdi(prev.displayname ?? c.displayname ?? ev.getStateKey() ?? "");
       if (c.membership === prev.membership) return null; // profile changes are noise
-      const reason = c.reason ? ` (دلیل: ${bdi(c.reason)})` : "";
+      const reason = c.reason ? t("notice.reason", { reason: bdi(c.reason) }) : "";
       switch (c.membership) {
-        case "join": return `${target} پیوست`;
-        case "invite": return `${who} ${target} را دعوت کرد`;
-        case "knock": return `${target} درخواست عضویت داد`;
+        case "join": return t("notice.joined", { target });
+        case "invite": return t("notice.invited", { who, target });
+        case "knock": return t("notice.knocked", { target });
         case "leave":
           if (ev.getSender() === ev.getStateKey()) {
-            return prev.membership === "knock" ? `${prevName} درخواست عضویتش را پس گرفت` : prev.membership === "invite" ? `${prevName} دعوت را نپذیرفت` : `${prevName} خارج شد`;
+            return prev.membership === "knock" ? t("notice.knockWithdrawn", { name: prevName }) : prev.membership === "invite" ? t("notice.inviteRejected", { name: prevName }) : t("notice.left", { name: prevName });
           }
-          return prev.membership === "ban" ? `${who} مسدودیت ${prevName} را برداشت`
-            : prev.membership === "knock" ? `${who} درخواست عضویت ${prevName} را رد کرد`
-            : prev.membership === "invite" ? `${who} دعوت ${prevName} را لغو کرد`
-            : `${who} ${prevName} را بیرون کرد${reason}`;
-        case "ban": return `${who} ${prevName} را مسدود کرد${reason}`;
+          return prev.membership === "ban" ? t("notice.unbanned", { who, name: prevName })
+            : prev.membership === "knock" ? t("notice.knockDenied", { who, name: prevName })
+            : prev.membership === "invite" ? t("notice.inviteRevoked", { who, name: prevName })
+            : t("notice.kicked", { who, name: prevName }) + reason;
+        case "ban": return t("notice.banned", { who, name: prevName }) + reason;
       }
       return null;
     }
@@ -215,20 +216,20 @@ export function noticeText(ev: MatrixEvent): string | null {
       if (!Object.keys(prev).length) return null; // room creation; v12 rooms start without `users` (creators are implicit)
       const [c1, ...more] = levelChanges(prev as never, c as never);
       // servers send canonical (sorted-key) JSON, so equal content stringifies equally
-      if (!c1) return JSON.stringify(prev) === JSON.stringify(c) ? null : `${who} دسترسی‌های گروه را تغییر داد`;
+      if (!c1) return JSON.stringify(prev) === JSON.stringify(c) ? null : t("notice.permissions", { who });
       const name = bdi(client.getRoom(ev.getRoomId())?.getMember(c1.id)?.name ?? c1.id);
-      return `${who} نقش ${name} را به «${roleLabel(c1.to) ?? "عضو"}» تغییر داد` + (more.length ? ` (و ${num(more.length)} نفر دیگر)` : "");
+      return t("notice.role", { who, name, role: roleLabel(c1.to) ?? t("role.member") }) + (more.length ? t("notice.roleMore", { count: more.length }) : "");
     }
     case EventType.RoomJoinRules:
-      return prev.join_rule && c.join_rule !== prev.join_rule ? `${who} شیوه‌ی پیوستن را به «${JOIN_RULES[c.join_rule] ?? c.join_rule}» تغییر داد` : null;
+      return prev.join_rule && c.join_rule !== prev.join_rule ? t("notice.joinRule", { who, rule: JOIN_RULES[c.join_rule] ?? c.join_rule }) : null;
     case EventType.RoomHistoryVisibility:
-      return prev.history_visibility && c.history_visibility !== prev.history_visibility ? `${who} دسترسی به تاریخچه را به «${HISTORY[c.history_visibility] ?? c.history_visibility}» تغییر داد` : null;
-    case EventType.RoomTombstone: return `${who} این گروه را ارتقا داد`;
+      return prev.history_visibility && c.history_visibility !== prev.history_visibility ? t("notice.history", { who, v: HISTORY[c.history_visibility] ?? c.history_visibility }) : null;
+    case EventType.RoomTombstone: return t("notice.upgraded", { who });
     case EventType.RTCNotification:
     case EventType.CallInvite: {
       const i = callInfo(ev);
-      if (!i) return `${who} ${c["m.call.intent"] === "video" ? "تماس تصویری" : "تماس صوتی"} گروهی را شروع کرد`;
-      return callLine(ev, who, i.video ? "تماس تصویری" : "تماس صوتی", i.outcome);
+      if (!i) return t(c["m.call.intent"] === "video" ? "call.groupVideo" : "call.groupVoice", { name: who });
+      return callLine(ev, who, i.video, i.outcome);
     }
   }
   return null;
@@ -250,13 +251,13 @@ function eventsAfter(ev: MatrixEvent) {
 }
 
 /** A 1:1 call's line in the timeline: who called, and how it went. */
-function callLine(ev: MatrixEvent, who: string, kind: string, o: CallOutcome) {
-  const mine = ev.getSender() === me();
+function callLine(ev: MatrixEvent, who: string, video: boolean, o: CallOutcome) {
+  const mine = ev.getSender() === me(), kind = video ? t("callKind.video") : t("callKind.voice");
   switch (o.state) {
-    case "ended": return `${who} ${kind} گرفت · ${fmtDuration(o.duration!)}`;
-    case "missed": return mine ? `${kind} بی‌پاسخ` : `${kind} از دست رفته از ${who}`;
-    case "declined": return mine ? `${kind} رد شد` : `${kind} ${who} را رد کردید`;
-    default: return `${who} ${kind} گرفت`;
+    case "ended": return t("callLine.made", { who, kind }) + " · " + fmtDuration(o.duration!);
+    case "missed": return mine ? t("callLine.unanswered", { kind }) : t("callLine.missedFrom", { kind, who });
+    case "declined": return mine ? t("callLine.declinedMine", { kind }) : t("callLine.declinedTheirs", { kind, who });
+    default: return t("callLine.made", { who, kind });
   }
 }
 
@@ -265,7 +266,7 @@ export const isGroupChat = (room: Room) => room.getJoinedMemberCount() > 2;
 export const me = () => client.getSafeUserId();
 
 export function formatSize(n: number) {
-  const u = ["بایت", "کیلوبایت", "مگابایت", "گیگابایت"];
+  const u = [t("size.b"), t("size.kb"), t("size.mb"), t("size.gb")];
   let i = 0;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return `${num(+n.toFixed(i ? 1 : 0))} ${u[i]}`;
@@ -294,7 +295,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
       <div className="sheet" ref={ref} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
         <header className="sheet-head">
           <h2>{title}</h2>
-          <button className="icon-btn" onClick={close} aria-label="بستن"><Icon name="close" /></button>
+          <button className="icon-btn" onClick={close} aria-label={t("common.close")}><Icon name="close" /></button>
         </header>
         <InSheet.Provider value>{children}</InSheet.Provider>
       </div>
@@ -341,7 +342,7 @@ export function Select<T extends string | number>({ value, options, onChange, di
   useLayoutEffect(() => { // under the button, kept on screen
     if (!at) return setPos(undefined);
     const { offsetWidth: w, offsetHeight: h } = menu.current!; // not the rect: the pop-in animation starts scaled down
-    setPos({ left: Math.max(8, Math.min(at.right - w, innerWidth - w - 8)), top: at.bottom + h + 8 > innerHeight ? Math.max(8, at.top - h - 4) : at.bottom + 4 });
+    setPos({ left: Math.max(8, Math.min(rtl ? at.right - w : at.left, innerWidth - w - 8)), top: at.bottom + h + 8 > innerHeight ? Math.max(8, at.top - h - 4) : at.bottom + 4 });
     menu.current!.focus({ preventScroll: true });
   }, [at]);
   useEffect(() => {
