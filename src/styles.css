@@ -1303,6 +1303,7 @@ img.tint {
 /* touch: docked under the row in the keyboard's place. Composer sets --emoji-h (the keyboard's height) and --emoji-gap
    (what the keyboard doesn't cover); with the keyboard still up the panel waits below it, off screen */
 .emoji-dock { position: relative; height: var(--emoji-gap, 0px); }
+.emoji-slide .emoji-dock { transition: height 0.2s var(--ease-out); }
 .emoji-dock .emoji-panel, .emoji-dock .emoji-panel.closing { top: 8px; bottom: auto; inset-inline: 0; width: auto; height: calc(var(--emoji-h) - 8px); animation: none; }
 .composer:has(.emoji-dock .emoji-panel) .composer-row { position: relative; z-index: 22; } /* over the panel's backdrop: the text box and ⌨ stay tappable */
 @media (max-width: 700px) {

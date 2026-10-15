@@ -62,7 +62,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const [livePick, setLivePick] = useState(false);
   const [mapPick, setMapPick] = useState(false);
   const [emoji, setEmoji] = useState(false);
-  const [emojiShown, emojiClosing] = useExit(emoji && !recording);
+  const [emojiShown, emojiClosing] = useExit(emoji && !recording, 220); // outlasts the docked panel's slide
   const [caret, setCaret] = useState(0);
   const [sel, setSel] = useState(0);
   const [closedAt, setClosedAt] = useState(-1); // Esc hides the mention list for this "@"
@@ -84,12 +84,12 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   // panel is open the row stays put as one replaces the other; the panel leaves once the keyboard is back up.
   const emojiOn = useRef(emoji);
   emojiOn.current = emoji;
-  const fit = useRef(() => {});
+  const fit = useRef((_toggled?: boolean) => {});
   useEffect(() => {
     if (!DOCK) return;
     const el = root.current!, host = el.parentElement!;
     let full = 0, width = 0;
-    fit.current = () => {
+    fit.current = (toggled = false) => {
       const h = host.clientHeight;
       if (host.clientWidth !== width) { width = host.clientWidth; full = 0; } // rotated: a new baseline
       full = Math.max(full, h);
@@ -100,6 +100,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       const search = !!document.activeElement?.closest(".emoji-panel"); // its search box: panel over the keyboard
       el.style.setProperty("--emoji-h", panel + "px");
       el.style.setProperty("--emoji-gap", (on ? (search ? panel : Math.max(0, panel - kb)) : 0) + "px");
+      el.classList.toggle("emoji-slide", toggled && !up); // opened or closed with no keyboard: it slides; swaps with the keyboard mustn't
     };
     const ro = new ResizeObserver(() => fit.current());
     ro.observe(host);
@@ -107,7 +108,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     addEventListener("focusin", focus);
     return () => { ro.disconnect(); removeEventListener("focusin", focus); };
   }, []);
-  useLayoutEffect(() => fit.current(), [emoji]);
+  useLayoutEffect(() => fit.current(true), [emoji]);
   const backToKb = useRef(0);
   function toggleEmoji() {
     if (!DOCK) return setEmoji((x) => !x);
