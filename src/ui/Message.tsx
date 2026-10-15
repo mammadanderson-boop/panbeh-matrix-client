@@ -209,9 +209,9 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
         if (swallow.current) { e.preventDefault(); e.stopPropagation(); swallow.current = false; } // first: a hold that just selected
         else if (selecting) { e.preventDefault(); e.stopPropagation(); select(); } // taps only toggle while selecting
       }}
-      onClick={(e) => { // touch: a tap on the bubble opens the menu, unless it was on a link, button or media inside
+      onClick={(e) => { // touch: a tap anywhere on the row opens the menu (Telegram's), unless on a link, button or media
         const t = e.target as HTMLElement;
-        if (touched && live && inside(e) && t.closest(".bubble") && !t.closest("a,button,input,video,audio,[role=button],[data-mx-spoiler]")) setMenu({ x: e.clientX, y: e.clientY });
+        if (touched && live && inside(e) && !t.closest("a,button,input,video,audio,[role=button],[data-mx-spoiler]")) setMenu({ x: e.clientX, y: e.clientY });
       }}>
       {selecting && <span className="sel-check" aria-hidden>{selected && <Icon name="check" size={14} />}</span>}
       {swipeOk && <span className="swipe-ico" aria-hidden><Icon name="reply" size={20} /></span>}
