@@ -308,14 +308,22 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     // The reply goes on the first, the caption on the last of the first album: other clients show it after the photos.
     const albums = media.length > 1 ? Array.from({ length: Math.ceil(media.length / 10) }, (_, k) => media.slice(k * 10, k * 10 + 10)) : [];
     const firstAlbum = albums[0];
+    // the caption's markdown, emoji and mentions, as a text message's (its body stays the caption: sendFile sets it)
+    const { body: _, ...rich } = caption ? compose(caption) : { body: "" };
     for (const a of albums) {
       const id = crypto.randomUUID();
-      a.forEach((f, i) => startUpload(room, f, threadId, a === firstAlbum && !i ? replyTo : undefined,
-        { "app.panbeh.album": { id, n: a.length, i } }, a === firstAlbum && i === a.length - 1 ? caption : undefined, false, sendAt));
+      a.forEach((f, i) => {
+        const captioned = a === firstAlbum && i === a.length - 1;
+        startUpload(room, f, threadId, a === firstAlbum && !i ? replyTo : undefined,
+          { "app.panbeh.album": { id, n: a.length, i }, ...(captioned && rich) }, captioned ? caption : undefined, false, sendAt);
+      });
     }
     const rest = list.filter((f) => !albums.flat().includes(f));
-    rest.forEach((f, i) => startUpload(room, f, threadId, albums.length || i ? undefined : replyTo, gif(f) ? { info: GIF_INFO } : undefined,
-      albums.length || i ? undefined : caption, asFile, sendAt));
+    rest.forEach((f, i) => {
+      const captioned = !albums.length && !i;
+      startUpload(room, f, threadId, captioned ? replyTo : undefined, { ...(gif(f) && { info: GIF_INFO }), ...(captioned && rich) },
+        captioned ? caption : undefined, asFile, sendAt);
+    });
   }
 
   /** The GPS position is the user (m.self, with its accuracy); a spot chosen on the map is a pin (m.pin). */

@@ -356,7 +356,10 @@ function Body({ ev, room, onView, onUser, album }: { ev: MatrixEvent; room: Room
   if (ev.getType() === EventType.RoomMessageEncrypted) return <p className="msg-text muted">در حال رمزگشایی…</p>;
   const c = ev.getContent();
   if (M_POLL_START.matches(ev.getType())) return <PollBody ev={ev} room={room} />;
-  const caption = c.msgtype !== "m.audio" && captionOf(c) && <p className="msg-text caption" dir={textDir(c.body)}>{linkify(c.body)}</p>;
+  const rich = c.format === "org.matrix.custom.html" && typeof c.formatted_body === "string" ? cleanHtml(c.formatted_body, room) : null;
+  const caption = c.msgtype !== "m.audio" && captionOf(c) && (rich
+    ? <div className="msg-text caption" dir={textDir(c.body)}><Html html={rich} room={room} onUser={onUser} /></div>
+    : <p className="msg-text caption" dir={textDir(c.body)}>{linkify(c.body)}</p>);
   if (album) return <><AlbumGrid evs={album} room={room} onView={onView} />{caption}</>;
   if (c.msgtype === "m.image" || ev.getType() === EventType.Sticker) return <><Image c={c} onView={() => onView(ev)} auto={ev.getType() === EventType.Sticker || autoDl(room, isGif(c) ? "gifs" : "photos", c)} />{caption}</>;
   if (c.msgtype === "m.video" && c["app.panbeh.video_note"]) return <VideoNote c={c} room={room} />;
@@ -370,15 +373,20 @@ function Body({ ev, room, onView, onUser, album }: { ev: MatrixEvent; room: Room
   if (c.msgtype === "m.file") return <><FileRow c={c} />{caption}</>;
   if (c.msgtype === "m.location") return <LocationCard c={c} />;
   const emote = c.msgtype === "m.emote" ? `* ${senderName(ev)} ` : "";
-  if (c.format === "org.matrix.custom.html" && typeof c.formatted_body === "string") {
-    pillRoom = room;
-    const html = DOMPurify.sanitize(c.formatted_body.replace(/<mx-reply>[\s\S]*?<\/mx-reply>/, ""), { FORBID_TAGS: ["style", "img"] });
-    pillRoom = null;
+  if (rich !== null) {
+    const html = rich;
     // the emote prefix holds a user-chosen display name: keep it out of innerHTML
     return <div className={"msg-text" + (emote ? " emote" : EMOTES_ONLY.test(html) ? " jumbo" : "")} dir={textDir(emote + stripReplyFallback(String(c.body ?? "")))}>{emote}<Html html={html} room={room} onUser={onUser} /></div>;
   }
   const text = emote + stripReplyFallback(String(c.body ?? ""));
   return <p dir={textDir(text)} className={"msg-text" + (/^\p{Extended_Pictographic}{1,3}$/u.test(text) ? " jumbo" : "")}>{linkify(text)}</p>;
+}
+
+/** A formatted_body made safe to show, its reply fallback dropped; pills resolve against `room`. */
+function cleanHtml(html: string, room: Room) {
+  pillRoom = room;
+  try { return DOMPurify.sanitize(html.replace(/<mx-reply>[\s\S]*?<\/mx-reply>/, ""), { FORBID_TAGS: ["style", "img"] }); }
+  finally { pillRoom = null; }
 }
 
 /** Sanitized HTML; gives mention pills their avatars and opens them in-app. */
