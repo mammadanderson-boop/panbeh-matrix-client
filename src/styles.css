@@ -116,6 +116,9 @@ button:disabled { opacity: 0.6; cursor: default; }
     radial-gradient(circle at 80% 80%, color-mix(in srgb, #e0578b 35%, transparent), transparent 50%);
 }
 .wallpaper-thumb[data-wallpaper="plain"] { background-image: none; }
+/* the chat pane: its gradient spans the screen, not the pane, so a keyboard coming or going doesn't shift its colours */
+.main.wallpaper { background-size: 100% var(--screen-h, 100%); background-position: top; background-repeat: no-repeat; }
+:root[data-wallpaper="doodle"] .main.wallpaper { background-size: 160px 160px, 100% var(--screen-h, 100%); background-repeat: repeat, no-repeat; }
 
 /* ---------- login / splash ---------- */
 .login, .splash { height: 100%; display: grid; place-items: center; padding: 16px; }

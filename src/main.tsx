@@ -28,6 +28,11 @@ import { LockScreen } from "./ui/Lock.tsx";
 import { useLocked } from "./lock.ts";
 import "@fontsource-variable/vazirmatn";
 import "./styles.css";
+
+// the wallpaper's gradient is laid out on the screen's height, which the keyboard (or the emoji panel taking its place) doesn't change
+const screenH = () => document.documentElement.style.setProperty("--screen-h", screen.height + "px");
+screenH();
+addEventListener("resize", screenH); // rotation
 import logo from "./logo.svg";
 
 applyPrefs();
