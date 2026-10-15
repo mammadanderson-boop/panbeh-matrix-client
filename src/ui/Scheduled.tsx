@@ -68,18 +68,20 @@ export function ScheduledList({ room, list, onClose }: { room: Room; list: Sched
   if (editing) return <EditScheduled room={room} s={editing} onDone={() => setEditing(null)} />;
   return (
     <Sheet title={`پیام‌های زمان‌بندی‌شده (${num(list.length)})`} onClose={onClose}>
-      {list.map((s) => (
-        <div key={s.id} className="user-row scheduled-row">
-          <span className="device-box"><Icon name="clock" /></span>
-          <span><b dir="auto">{preview(s)}</b><small>{scheduleLabel(s.sendAt)}</small></span>
-          <span className="scheduled-actions">
-            <button className="row-btn" disabled={busy} onClick={() => act(() => sendScheduledNow(s.id))}>ارسال اکنون</button>
-            {s.content && <button className="icon-btn" disabled={busy} title="تغییر" aria-label="تغییر" onClick={() => setEditing(s)}><Icon name="edit" size={18} /></button>}
-            <button className="icon-btn" disabled={busy} title="حذف" aria-label="حذف"
-              onClick={() => confirmDialog("این پیام زمان‌بندی‌شده حذف شود؟", { danger: true }).then((y) => y && act(() => cancelScheduled(s.id)))}><Icon name="trash" size={18} /></button>
-          </span>
-        </div>
-      ))}
+      <div className="scheduled-list">
+        {list.map((s) => (
+          <div key={s.id} className="scheduled-item">
+            <small className="scheduled-when"><Icon name="clock" size={16} /> {scheduleLabel(s.sendAt)}</small>
+            <p dir="auto" className={s.content ? undefined : "muted"}>{preview(s)}</p>
+            <div className="scheduled-actions">
+              <button className="row-btn" disabled={busy} onClick={() => act(() => sendScheduledNow(s.id))}><Icon name="send" size={16} /> ارسال اکنون</button>
+              {s.content && <button className="icon-btn" disabled={busy} title="تغییر" aria-label="تغییر" onClick={() => setEditing(s)}><Icon name="edit" size={18} /></button>}
+              <button className="icon-btn" disabled={busy} title="حذف" aria-label="حذف"
+                onClick={() => confirmDialog("این پیام زمان‌بندی‌شده حذف شود؟", { danger: true }).then((y) => y && act(() => cancelScheduled(s.id)))}><Icon name="trash" size={18} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
     </Sheet>
   );
 }

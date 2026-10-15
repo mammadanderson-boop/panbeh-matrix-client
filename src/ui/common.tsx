@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { EventType, M_POLL_START, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { PollStartEvent } from "matrix-js-sdk/lib/extensible_events_v1/PollStartEvent.js";
@@ -236,7 +236,10 @@ export function formatSize(n: number) {
 }
 
 /** Side sheet: settings, chat info, new chat, seen-by. */
+const InSheet = createContext(false);
+
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const nested = useContext(InSheet);
   const [closing, close] = useDismiss(onClose, 220);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { // Esc closes the topmost sheet only (sheets stack: a sub-page opens inside its parent), wherever focus is
@@ -250,17 +253,20 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   }, [close]);
-  return (
+  const ui = (
     <div className={"sheet-backdrop" + (closing ? " closing" : "")} onClick={close}>
       <div className="sheet" ref={ref} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
         <header className="sheet-head">
           <h2>{title}</h2>
           <button className="icon-btn" onClick={close} aria-label="بستن"><Icon name="close" /></button>
         </header>
-        {children}
+        <InSheet.Provider value>{children}</InSheet.Provider>
       </div>
     </div>
   );
+  // a top-level sheet goes to the body: opened from inside a stacking context (the composer's z-index), it would sit under the
+  // sidebar's new-chat button. A page opened inside another stays in it: mounted together, it would land under its parent
+  return nested ? ui : createPortal(ui, document.body);
 }
 
 /** Where a menu opened at (x, y) goes: right of and below it, flipped to the other side where it doesn't fit, kept on screen. */

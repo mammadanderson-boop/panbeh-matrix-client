@@ -12,7 +12,7 @@ import { Icon, iconSvg, type IconName } from "../icons.tsx";
 import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, previewText, senderMember, senderName, stripReplyFallback, toast, useChange, isVoice } from "./common.tsx";
 import { AudioPlayer, NoteRing, stopPlayer, trackFor } from "./Voice.tsx";
 import { PollBody } from "./Poll.tsx";
-import { EmojiPanel, ReactionKey } from "./Emoji.tsx";
+import { EmojiPanel, ReactionKey, tinted } from "./Emoji.tsx";
 import { LinkPreview } from "./LinkPreview.tsx";
 import { captionOf, EDITABLE } from "./Composer.tsx";
 import { useBackdropHold } from "./useBackdropHold.ts";
@@ -388,11 +388,15 @@ function Html({ html, room, onUser }: { html: string; room: Room; onUser: (id: s
       }, () => {});
     });
     ref.current?.querySelectorAll<HTMLElement>("span.emote[data-mxc]").forEach((s) => {
-      mediaUrl({ url: s.dataset.mxc! })?.then((u) => {
+      mediaUrl({ url: s.dataset.mxc! })?.then(async (u) => {
         const img = document.createElement("img");
         img.src = u;
         img.alt = s.dataset.code ?? "";
         img.draggable = false;
+        if (await tinted(s.dataset.mxc!, u)) {
+          img.className = "tint";
+          img.style.setProperty("--src", `url("${u}")`);
+        }
         s.replaceChildren(img);
       }, () => {});
     });

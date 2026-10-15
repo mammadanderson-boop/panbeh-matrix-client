@@ -391,6 +391,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
 
   const canRecord = !text.trim() && mode?.kind !== "edit" && "MediaRecorder" in window;
   const attachAway = !!text.trim() || mode?.kind === "edit";
+  const hasSched = canSched && sched.list.length > 0; // its button sits by attach and slides away with it
   const canCamera = isNative || matchMedia("(pointer: coarse)").matches; // a desktop file dialog can't take a photo
 
   const bar = (
@@ -442,12 +443,14 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
           {/* one pill — attach, text, emoji (attach slides away while typing) */}
           <div className="composer-field">
             {bar}
-            <div className={"attach" + (attachAway ? " away" : "")}>
+            <div className={"attach" + (attachAway ? " away" : "") + (hasSched ? " two" : "")}>
               {/* outside the menu: picking closes the menu, and an unmounted input never gets its change event */}
               <input ref={fileInput} type="file" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
               <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
               <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
               <button className="icon-btn" title="پیوست" aria-label="پیوست" aria-expanded={menu} aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined} onClick={() => setMenu((m) => !m)}><Icon name="attach" /></button>
+              {hasSched && <button className="icon-btn" title="پیام‌های زمان‌بندی‌شده" aria-label="پیام‌های زمان‌بندی‌شده" aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined}
+                onClick={() => setSchedList(true)}><Icon name="clock" /></button>}
               {menuShown && (
                 <>
                   <div className="menu-backdrop" onClick={() => setMenu(false)} />
@@ -467,9 +470,6 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
               onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart); setSel(0); typing(!!e.target.value); }}
               onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
               onKeyDown={onKey} onPaste={(e) => pasteFiles(e, setFiles)} onBlur={() => typingAt.current && typing(false)} />
-            {canSched && sched.list.length > 0 && (
-              <button className="icon-btn" title="پیام‌های زمان‌بندی‌شده" aria-label="پیام‌های زمان‌بندی‌شده" onClick={() => setSchedList(true)}><Icon name="clock" /></button>
-            )}
             <button className="icon-btn emoji-toggle" title="اموجی و استیکر" aria-label="اموجی و استیکر" aria-expanded={emoji} onClick={() => setEmoji((x) => !x)}><Icon name="smile" /></button>
           </div>
         </div>

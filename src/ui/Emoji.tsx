@@ -4,9 +4,9 @@ import { ClientEvent, RoomStateEvent, type MatrixEvent, type Room } from "matrix
 // fetched as files, not bundled as JS: separate chunks, loaded the first time the panel opens
 import enUrl from "emojibase-data/en/compact.json?url";
 import faUrl from "cldr-annotations-modern/annotations/fa/annotations.json?url";
-import { client, emotesFor, mediaUrl, savedGifs, toggleGif, type Emote } from "../matrix.ts";
+import { client, emotesFor, mediaUrl, savedGifs, tintFor, toggleGif, type Emote } from "../matrix.ts";
 import { usePromise, useTick } from "../hooks.ts";
-import { normalize, type Gif } from "../logic.ts";
+import { isDarkMono, normalize, type Gif } from "../logic.ts";
 import { confirmDialog } from "./dialog.tsx";
 
 type Emoji = { u: string; name: string; search: string; custom?: Emote };
@@ -127,10 +127,35 @@ function EmojiGrid({ room, onPick }: { room?: Room; onPick: (e: Emoji) => void }
   );
 }
 
-/** A custom emoji or sticker: the whole file, not a server thumbnail, so animated ones play. */
-export function EmoteImg({ url, alt, className = "emote" }: { url: string; alt: string; className?: string }) {
+const looks = new Map<string, Promise<boolean>>(); // mxc → isDarkMono, read once
+
+/** Whether a custom emoji (`src`: its blob URL) takes the text color: its pack's say, else how it looks (an animated one's first frame). */
+export function tinted(mxc: string, src: string): Promise<boolean> {
+  const t = tintFor(mxc);
+  if (t !== "auto") return Promise.resolve(t === "always");
+  let p = looks.get(mxc);
+  if (!p) {
+    p = fetch(src).then((r) => r.blob()).then((b) => createImageBitmap(b)).then((bmp) => {
+      const k = Math.min(1, 64 / Math.max(bmp.width, bmp.height)); // enough pixels to judge
+      const cv = new OffscreenCanvas(Math.max(1, Math.round(bmp.width * k)), Math.max(1, Math.round(bmp.height * k)));
+      const g = cv.getContext("2d")!;
+      g.drawImage(bmp, 0, 0, cv.width, cv.height);
+      bmp.close();
+      return isDarkMono(g.getImageData(0, 0, cv.width, cv.height).data);
+    }).catch(() => false);
+    looks.set(mxc, p);
+  }
+  return p;
+}
+
+/** A custom emoji or sticker: the whole file, not a server thumbnail, so animated ones play. `sticker`: never tinted. */
+export function EmoteImg({ url, alt, className = "emote", sticker }: { url: string; alt: string; className?: string; sticker?: boolean }) {
   const src = usePromise(mediaUrl({ url }));
-  return src ? <img className={className} src={src} alt={alt} title={alt || undefined} draggable={false} /> : <span className={className + " shimmer"} />;
+  const tint = usePromise(useMemo(() => (src ? (sticker ? Promise.resolve(false) : tinted(url, src)) : null), [url, src, sticker, tintFor(url)]));
+  // held back until the tint is known, so a black emoji doesn't flash before it turns white
+  return src && tint !== undefined
+    ? <img className={className + (tint ? " tint" : "")} style={tint ? { "--src": `url("${src}")` } as never : undefined} src={src} alt={alt} title={alt || undefined} draggable={false} />
+    : <span className={className + " shimmer"} />;
 }
 
 /** A reaction's key: a custom emoji's is its mxc, named by com.beeper.reaction.shortcode on the reaction `ev`. */
@@ -148,7 +173,7 @@ function StickerGrid({ room, onPick }: { room?: Room; onPick: (s: Emote) => void
       {list.map((s, i) => (
         <Fragment key={s.pack.key + ":" + s.code}>
           {s.pack !== list[i - 1]?.pack && <h4>{s.pack.name}</h4>}
-          <button title={`:${s.code}:`} aria-label={s.img.body || s.code} onClick={() => onPick(s)}><EmoteImg url={s.img.url} alt="" className="" /></button>
+          <button title={`:${s.code}:`} aria-label={s.img.body || s.code} onClick={() => onPick(s)}><EmoteImg url={s.img.url} alt="" className="" sticker /></button>
         </Fragment>
       ))}
     </div>

@@ -282,8 +282,27 @@ export function formatMessage(text: string, mentions: { name: string; id: string
 
 // ---------- custom emoji & stickers (MSC2545 image packs) ----------
 export type Usage = "emoticon" | "sticker";
-export type PackImage = { url: string; body?: string; info?: Record<string, unknown>; usage?: Usage[] };
-export type PackContent = { pack?: { display_name?: string; avatar_url?: string; usage?: Usage[] }; images?: Record<string, PackImage> };
+/** Whether a custom emoji takes the text color (so a black one turns white on a dark background): "auto" = when its pixels
+ *  are dark and colorless. Set on an image or a whole pack under TINT, our own key (other clients ignore it). */
+export type Tint = "auto" | "always" | "never";
+export const TINT = "app.panbeh.tint";
+export type PackImage = { url: string; body?: string; info?: Record<string, unknown>; usage?: Usage[]; [TINT]?: Tint };
+export type PackContent = { pack?: { display_name?: string; avatar_url?: string; usage?: Usage[]; [TINT]?: Tint }; images?: Record<string, PackImage> };
+/** The image's own setting, else its pack's, else "auto". */
+export const tintOf = (p: PackContent, i: PackImage): Tint => i[TINT] ?? p.pack?.[TINT] ?? "auto";
+/** "auto"'s test on RGBA pixels (not premultiplied): ≥95% of what's visible is gray, and it's dark on average,
+ *  so a black glyph with gray shading counts and anything colored or light doesn't. */
+export function isDarkMono(px: ArrayLike<number>) {
+  let n = 0, gray = 0, lum = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    const a = px[i + 3] / 255, r = px[i], g = px[i + 1], b = px[i + 2];
+    if (a < 0.1) continue;
+    n += a;
+    if (Math.max(r, g, b) - Math.min(r, g, b) < 40) gray += a;
+    lum += (a * (0.2126 * r + 0.7152 * g + 0.0722 * b)) / 255;
+  }
+  return n > 0 && gray / n >= 0.95 && lum / n < 0.4;
+}
 /** A pack's images usable as `use`: by the image's usage, else the pack's, else both (absent or empty = both, per MSC2545). */
 export const packImages = (p: PackContent, use: Usage): [string, PackImage][] =>
   Object.entries(p.images ?? {}).filter(([, i]) => {

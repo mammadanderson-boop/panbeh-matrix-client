@@ -373,9 +373,10 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
   display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 9px; border-radius: 14px;
   background: var(--bubble-in); box-shadow: var(--shadow); font-size: 15px; transition: transform 0.1s;
 }
-.reactions button span { font-size: 13px; font-weight: 600; color: var(--accent); }
-.reactions button.on { background: var(--accent); }
-.reactions button.on span { color: #fff; }
+/* the chip's color, not just the count's: a tinted custom emoji takes it too */
+.reactions button { color: var(--accent); }
+.reactions button span { font-size: 13px; font-weight: 600; }
+.reactions button.on { background: var(--accent); color: #fff; }
 
 .thread-link {
   display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; padding: 4px 10px; border-radius: 14px;
@@ -527,9 +528,13 @@ button.user-row:hover { background: var(--hover); }
 .avatar-edit::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.3); opacity: 0; transition: opacity 0.15s; }
 .avatar-edit:hover::after { opacity: 1; }
 .time-pick { display: inline-flex; align-items: center; gap: 4px; }
-.scheduled-row > span:nth-child(2) { flex: 1; min-width: 0; }
-.scheduled-row b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scheduled-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+/* scheduled messages: a card each — when, the text (3 lines at most), then send now / edit / delete */
+.scheduled-list { display: grid; gap: 8px; }
+.scheduled-item { display: grid; gap: 4px; padding: 10px 12px 4px; border-radius: 14px; background: var(--hover); }
+.scheduled-when { display: flex; align-items: center; gap: 6px; color: var(--accent); font-size: 13px; font-weight: 600; }
+.scheduled-item p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.scheduled-actions { display: flex; align-items: center; gap: 2px; }
+.scheduled-actions .row-btn { display: inline-flex; align-items: center; gap: 6px; margin-inline-end: auto; }
 .dl-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 6px 2px; }
 .dl-row > b { font-weight: 500; }
 .dl-chips { flex-basis: 100%; display: flex; gap: 6px; }
@@ -631,9 +636,10 @@ input[role="switch"]:checked::before { transform: translateX(-18px); }
 .modal-actions button.danger { width: auto; margin: 0; background: #e53935; color: #fff; }
 
 /* ---------- attach menu / mention list ---------- */
-.attach { position: relative; flex: none; width: 40px; margin-bottom: 7px; transition: width var(--dur) var(--ease-out), opacity var(--dur), transform var(--dur) var(--ease-out); }
+.attach { position: relative; flex: none; display: flex; width: 40px; margin-bottom: 7px; transition: width var(--dur) var(--ease-out), opacity var(--dur), transform var(--dur) var(--ease-out); }
 .attach.away { width: 0; opacity: 0; transform: scale(0.6); visibility: hidden; pointer-events: none;
   transition: width var(--dur) var(--ease-out), opacity var(--dur), transform var(--dur) var(--ease-out), visibility 0s linear var(--dur); } /* typing: the text takes its room */
+.attach.two:not(.away) { width: 80px; } /* + the scheduled messages button */
 .menu-backdrop { position: fixed; inset: 0; z-index: 20; }
 .attach-menu, .mention-list {
   position: absolute; z-index: 21; padding: 6px; background: var(--panel); border-radius: 14px;
@@ -940,6 +946,13 @@ span.emote[data-mxc] { cursor: pointer; }
 .emoji-grid .emote, .mention-room .emote { height: 28px; max-width: 34px; }
 .user-row > .mention-room.emote-sug { background: none; border-radius: 6px; }
 .emoji-cats .emote.shimmer { width: 26px; height: 26px; }
+/* custom emoji that take the text color: the picture moved out of its box, its shape (alpha minus luminance, so gray
+   shading stays lighter) cut from a text-colored background. Masks animate, so animated emoji keep playing. */
+img.tint {
+  object-position: -999em 0; background: currentColor;
+  mask-image: var(--src), var(--src); mask-mode: alpha, luminance; mask-composite: subtract;
+  mask-size: contain; mask-position: center; mask-repeat: no-repeat;
+}
 .sticker-grid h4, .pack-grid h4 { grid-column: 1 / -1; margin: 8px 4px 0; font-size: 13px; color: var(--muted); }
 .sticker-grid img, .pack-grid img { object-fit: contain; }
 .pack-grid { margin: 8px 0; }
@@ -992,6 +1005,10 @@ span.emote[data-mxc] { cursor: pointer; }
 .verify-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .verify-actions button { height: 44px; border-radius: 12px; font-weight: 600; background: var(--hover); }
 .verify-actions button.primary { background: var(--accent); color: #fff; }
+.verify-methods { display: grid; gap: 10px; }
+.verify-methods button { display: flex; align-items: center; justify-content: center; gap: 8px; height: 46px; padding: 0 14px; border-radius: 12px; font-weight: 600; background: var(--hover); }
+.verify-methods button:not(.primary) svg { color: var(--accent); }
+.verify-methods button.primary { background: var(--accent); color: #fff; }
 .sas-emoji { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 6px; padding: 12px 4px; border-radius: 14px; background: var(--hover); }
 .sas-emoji div { display: grid; justify-items: center; gap: 4px; width: 64px; }
 .sas-emoji span { font-size: 34px; line-height: 1; }

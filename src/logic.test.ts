@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel, deriveDraftKey, sealDraft, openDraft } from "./logic.ts";
-import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, type Msg } from "./logic.ts";
+import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
 const m = (id: string, sender: string, min: number, kind: Msg["kind"] = "msg"): Msg => ({ id, sender, ts: T + min * 60_000, kind });
@@ -461,4 +461,16 @@ test("drafts: sealed per room, readable only with the same backup key and room",
   assert.deepEqual(await openDraft(key, "!a:x", sealed), { body: "سلام", reply: "$e" });
   await assert.rejects(openDraft(key, "!b:x", sealed)); // moved to another room
   await assert.rejects(openDraft(await deriveDraftKey(new Uint8Array(32).fill(8)), "!a:x", sealed)); // another account's backup
+});
+
+test("isDarkMono: dark gray art yes; colored, light or empty no", () => {
+  const px = (...cols: number[][]) => cols.flat();
+  const clear = [255, 0, 0, 0]; // fully transparent pixels don't count, whatever their color
+  assert.equal(isDarkMono(px([0, 0, 0, 255], [0, 0, 0, 255], [120, 120, 120, 255], clear, clear)), true); // black + gray shading
+  assert.equal(isDarkMono(px([0, 0, 0, 255], [230, 20, 20, 255])), false); // half red
+  assert.equal(isDarkMono(px([240, 240, 240, 255], [200, 200, 200, 255])), false); // light gray
+  assert.equal(isDarkMono(px(clear, clear)), false);
+  assert.equal(tintOf({ pack: { "app.panbeh.tint": "never" } }, { url: "mxc://a/b" }), "never");
+  assert.equal(tintOf({ pack: { "app.panbeh.tint": "never" } }, { url: "mxc://a/b", "app.panbeh.tint": "always" }), "always");
+  assert.equal(tintOf({}, { url: "mxc://a/b" }), "auto");
 });

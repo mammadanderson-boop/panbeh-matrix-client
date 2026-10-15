@@ -50,6 +50,19 @@ export function useUserTrust(userId: string) {
 
 const started = new WeakSet<object>(); // verify() once per verifier
 
+/** req.scanQRCode, around an SDK bug: we show our own code and scan theirs on one request (Element never does both), and the
+ *  SDK keeps the verifier of the code we show, so the request stays "ready" here though the scan went out and the other side
+ *  asks to confirm. With no verifier, its change hook adopts the scan's.
+ *  ponytail: matrix-js-sdk privates (_verifier, onChange); drop when the SDK swaps QR verifiers itself (checked on 43.0.0) */
+async function scanCode(req: VerificationRequest, bytes: Uint8ClampedArray) {
+  await req.scanQRCode(bytes);
+  const r = req as unknown as { _verifier?: unknown; onChange?: () => void };
+  if (req.phase === VerificationPhase.Ready && typeof r.onChange === "function") {
+    r._verifier = undefined;
+    r.onChange();
+  }
+}
+
 function VerificationSheet({ req }: { req: VerificationRequest }) {
   useTick(req, [VerificationRequestEvent.Change]);
   const [sas, setSas] = useState<ShowSasCallbacks | null>(null);
@@ -57,6 +70,7 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
   const [qr, setQr] = useState<string | null>(null); // our code, as SVG
   const [scanning, setScanning] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [scanned, setScanned] = useState(false); // we scanned their code: they confirm it there
   const [error, setError] = useState("");
   const verifier = req.verifier;
   const run = (fn: () => Promise<unknown>) => fn().catch((e) => setError(errText(e)));
@@ -115,33 +129,43 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
       break;
     case VerificationPhase.Ready:
       body = scanning ? (
-        <QrScan onClose={() => setScanning(false)} onCode={(b) => { setScanning(false); run(() => req.scanQRCode(b)); }} />
+        <QrScan onClose={() => setScanning(false)} onCode={(b) => { setScanning(false); setScanned(true); run(() => scanCode(req, b)); }} />
       ) : qr || canScan ? (
         <>
           {qr && <>
             <p>{`این کد را با ${other} اسکن کنید.`}</p>
             <div className="qr" role="img" aria-label="کد QR تأیید" dangerouslySetInnerHTML={{ __html: qr }} />
           </>}
-          {canScan && <button className={qr ? "" : "primary"} onClick={() => setScanning(true)}><Icon name="camera" size={18} /> {`اسکن کد ${other}`}</button>}
-          <button onClick={() => run(() => req.startVerification("m.sas.v1"))}>مقایسه‌ی شکلک‌ها</button>
+          <div className="verify-methods">
+            {canScan && <button className={qr ? "" : "primary"} onClick={() => setScanning(true)}><Icon name="camera" size={18} /> {`اسکن کد ${other}`}</button>}
+            <button onClick={() => run(() => req.startVerification("m.sas.v1"))}><Icon name="smile" size={18} /> تأیید به روش مقایسه‌ی شکلک‌ها</button>
+          </div>
         </>
       ) : req.initiatedByMe ? <span className="spinner inline" /> : (
         <>
           <p>درخواست پذیرفته شد. شکلک‌ها را در هر دو دستگاه مقایسه کنید.</p>
-          <button className="primary" onClick={() => run(() => req.startVerification("m.sas.v1"))}>مقایسه‌ی شکلک‌ها</button>
+          <div className="verify-methods">
+            <button className="primary" onClick={() => run(() => req.startVerification("m.sas.v1"))}><Icon name="smile" size={18} /> تأیید به روش مقایسه‌ی شکلک‌ها</button>
+          </div>
         </>
       );
       break;
     case VerificationPhase.Started:
       body = reciprocate && !sas ? (confirmed ? <span className="spinner inline" /> : (
         <>
-          <p>{`${other} کد شما را اسکن کرد. آیا آنجا تأیید را نشان می‌دهد؟`}</p>
+          <p>{`${other} کد شما را اسکن کرد. آیا آنجا «کد اسکن شد» با علامت تیک نمایش داده می‌شود؟`}</p>
           <div className="verify-actions">
             <button onClick={() => reciprocate.cancel()}>خیر</button>
             <button className="primary" onClick={() => { setConfirmed(true); reciprocate.confirm(); }}>بله</button>
           </div>
         </>
-      )) : !sas ? <><p>{`منتظر ${other}…`}</p><span className="spinner inline" /></> : confirmed ? (
+      )) : !sas && scanned ? (
+        <>
+          <p className="card ok"><Icon name="check" size={18} /> کد اسکن شد</p>
+          <p>{`در ${other} «بله» را بزنید.`}</p>
+          <span className="spinner inline" />
+        </>
+      ) : !sas ? <><p>{`منتظر ${other}…`}</p><span className="spinner inline" /></> : confirmed ? (
         <><p>{`منتظر تأیید ${other}…`}</p><span className="spinner inline" /></>
       ) : (
         <>

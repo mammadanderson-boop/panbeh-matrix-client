@@ -1,7 +1,7 @@
-import { ClientEvent, createClient, UNSTABLE_MSC4140_DELAYED_EVENTS, Direction, EventTimeline, EventType, Filter, SearchOrderBy, HttpApiEvent, IndexedDBStore, MatrixEvent, Method, OAuth2, Preset, SetPresence, SyncState, Visibility, type ICreateRoomStateEvent, type MatrixClient, type MatrixError, type Room } from "matrix-js-sdk";
+import { ClientEvent, RoomStateEvent, createClient, UNSTABLE_MSC4140_DELAYED_EVENTS, Direction, EventTimeline, EventType, Filter, SearchOrderBy, HttpApiEvent, IndexedDBStore, MatrixEvent, Method, OAuth2, Preset, SetPresence, SyncState, Visibility, type ICreateRoomStateEvent, type MatrixClient, type MatrixError, type Room } from "matrix-js-sdk";
 import { decodeRecoveryKey, deriveRecoveryKeyFromPassphrase } from "matrix-js-sdk/lib/crypto-api/index.js";
 import { decryptAttachment, encryptAttachment, type IEncryptedFile } from "matrix-encrypt-attachment";
-import { blurhashEncode, cleanCode, endpointOf, fitSize, fmtSpan, freeCode, hasGif, isGif, normalizeServer, num, PACK_CAP, packImages, padToRatio, roomName, withGif, withoutGif, type Gif, type PackContent, type PackImage, type Usage } from "./logic.ts";
+import { blurhashEncode, cleanCode, endpointOf, fitSize, fmtSpan, freeCode, hasGif, isGif, normalizeServer, num, PACK_CAP, packImages, padToRatio, roomName, tintOf, withGif, withoutGif, type Gif, type PackContent, type PackImage, type Tint, type Usage } from "./logic.ts";
 import { isHeadless, isNative, nativeCancelAll, nativeLog, nativeSyncState, onKick, setBackgroundService } from "./native.ts";
 import { isDesktop, isWindowVisible, onWindowVisibility, openExternal } from "./desktop.ts";
 import { confirmDialog } from "./ui/dialog.tsx";
@@ -136,6 +136,9 @@ export async function start(s: Session) {
     },
   });
   client = c;
+  tints = null;
+  c.on(ClientEvent.AccountData, (e) => { if (e.getType() === USER_EMOTES) tints = null; });
+  c.on(RoomStateEvent.Events, (e) => { if (e.getType() === ROOM_EMOTES) tints = null; });
   await store.startup(); // after createClient: restoring cached presence needs the client's createUser
   // token revoked elsewhere: the SDK just stops syncing, so drop the session and go back to login
   c.once(HttpApiEvent.SessionLoggedOut, () => logout());
@@ -835,6 +838,24 @@ export function addToMyPack(code: string, img: PackImage, use: Usage) {
   const images = { ...p.images };
   images[freeCode(cleanCode(code, "_").replace(/^_+|_+$/g, "") || "emoji", images)] = { url: img.url, ...(img.info && { info: img.info }), usage: [use] };
   return putPersonalPack({ ...p, images });
+}
+
+let tints: Map<string, Tint> | null = null; // mxc → a pack's say on it; rebuilt when a pack changes
+/** A custom emoji's tint setting from whichever pack I can see says one (mine, any joined room's); "auto" if none does.
+ *  By mxc: an emoji in a message doesn't say which pack it came from. */
+export function tintFor(url: string): Tint {
+  if (!tints) {
+    const m = tints = new Map<string, Tint>();
+    const add = (c: PackContent) => {
+      for (const i of Object.values(c.images ?? {})) {
+        const t = typeof i?.url === "string" ? tintOf(c, i) : "auto";
+        if (t !== "auto" && !m.has(i.url)) m.set(i.url, t);
+      }
+    };
+    add(personalPack());
+    for (const r of client.getRooms()) if (r.getMyMembership() === "join") r.currentState.getStateEvents(ROOM_EMOTES).forEach((e) => add(e.getContent()));
+  }
+  return tints.get(url) ?? "auto";
 }
 
 // ---------- folder order ----------
