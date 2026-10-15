@@ -940,6 +940,13 @@ span.emote[data-mxc] { cursor: pointer; }
 .emoji-grid .emote, .mention-room .emote { height: 28px; max-width: 34px; }
 .user-row > .mention-room.emote-sug { background: none; border-radius: 6px; }
 .emoji-cats .emote.shimmer { width: 26px; height: 26px; }
+/* custom emoji that take the text color: the picture moved out of its box, its shape (alpha minus luminance, so gray
+   shading stays lighter) cut from a text-colored background. Masks animate, so animated emoji keep playing. */
+img.tint {
+  object-position: -999em 0; background: currentColor;
+  mask-image: var(--src), var(--src); mask-mode: alpha, luminance; mask-composite: subtract;
+  mask-size: contain; mask-position: center; mask-repeat: no-repeat;
+}
 .sticker-grid h4, .pack-grid h4 { grid-column: 1 / -1; margin: 8px 4px 0; font-size: 13px; color: var(--muted); }
 .sticker-grid img, .pack-grid img { object-fit: contain; }
 .pack-grid { margin: 8px 0; }

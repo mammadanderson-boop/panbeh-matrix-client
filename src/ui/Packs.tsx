@@ -2,15 +2,18 @@ import { useState } from "react";
 import { ClientEvent, RoomStateEvent, type Room } from "matrix-js-sdk";
 import { addToMyPack, canEditPacks, client, isPackGlobal, packsFor, personalPack, putPersonalPack, putRoomPack, roomPack, roomPacks, setPackGlobal, uploadEmote, type Pack } from "../matrix.ts";
 import { useTick } from "../hooks.ts";
-import { cleanCode, codeFrom, freeCode, num, PACK_CAP, packImages, type PackContent, type Usage } from "../logic.ts";
+import { cleanCode, codeFrom, freeCode, num, PACK_CAP, packImages, TINT, type PackContent, type Tint, type Usage } from "../logic.ts";
 import { Icon } from "../icons.tsx";
-import { ContextMenu, errText, Sheet, toast } from "./common.tsx";
+import { ContextMenu, errText, Select, Sheet, toast } from "./common.tsx";
 import { alertDialog, confirmDialog, promptDialog } from "./dialog.tsx";
 import { useSlider } from "./useSlider.ts";
 import { EmoteImg } from "./Emoji.tsx";
 
 const KIND: Record<Usage, string> = { emoticon: "اموجی", sticker: "استیکر" };
 const TICK = [ClientEvent.AccountData, RoomStateEvent.Events];
+const TINTS: [Tint, string][] = [["auto", "خودکار"], ["always", "همیشه"], ["never", "هرگز"]];
+/** `o` with its tint setting set, or dropped for "auto" (an image's "auto" = as its pack says). */
+const withTint = <T extends { [TINT]?: Tint }>(o: T, t: Tint): T => { const { [TINT]: _, ...rest } = o; return (t === "auto" ? rest : { ...rest, [TINT]: t }) as T; };
 
 /** A pack's images: add, rename, delete, or take one into mine. `use`: list only images usable that way and mark new ones so
  *  (my emoji and my stickers share the one personal pack); `mine`: it's that personal pack. */
@@ -65,15 +68,27 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
     if (!await confirmDialog(`همه‌ی ${num(list.length)} ${KIND[kind]} ${mine ? "شما" : "این بسته برای همه‌ی اعضا"} حذف شود؟`, { ok: "حذف همه", danger: true })) return;
     run(async () => { const cur = load(); await save(without(cur, listOf(cur).map(([code]) => code))); });
   };
+  const tintPack = (t: Tint) => run(() => { const cur = load(); return save({ ...cur, pack: withTint(cur.pack ?? {}, t) }); });
+  const tintImage = (code: string, t: Tint) => run(() => {
+    const cur = load();
+    return cur.images?.[code] ? save({ ...cur, images: { ...cur.images, [code]: withTint(cur.images[code], t) } }) : Promise.resolve();
+  });
+  const tints = editable && kind !== "sticker"; // stickers keep their colors
   const take = (code: string) =>
     addToMyPack(code, c.images![code], kind).then(() => toast(`به ${KIND[kind]}های شما اضافه شد`), (e) => alertDialog(errText(e)));
 
   return (
     <>
+      {tints && <>
+        <label className="select-row">هم‌رنگ متن
+          <Select value={c.pack?.[TINT] ?? "auto"} options={TINTS} disabled={busy} onChange={tintPack} />
+        </label>
+        <p className="muted">اموجیِ هم‌رنگ متن روی زمینه‌ی تیره روشن می‌شود. «خودکار»: فقط اموجی‌های تیره و تک‌رنگ. هر اموجی را هم می‌شود از منوی خودش جدا تنظیم کرد.</p>
+      </>}
       <div className="gif-grid pack-grid">
         {list.map(([code, i]) => (
           <button key={code} title={`:${code}:`} onClick={(e) => setMenu({ x: e.clientX, y: e.clientY, code })}>
-            <EmoteImg url={i.url} alt="" className="" /><small dir="ltr">:{code}:</small>
+            <EmoteImg url={i.url} alt="" className="" sticker={kind === "sticker"} /><small dir="ltr">:{code}:</small>
           </button>
         ))}
         {editable && !full && (
@@ -92,6 +107,11 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} target=".pack-grid button" onClose={() => setMenu(null)}>
           {!mine && <button role="menuitem" onClick={() => { setMenu(null); take(menu.code); }}><Icon name="plus" /> افزودن به مال من</button>}
+          {tints && ([["auto", "مثل بسته"], ...TINTS.slice(1)] as [Tint, string][]).map(([t, label]) => {
+            const on = (c.images?.[menu.code]?.[TINT] ?? "auto") === t;
+            return <button key={t} role="menuitemradio" aria-checked={on} onClick={() => { setMenu(null); if (!on) tintImage(menu.code, t); }}>
+              <span className="menu-check">{on && <Icon name="check" />}</span> هم‌رنگ متن: {label}</button>;
+          })}
           {editable && <button role="menuitem" onClick={() => { setMenu(null); void rename(menu.code); }}><Icon name="edit" /> تغییر نام</button>}
           {editable && <button role="menuitem" className="danger-item" onClick={() => { setMenu(null); void remove(menu.code); }}><Icon name="trash" /> حذف</button>}
         </ContextMenu>
@@ -159,7 +179,7 @@ export function RoomPacks({ room }: { room: Room }) {
         const kinds = p.content.pack?.usage?.length === 1 ? KIND[p.content.pack.usage[0]] : "اموجی و استیکر";
         return (
           <button key={p.key} className="user-row" onClick={() => setOpen(p.stateKey!)}>
-            <span className="device-box">{p.avatar ?? first ? <EmoteImg url={(p.avatar ?? first)!} alt="" className="" /> : <Icon name="smile" />}</span>
+            <span className="device-box">{p.avatar ?? first ? <EmoteImg url={(p.avatar ?? first)!} alt="" className="" sticker={kinds === KIND.sticker} /> : <Icon name="smile" />}</span>
             <span><b>{p.name}</b><small>{kinds} · {num(Object.keys(p.content.images ?? {}).length)} تصویر</small></span>
           </button>
         );
