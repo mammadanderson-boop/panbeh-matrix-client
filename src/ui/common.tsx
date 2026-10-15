@@ -250,7 +250,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   }, [close]);
-  return (
+  // portaled: opened from inside a stacking context (the composer's z-index), it would sit under the sidebar's new-chat button
+  return createPortal(
     <div className={"sheet-backdrop" + (closing ? " closing" : "")} onClick={close}>
       <div className="sheet" ref={ref} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
         <header className="sheet-head">
@@ -259,7 +260,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         </header>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
