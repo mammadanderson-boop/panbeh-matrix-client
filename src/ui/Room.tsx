@@ -40,11 +40,11 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   const [forwarding, setForwarding] = useState<MatrixEvent[] | null>(null);
   const [sel, setSel] = useState<ReadonlySet<string> | null>(null); // multi-select: event ids of the main timeline
   const forward1 = useCallback((ev: MatrixEvent | MatrixEvent[]) => setForwarding([ev].flat()), []);
-  const [search, setSearch] = useState(false);
+  const [search, setSearch] = useState<string | null>(null); // the sheet's starting query, while open
 
   const jumper = useRef<Jumper>(null);
   useEffect(() => { // Ctrl+F (Sidebar's shortcuts)
-    const open = () => { if (room.getMyMembership() !== KnownMembership.Invite) setSearch(true); };
+    const open = (e: Event) => { if (room.getMyMembership() !== KnownMembership.Invite) setSearch((e as CustomEvent<string | undefined>).detail ?? ""); }; // detail: a tapped #hashtag
     addEventListener("panbeh-search", open);
     return () => removeEventListener("panbeh-search", open);
   }, [room]);
@@ -160,7 +160,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
           </button>
           {room.getMyMembership() !== KnownMembership.Invite && <>
             <CallButtons room={room} />
-            <button className="icon-btn" onClick={() => setSearch(true)} title="جستجو" aria-label="جستجو"><Icon name="search" /></button>
+            <button className="icon-btn" onClick={() => setSearch("")} title="جستجو" aria-label="جستجو"><Icon name="search" /></button>
           </>}
         </header>
         )}
@@ -198,7 +198,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
           <ThreadView key={thread.id} room={room} threadId={thread.id} view={setViewing} info={setSeenFor} reactions={setReactionsFor} profile={setProfile} forward={forward1} />
         </aside>
       )}
-      {search && <SearchSheet room={room} onJump={(id, server) => searchJump(id, server ? 50 : undefined)} onClose={() => setSearch(false)} />}
+      {search !== null && <SearchSheet key={search} room={room} initial={search} onJump={(id, server) => searchJump(id, server ? 50 : undefined)} onClose={() => setSearch(null)} />}
       {info && <RoomInfo room={room} onClose={() => setInfo(false)} />}
       {seenFor && <SeenBy room={room} ev={seenFor} onClose={() => setSeenFor(null)} />}
       {reactionsFor && <ReactedBy room={room} ev={reactionsFor} onClose={() => setReactionsFor(null)} />}

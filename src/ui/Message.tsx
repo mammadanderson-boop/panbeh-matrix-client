@@ -7,7 +7,7 @@ import { EventStatus, EventType, M_POLL_START, RelationType, type MatrixEvent, t
 import { addToMyPack, avatarUrl, inMyPack, BLURHASH, client, isCached, isSavedGif, loadEvent, mediaUrl, pinnedIds, prefetch, seenBy, toggleGif, togglePin } from "../matrix.ts";
 import { abortSave, geoClick, isMetered, isNative, openSave, openSaved, rememberSave, writeSave, type SaveTarget } from "../native.ts";
 import { usePromise } from "../hooks.ts";
-import { LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, neshanUrl, num, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind, type Usage } from "../logic.ts";
+import { HASHTAG_SRC, LINK_SRC, blurhashDecode, clock, fmtDuration, isGif, linkHref, neshanUrl, num, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind, type Usage } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
 import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, senderMember, senderName, stripReplyFallback, toast, useChange, isVoice } from "./common.tsx";
 import { AudioPlayer, NoteRing, stopPlayer, trackFor } from "./Voice.tsx";
@@ -385,8 +385,34 @@ function Body({ ev, room, onView, onUser, album }: { ev: MatrixEvent; room: Room
 /** A formatted_body made safe to show, its reply fallback dropped; pills resolve against `room`. */
 function cleanHtml(html: string, room: Room) {
   pillRoom = room;
-  try { return DOMPurify.sanitize(html.replace(/<mx-reply>[\s\S]*?<\/mx-reply>/, ""), { FORBID_TAGS: ["style", "img"] }); }
+  try { return tagHtml(DOMPurify.sanitize(html.replace(/<mx-reply>[\s\S]*?<\/mx-reply>/, ""), { FORBID_TAGS: ["style", "img"] })); }
   finally { pillRoom = null; }
+}
+
+/** Opens search for a hashtag: Room listens for this, as for Ctrl+F. */
+const openHashtag = (tag: string) => dispatchEvent(new CustomEvent("panbeh-search", { detail: tag }));
+
+/** Hashtags in sanitized HTML's text (not in links or code) become the same buttons as in plain text. */
+function tagHtml(html: string) {
+  if (!html.includes("#")) return html;
+  const t = document.createElement("template");
+  t.innerHTML = html;
+  const walk = document.createTreeWalker(t.content, NodeFilter.SHOW_TEXT), texts: Text[] = [];
+  while (walk.nextNode()) if (!walk.currentNode.parentElement?.closest("a, code, pre")) texts.push(walk.currentNode as Text);
+  const re = new RegExp(`(${HASHTAG_SRC})`, "u");
+  for (const n of texts) {
+    const parts = n.data.split(re);
+    if (parts.length < 2) continue;
+    n.replaceWith(...parts.map((p, i) => {
+      if (!(i % 2)) return p;
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "hashtag";
+      b.textContent = p;
+      return b;
+    }));
+  }
+  return t.innerHTML;
 }
 
 /** Sanitized HTML; gives mention pills their avatars and opens them in-app. */
@@ -452,6 +478,13 @@ function Html({ html, room, onUser }: { html: string; room: Room; onUser: (id: s
       sp.classList.add("revealed");
       return;
     }
+    const tag = t.closest("button.hashtag");
+    if (tag) {
+      e.preventDefault();
+      e.stopPropagation();
+      openHashtag(tag.textContent!);
+      return;
+    }
     const a = t.closest<HTMLAnchorElement>("a.mention");
     if (!a) {
       // other matrix.to links (events, ?via) and matrix: URIs open inside the app
@@ -467,11 +500,12 @@ function Html({ html, room, onUser }: { html: string; room: Room; onUser: (id: s
   return <span ref={ref} onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-const LINKIFY_RE = new RegExp(`(${LINK_SRC}|matrix:[^\\s<]+[^\\s<.,;:!?)"'])`, "gi");
+const LINKIFY_RE = new RegExp(`(${LINK_SRC}|${HASHTAG_SRC}|matrix:[^\\s<]+[^\\s<.,;:!?)"'])`, "giu");
 
 function linkify(text: string) {
   return text.split(LINKIFY_RE).map((part, i) => {
     if (!(i % 2)) return part;
+    if (part.startsWith("#")) return <button key={i} type="button" className="hashtag" onClick={(e) => { e.stopPropagation(); openHashtag(part); }}>{part}</button>;
     if (part.startsWith("matrix:") && !parseMatrixLink(part)) return part;
     return <a key={i} href={linkHref(part)} target="_blank" rel="noreferrer noopener" onClick={parseMatrixLink(part) ? (e) => { e.preventDefault(); handleIncomingLink(part); } : undefined}>{part}</a>;
   });

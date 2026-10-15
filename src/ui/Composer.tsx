@@ -4,8 +4,8 @@ import { client, emoteMap, emotesFor, GIF_INFO, loadEvent, scheduleMessage, star
 import { getDraft, setDraft, showingDraft } from "../drafts.ts";
 import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages, nativeHoldIme } from "../native.ts";
 import { Icon } from "../icons.tsx";
-import { Avatar, bdi, ContextMenu, errText, formatSize, me, senderName, stripReplyFallback, toast } from "./common.tsx";
-import { clock, deleteBack, escRe, formatMessage, prefixLines, toggleWrap, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
+import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
+import { clock, deleteBack, escRe, formatMessage, hashtagsOf, prefixLines, toggleWrap, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
 import { isMessage } from "../hooks.ts";
 import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
@@ -46,7 +46,7 @@ const LOCK_AT = 60, CANCEL_AT = 100; // px the held finger slides up to lock, si
 
 type Props = { room: Room; threadId: string | null; mode: Mode; setMode: (m: Mode) => void; files: File[]; setFiles: (f: (x: File[]) => File[]) => void };
 type Mention = { name: string; id: string };
-type Suggestion = Mention & { mxc?: string | null; emote?: Emote };
+type Suggestion = Mention & { mxc?: string | null; emote?: Emote; tag?: boolean };
 
 export function Composer({ room, threadId, mode, setMode, files, setFiles }: Props) {
   const draftKey = room.roomId + (threadId ?? "");
@@ -189,11 +189,13 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     typingAt.current = 0;
   }, [room.roomId]);
 
-  // ---------- @ mentions, :custom emoji ----------
+  // ---------- @ mentions, :custom emoji, #hashtags ----------
   const emotes = emoteMap(room); // what's sent as images, and shown as them in the box
   const at = /(^|\s)@([^\s@]*)$/.exec(text.slice(0, caret));
   const colon = !at && /(^|\s):([^\s:]{2,})$/.exec(text.slice(0, caret));
-  const atPos = at ? caret - at[2].length - 1 : colon ? caret - colon[2].length - 1 : -1;
+  const hash = !at && !colon && /(^|\s)#([\p{L}\p{N}\p{M}_\u200c]+)$/u.exec(text.slice(0, caret));
+  const word = at ? at[2] : colon ? colon[2] : hash ? hash[2] : null;
+  const atPos = word === null ? -1 : caret - word.length - 1;
   const suggestions: Suggestion[] = [];
   if (colon && atPos !== closedAt) {
     const q = normalize(colon[2]), seen = new Set<string>();
@@ -210,12 +212,25 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       .slice(0, 6).map((m) => ({ id: m.userId, name: m.name, mxc: m.getMxcAvatarUrl() })));
     if ("room".startsWith(q) && room.currentState.mayTriggerNotifOfType("room", me())) suggestions.push({ id: "@room", name: "room" });
   }
+  if (hash && atPos !== closedAt) { // tags used in this room, most used first
+    const q = normalize(hash[2]), used = new Map<string, { tag: string; n: number }>();
+    // ponytail: loaded timeline only; pull from searchIndex if users want older tags
+    for (const ev of room.getLiveTimeline().getEvents()) {
+      if (!isMessage(ev)) continue;
+      for (const t of hashtagsOf(previewText(ev))) {
+        const k = normalize(t), u = used.get(k);
+        if (u) u.n++; else used.set(k, { tag: t, n: 1 });
+      }
+    }
+    suggestions.push(...[...used].filter(([k]) => k.startsWith(q) && k !== q).sort((a, b) => b[1].n - a[1].n).slice(0, 6)
+      .map(([, u]) => ({ id: "#" + u.tag, name: num(u.n) + " بار", tag: true })));
+  }
   useEffect(() => { if (at) room.loadMembersIfNeeded().catch(() => {}); }, [!!at, room]);
 
   function pick(s: Suggestion) {
-    const insert = s.emote ? s.id + " " : "@" + s.name + " ";
+    const insert = s.emote || s.tag ? s.id + " " : "@" + s.name + " ";
     const next = text.slice(0, atPos) + insert + text.slice(caret);
-    if (s.id !== "@room" && !s.emote) mentions.current.push({ name: s.name, id: s.id });
+    if (s.id !== "@room" && !s.emote && !s.tag) mentions.current.push({ name: s.name, id: s.id });
     const c = atPos + insert.length;
     setText(next);
     setCaret(c);
@@ -516,13 +531,14 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   return (
     <div className="composer" ref={root}>
       {suggestions.length > 0 && (
-        <div className="mention-list" role="listbox" aria-label={colon ? "اموجی" : "نام بردن"}>
+        <div className="mention-list" role="listbox" aria-label={colon ? "اموجی" : hash ? "برچسب" : "نام بردن"}>
           {suggestions.map((s, i) => (
             <button key={s.id} role="option" aria-selected={i === sel % suggestions.length} className={"user-row" + (i === sel % suggestions.length ? " on" : "")}
               onMouseDown={(e) => e.preventDefault()} onClick={() => pick(s)}>
-              {s.emote ? <span className="mention-room emote-sug"><EmoteImg url={s.emote.img.url} alt="" /></span>
+              {s.tag ? <span className="mention-room">#</span>
+                : s.emote ? <span className="mention-room emote-sug"><EmoteImg url={s.emote.img.url} alt="" /></span>
                 : s.id === "@room" ? <span className="mention-room"><Icon name="group" /></span> : <Avatar mxc={s.mxc} name={s.name} id={s.id} size={32} />}
-              {s.emote ? <span><b dir="ltr">{s.id}</b><small>{s.name}</small></span>
+              {s.emote || s.tag ? <span><b dir={s.tag ? "auto" : "ltr"}>{s.id}</b><small>{s.name}</small></span>
                 : <span><b>{s.id === "@room" ? "@room" : s.name}</b><small dir="ltr">{s.id === "@room" ? "همه‌ی اعضای گفتگو" : s.id}</small></span>}
             </button>
           ))}

@@ -392,6 +392,16 @@ const TLDS = "com|org|net|edu|gov|int|io|ir|co|me|app|dev|info|biz|ai|tv|xyz|ly|
 export const LINK_SRC =
   "(?:https?:\\/\\/|www\\.)[^\\s<]+[^\\s<.,;:!?)\"'`]" +
   "|(?<![\\w@.\\/-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+(?:" + TLDS + ")(?![\\w@-])(?::\\d+)?(?:\\/[^\\s<]*[^\\s<.,;:!?)\"'`])?";
+/** A #hashtag (needs the u flag): letters/digits/_ with at least one letter, ZWNJ only inside; not a#b, url/#frag, &#38;#1; or a #room:alias. */
+export const HASHTAG_SRC =
+  "(?<![\\p{L}\\p{N}\\p{M}_#&/])#(?=[\\p{N}_]*\\p{L})(?:[\\p{L}\\p{N}\\p{M}_]|\\u200c(?=[\\p{L}\\p{N}\\p{M}_]))+(?![\\p{L}\\p{N}\\p{M}_]|:[\\p{L}\\p{N}])";
+/** The hashtags in text, without the "#", as written. */
+export const hashtagsOf = (text: string) => [...text.matchAll(new RegExp(HASHTAG_SRC, "gu"))].map((m) => m[0].slice(1));
+/** The tag when `term` is exactly one hashtag ("#tag"), normalized; else null. */
+export const soleHashtag = (term: string) => {
+  const t = term.trim(), tags = hashtagsOf(t);
+  return tags.length === 1 && t === "#" + tags[0] ? normalize(tags[0]) : null;
+};
 /** href for a link found by LINK_SRC: scheme-less ones get https://. */
 export const linkHref = (u: string) => (/^(?:https?:|matrix:)/i.test(u) ? u : "https://" + u);
 /** Distinct web links in text (same pattern as the bubble's linkify), as hrefs. */
