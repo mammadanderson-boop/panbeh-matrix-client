@@ -1005,6 +1005,10 @@ img.tint {
 .verify-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .verify-actions button { height: 44px; border-radius: 12px; font-weight: 600; background: var(--hover); }
 .verify-actions button.primary { background: var(--accent); color: #fff; }
+.verify-methods { display: grid; gap: 10px; }
+.verify-methods button { display: flex; align-items: center; justify-content: center; gap: 8px; height: 46px; padding: 0 14px; border-radius: 12px; font-weight: 600; background: var(--hover); }
+.verify-methods button:not(.primary) svg { color: var(--accent); }
+.verify-methods button.primary { background: var(--accent); color: #fff; }
 .sas-emoji { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 6px; padding: 12px 4px; border-radius: 14px; background: var(--hover); }
 .sas-emoji div { display: grid; justify-items: center; gap: 4px; width: 64px; }
 .sas-emoji span { font-size: 34px; line-height: 1; }

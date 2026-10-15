@@ -136,13 +136,17 @@ function VerificationSheet({ req }: { req: VerificationRequest }) {
             <p>{`این کد را با ${other} اسکن کنید.`}</p>
             <div className="qr" role="img" aria-label="کد QR تأیید" dangerouslySetInnerHTML={{ __html: qr }} />
           </>}
-          {canScan && <button className={qr ? "" : "primary"} onClick={() => setScanning(true)}><Icon name="camera" size={18} /> {`اسکن کد ${other}`}</button>}
-          <button onClick={() => run(() => req.startVerification("m.sas.v1"))}>مقایسه‌ی شکلک‌ها</button>
+          <div className="verify-methods">
+            {canScan && <button className={qr ? "" : "primary"} onClick={() => setScanning(true)}><Icon name="camera" size={18} /> {`اسکن کد ${other}`}</button>}
+            <button onClick={() => run(() => req.startVerification("m.sas.v1"))}><Icon name="smile" size={18} /> تأیید به روش مقایسه‌ی شکلک‌ها</button>
+          </div>
         </>
       ) : req.initiatedByMe ? <span className="spinner inline" /> : (
         <>
           <p>درخواست پذیرفته شد. شکلک‌ها را در هر دو دستگاه مقایسه کنید.</p>
-          <button className="primary" onClick={() => run(() => req.startVerification("m.sas.v1"))}>مقایسه‌ی شکلک‌ها</button>
+          <div className="verify-methods">
+            <button className="primary" onClick={() => run(() => req.startVerification("m.sas.v1"))}><Icon name="smile" size={18} /> تأیید به روش مقایسه‌ی شکلک‌ها</button>
+          </div>
         </>
       );
       break;
