@@ -56,7 +56,8 @@ type Props = { onEmoji: (e: string, custom?: Emote) => void; onClose: () => void
   gifs?: { onPick: (g: Gif) => void }; stickers?: { onPick: (s: Emote) => void } };
 
 /** Emoji (+ optional stickers and saved gifs) popover; closes on outside click / Esc. Picking doesn't close it. */
-export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, closing }: Props & { closing?: boolean }) {
+/** docked: in the keyboard's place (Composer) — no backdrop, the chat stays scrollable and the composer closes it. */
+export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, closing, docked }: Props & { closing?: boolean; docked?: boolean }) {
   const [tab, setTab] = useState<"emoji" | "sticker" | "gif">("emoji");
   const pill = useSlider<HTMLDivElement>();
   useEffect(() => {
@@ -66,7 +67,7 @@ export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, closing }: 
   }, [onClose]);
   return (
     <>
-      <div className="menu-backdrop" onClick={onClose} />
+      {!docked && <div className="menu-backdrop" onClick={onClose} />}
       <div className={"emoji-panel" + (closing ? " closing" : "")} role="dialog" aria-label="اموجی">
         {(gifs || stickers) && (
           <div className="segmented" data-pill ref={pill}>

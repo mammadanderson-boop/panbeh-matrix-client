@@ -39,6 +39,7 @@ interface PanbehPlugin {
   audioRoutes(): Promise<Routes>;
   setAudioRoute(p: { id: number }): Promise<void>;
   setPip(p: { on: boolean }): Promise<void>;
+  holdIme(p: { on: boolean }): Promise<void>;
   setImmersive(p: { on: boolean }): Promise<void>;
   requestFullScreen(): Promise<void>;
   takeLaunchCall(): Promise<Partial<CallAction>>;
@@ -158,6 +159,8 @@ export function watchAudioRoutes(f: (r: Routes) => void) {
 export const nativeSetAudioRoute = (id: number) => plugin.setAudioRoute({ id });
 /** A video call is on screen: leaving the app shrinks it to picture-in-picture. */
 export const nativePip = (on: boolean) => { if (!headless) plugin.setPip({ on }).catch(() => {}); };
+/** The emoji panel stands in for the keyboard: the page keeps its height until a rising keyboard has covered the panel. */
+export const nativeHoldIme = (on: boolean) => { if (isNative && !headless) plugin.holdIme({ on }).catch(() => {}); };
 /** A call's video fills the screen: the system bars hide. */
 export const nativeImmersive = (on: boolean) => { if (!headless) plugin.setImmersive({ on }).catch(() => {}); };
 /** Android 14+: lets the user allow ringing over the lock screen. */

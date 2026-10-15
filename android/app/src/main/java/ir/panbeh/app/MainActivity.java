@@ -7,16 +7,24 @@ import android.graphics.Bitmap;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Rational;
+import android.view.View;
 import android.view.WindowManager;
 import android.webkit.WebView;
+import androidx.annotation.NonNull;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsAnimationCompat;
+import androidx.core.view.WindowInsetsCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
+import java.util.List;
 
 public class MainActivity extends BridgeActivity {
     /** Resumed and on screen: no notification for the chat being looked at. */
     static boolean visible;
     /** A video call is on screen: leaving the app shrinks it to picture-in-picture. Set by PanbehPlugin.setPip. */
     static boolean pipAllowed;
+    /** The emoji panel is standing in for the keyboard (Composer.tsx). Set by PanbehPlugin.holdIme. */
+    static volatile boolean holdIme;
 
     private static PictureInPictureParams.Builder pipParams() {
         return new PictureInPictureParams.Builder().setAspectRatio(new Rational(9, 16));
@@ -64,6 +72,46 @@ public class MainActivity extends BridgeActivity {
         if (Build.VERSION.SDK_INT >= 26) w.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
         if (SyncService.isEnabled(this)) SyncService.start(this);
         if (call) showOverLockScreen(this, true);
+        holdPageForKeyboard();
+    }
+
+    /** Capacitor pads the decor view by the keyboard as soon as it starts to rise, so the page shrinks at once and a bare
+     *  strip shows under it until the keyboard arrives. While the emoji panel is open in the keyboard's place, that
+     *  padding waits for the end of the animation: the keyboard slides up over the panel, then the panel goes. */
+    private void holdPageForKeyboard() {
+        View decor = getWindow().getDecorView();
+        ViewCompat.setWindowInsetsAnimationCallback(decor, new WindowInsetsAnimationCompat.Callback(WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+            int before, after = -1;
+
+            @Override
+            public void onPrepare(@NonNull WindowInsetsAnimationCompat a) {
+                before = decor.getPaddingBottom(); // the new insets (and padding) come after this, before onStart
+            }
+
+            @NonNull
+            @Override
+            public WindowInsetsAnimationCompat.BoundsCompat onStart(@NonNull WindowInsetsAnimationCompat a, @NonNull WindowInsetsAnimationCompat.BoundsCompat b) {
+                int now = decor.getPaddingBottom();
+                if (holdIme && (a.getTypeMask() & WindowInsetsCompat.Type.ime()) != 0 && now > before) {
+                    after = now;
+                    decor.setPadding(decor.getPaddingLeft(), decor.getPaddingTop(), decor.getPaddingRight(), before);
+                }
+                return b;
+            }
+
+            @NonNull
+            @Override
+            public WindowInsetsCompat onProgress(@NonNull WindowInsetsCompat insets, @NonNull List<WindowInsetsAnimationCompat> running) {
+                return insets;
+            }
+
+            @Override
+            public void onEnd(@NonNull WindowInsetsAnimationCompat a) {
+                if (after < 0) return;
+                decor.setPadding(decor.getPaddingLeft(), decor.getPaddingTop(), decor.getPaddingRight(), after);
+                after = -1;
+            }
+        });
     }
 
     @Override

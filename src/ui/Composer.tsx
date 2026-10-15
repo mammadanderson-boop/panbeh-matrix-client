@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
 import { getDraft, setDraft, showingDraft } from "../drafts.ts";
-import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages } from "../native.ts";
+import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages, nativeHoldIme } from "../native.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
 import { clock, escRe, formatMessage, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
@@ -25,6 +25,10 @@ export type Mode = { kind: "reply" | "edit"; ev: MatrixEvent } | null;
 const MEDIA = ["m.image", "m.video", "m.file"];
 // Chromium on Linux has no system location source, only Google's network service, which needs an API key Electron doesn't ship: hide location there
 const noGeo = isDesktop && navigator.userAgent.includes("Linux");
+/** Touch: the emoji panel sits where the keyboard was (Telegram-style) instead of popping up over the chat. */
+const DOCK = matchMedia("(pointer: coarse)").matches;
+const KB_KEY = "panbeh.kbHeight";
+let kbH = Number(localStorage.getItem(KB_KEY)) || 0; // the keyboard's last height: the docked panel's
 export const EDITABLE = ["m.text", "m.emote", "m.notice", ...MEDIA];
 /** A media message's caption (MSC2530): body differs from filename; otherwise body is just the name. */
 export const captionOf = (c: IContent): string => (c.filename && c.body !== c.filename ? c.body ?? "" : "");
@@ -58,7 +62,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const [livePick, setLivePick] = useState(false);
   const [mapPick, setMapPick] = useState(false);
   const [emoji, setEmoji] = useState(false);
-  const [emojiShown, emojiClosing] = useExit(emoji && !recording);
+  const [emojiShown, emojiClosing] = useExit(emoji && !recording, 220); // outlasts the docked panel's slide
   const [caret, setCaret] = useState(0);
   const [sel, setSel] = useState(0);
   const [closedAt, setClosedAt] = useState(-1); // Esc hides the mention list for this "@"
@@ -72,10 +76,60 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { // the composer floats over the timeline; tell it how much room to leave at the bottom
     const el = root.current!, host = el.parentElement!;
-    const ro = new ResizeObserver(() => host.style.setProperty("--composer-h", el.offsetHeight + "px"));
+    // without the docked emoji panel: the timeline ends above it (--emoji-gap), so its fade covers the row only
+    const ro = new ResizeObserver(() => host.style.setProperty("--composer-h", el.offsetHeight - (el.querySelector<HTMLElement>(".emoji-dock")?.offsetHeight ?? 0) + "px"));
     ro.observe(el);
     return () => { ro.disconnect(); host.style.removeProperty("--composer-h"); };
   }, []);
+  // The WebView shrinks by the keyboard. Under the row the composer keeps a gap of (panel - keyboard), so while the
+  // panel is open the row stays put as one replaces the other; the panel leaves once the keyboard is back up.
+  const emojiOn = useRef(emoji);
+  emojiOn.current = emoji;
+  const fit = useRef((_toggled?: boolean) => {});
+  useEffect(() => {
+    if (!DOCK) return;
+    const el = root.current!, host = el.parentElement!;
+    let full = 0, width = 0;
+    fit.current = (toggled = false) => {
+      const h = host.clientHeight;
+      if (host.clientWidth !== width) { width = host.clientWidth; full = 0; } // rotated: a new baseline
+      full = Math.max(full, h);
+      const kb = full - h, up = kb > 120, on = emojiOn.current;
+      if (up && !on && kb !== kbH) { kbH = kb; localStorage.setItem(KB_KEY, String(kb)); }
+      if (up && on && document.activeElement === ta.current) setEmoji(false); // typing again: the keyboard took over
+      const panel = kbH || Math.round(full * 0.4);
+      const search = !!document.activeElement?.closest(".emoji-panel"); // its search box: panel over the keyboard
+      el.style.setProperty("--emoji-h", panel + "px");
+      host.style.setProperty("--emoji-gap", (on ? (search ? panel : Math.max(0, panel - kb)) : 0) + "px"); // the timeline makes room too
+      host.classList.toggle("emoji-slide", toggled && !up); // opened or closed with no keyboard: it slides; swaps with the keyboard mustn't
+    };
+    const ro = new ResizeObserver(() => fit.current());
+    ro.observe(host);
+    const focus = () => fit.current();
+    addEventListener("focusin", focus);
+    return () => { ro.disconnect(); removeEventListener("focusin", focus); host.style.removeProperty("--emoji-gap"); };
+  }, []);
+  useLayoutEffect(() => fit.current(true), [emoji]);
+  useEffect(() => { // docked: a tap outside the composer closes it (a scroll doesn't click); a rising keyboard covers it first
+    if (!DOCK || !emoji) return;
+    nativeHoldIme(true);
+    const out = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (root.current!.contains(t)) return;
+      setEmoji(false);
+      if (t.closest(".timeline-wrap")) { e.preventDefault(); e.stopPropagation(); } // a tap on the chat only closes it, as with the keyboard
+    };
+    addEventListener("click", out, true);
+    return () => { nativeHoldIme(false); removeEventListener("click", out, true); };
+  }, [emoji]);
+  const backToKb = useRef(0);
+  function toggleEmoji() {
+    if (!DOCK) return setEmoji((x) => !x);
+    clearTimeout(backToKb.current);
+    if (emoji) return ta.current?.focus(); // ⌨
+    setEmoji(true);
+    ta.current?.blur(); // the keyboard goes down, the panel is already in its place
+  }
   const fileInput = useRef<HTMLInputElement>(null);
   const imgInput = useRef<HTMLInputElement>(null);
   const camInput = useRef<HTMLInputElement>(null);
@@ -119,7 +173,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     const to = Math.min(el.scrollHeight, parseFloat(getComputedStyle(el).maxHeight)); // cap lives in CSS (40dvh)
     if (from && from !== to && !reducedMotion()) { el.style.height = from + "px"; void el.offsetHeight; } // transition from where it was
     el.style.height = to + "px";
-  }, [text, recording]);
+  }, [text]);
   useEffect(() => {
     const restored = mode !== lastMode.current && pendingReply.current !== undefined; // a draft's reply coming back: no focus
     if (mode !== lastMode.current) { lastMode.current = mode; pendingReply.current = undefined; }
@@ -409,6 +463,10 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     </>
   );
 
+  const kbBtn = DOCK && emoji; // ⌨ in place of 😊 while the panel stands in for the keyboard
+  const emojiPanel = emojiShown && <EmojiPanel closing={emojiClosing} docked={DOCK} room={room} onEmoji={(k, custom) => insert(custom ? k + " " : k)} onClose={() => setEmoji(false)}
+    gifs={mode?.kind === "edit" ? undefined : { onPick: sendGif }} stickers={mode?.kind === "edit" ? undefined : { onPick: sendSticker }} />;
+
   return (
     <div className="composer" ref={root}>
       {suggestions.length > 0 && (
@@ -425,57 +483,60 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
         </div>
       )}
       {recording && bar}
-      {rec ? (rec.kind === "video" ? <VideoNoteRecorder {...rec} control={recControl} onDone={recorded} /> : <VoiceRecorder {...rec} control={recControl} onDone={recorded} />) : (
-        <div className="composer-row">
-          {/* RTL: first child sits on the right — send/mic there, the pill on the left */}
-          {canRecord ? (
-            <button className="send-btn rec-btn" onPointerDown={holdRecord} onContextMenu={(e) => e.preventDefault()}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRec({ kind: recordMode, locked: true, dx: 0 }); } }}
-              title={recordMode === "video" ? "پیام ویدیویی: نگه دارید" : "پیام صوتی: نگه دارید"} aria-label={recordMode === "video" ? "ضبط پیام ویدیویی" : "ضبط پیام صوتی"}>
-              <Icon key={recordMode} name={recordMode === "video" ? "camera" : "mic"} />
-            </button>
-          ) : (
-            <button className={"send-btn" + (text.trim() || mediaEdit ? " ready" : "")} onClick={sendPress.click(send)} {...sendPress.handlers} aria-label="ارسال"
-              onMouseDown={(e) => e.preventDefault()} /* keeps focus (and the phone's keyboard) in the textarea */ disabled={!text.trim() && !mediaEdit}>
-              <Icon key={mode?.kind === "edit" ? "check" : "send"} name={mode?.kind === "edit" ? "check" : "send"} />
-            </button>
-          )}
-          {/* one pill — attach, text, emoji (attach slides away while typing) */}
-          <div className="composer-field">
-            {bar}
-            <div className={"attach" + (attachAway ? " away" : "") + (hasSched ? " two" : "")}>
-              {/* outside the menu: picking closes the menu, and an unmounted input never gets its change event */}
-              <input ref={fileInput} type="file" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
-              <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
-              <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
-              <button className="icon-btn" title="پیوست" aria-label="پیوست" aria-expanded={menu} aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined} onClick={() => setMenu((m) => !m)}><Icon name="attach" /></button>
-              {hasSched && <button className="icon-btn" title="پیام‌های زمان‌بندی‌شده" aria-label="پیام‌های زمان‌بندی‌شده" aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined}
-                onClick={() => setSchedList(true)}><Icon name="clock" /></button>}
-              {menuShown && (
-                <>
-                  <div className="menu-backdrop" onClick={() => setMenu(false)} />
-                  <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
-                    {canCamera && <button role="menuitem" onClick={takePhoto}><Icon name="camera" /> دوربین</button>}
-                    <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس</button>
-                    {isNative && <button role="menuitem" onClick={pasteClipboard}><Icon name="clipboard" /> چسباندن از کلیپ‌بورد</button>}
-                    <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل</button>
-                    {/* one location entry: the map opens first, then it's a spot chosen on it, the GPS position or live sharing */}
-                    <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="location" /> موقعیت مکانی</button>
-                    <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
-                  </div>
-                </>
-              )}
-            </div>
-            <textarea ref={ta} rows={1} value={text} placeholder={mediaEdit ? "کپشن…" : "پیام"} aria-label="پیام"
-              onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart); setSel(0); typing(!!e.target.value); }}
-              onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
-              onKeyDown={onKey} onPaste={(e) => pasteFiles(e, setFiles)} onBlur={() => typingAt.current && typing(false)} />
-            <button className="icon-btn emoji-toggle" title="اموجی و استیکر" aria-label="اموجی و استیکر" aria-expanded={emoji} onClick={() => setEmoji((x) => !x)}><Icon name="smile" /></button>
+      {rec && (rec.kind === "video" ? <VideoNoteRecorder {...rec} control={recControl} onDone={recorded} /> : <VoiceRecorder {...rec} control={recControl} onDone={recorded} />)}
+      {/* stays mounted (hidden) while recording: unmounting the focused textarea would drop the keyboard, and the
+          held mic button would jump with the layout */}
+      <div className={"composer-row" + (rec ? " behind-rec" : "")} aria-hidden={recording || undefined}>
+        {/* RTL: first child sits on the right — send/mic there, the pill on the left */}
+        {canRecord ? (
+          <button className="send-btn rec-btn" onPointerDown={holdRecord} onContextMenu={(e) => e.preventDefault()}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRec({ kind: recordMode, locked: true, dx: 0 }); } }}
+            title={recordMode === "video" ? "پیام ویدیویی: نگه دارید" : "پیام صوتی: نگه دارید"} aria-label={recordMode === "video" ? "ضبط پیام ویدیویی" : "ضبط پیام صوتی"}>
+            <Icon key={recordMode} name={recordMode === "video" ? "camera" : "mic"} />
+          </button>
+        ) : (
+          <button className={"send-btn" + (text.trim() || mediaEdit ? " ready" : "")} onClick={sendPress.click(send)} {...sendPress.handlers} aria-label="ارسال"
+            onMouseDown={(e) => e.preventDefault()} /* keeps focus (and the phone's keyboard) in the textarea */ disabled={!text.trim() && !mediaEdit}>
+            <Icon key={mode?.kind === "edit" ? "check" : "send"} name={mode?.kind === "edit" ? "check" : "send"} />
+          </button>
+        )}
+        {/* one pill — attach, text, emoji (attach slides away while typing) */}
+        <div className="composer-field">
+          {!recording && bar}
+          <div className={"attach" + (attachAway ? " away" : "") + (hasSched ? " two" : "")}>
+            {/* outside the menu: picking closes the menu, and an unmounted input never gets its change event */}
+            <input ref={fileInput} type="file" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
+            <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
+            <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
+            <button className="icon-btn" title="پیوست" aria-label="پیوست" aria-expanded={menu} aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined} onClick={() => setMenu((m) => !m)}><Icon name="attach" /></button>
+            {hasSched && <button className="icon-btn" title="پیام‌های زمان‌بندی‌شده" aria-label="پیام‌های زمان‌بندی‌شده" aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined}
+              onClick={() => setSchedList(true)}><Icon name="clock" /></button>}
+            {menuShown && (
+              <>
+                <div className="menu-backdrop" onClick={() => setMenu(false)} />
+                <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
+                  {canCamera && <button role="menuitem" onClick={takePhoto}><Icon name="camera" /> دوربین</button>}
+                  <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> عکس و ویدیو</button>
+                  {isNative && <button role="menuitem" onClick={pasteClipboard}><Icon name="clipboard" /> چسباندن از کلیپ‌بورد</button>}
+                  <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> فایل</button>
+                  {/* one location entry: the map opens first, then it's a spot chosen on it, the GPS position or live sharing */}
+                  <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="location" /> موقعیت مکانی</button>
+                  <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> نظرسنجی</button>
+                </div>
+              </>
+            )}
           </div>
+          <textarea ref={ta} rows={1} value={text} placeholder={mediaEdit ? "کپشن…" : "پیام"} aria-label="پیام"
+            onChange={(e) => { if (recording) return; setText(e.target.value); setCaret(e.target.selectionStart); setSel(0); typing(!!e.target.value); }}
+            onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+            // a keyboard that doesn't resize the page (a browser tab, a hardware one) never closes the panel by itself
+            onFocus={() => { if (DOCK && emoji) backToKb.current = window.setTimeout(() => setEmoji(false), 700); }}
+            onKeyDown={onKey} onPaste={(e) => pasteFiles(e, setFiles)} onBlur={() => typingAt.current && typing(false)} />
+          <button className="icon-btn emoji-toggle" title={kbBtn ? "صفحه‌کلید" : "اموجی و استیکر"} aria-label={kbBtn ? "صفحه‌کلید" : "اموجی و استیکر"} aria-expanded={kbBtn ? undefined : emoji}
+            onMouseDown={(e) => e.preventDefault()} /* the keyboard stays up until the panel is in its place */ onClick={toggleEmoji}><Icon name={kbBtn ? "keyboard" : "smile"} /></button>
         </div>
-      )}
-      {emojiShown && <EmojiPanel closing={emojiClosing} room={room} onEmoji={(k, custom) => insert(custom ? k + " " : k)} onClose={() => setEmoji(false)}
-        gifs={mode?.kind === "edit" ? undefined : { onPick: sendGif }} stickers={mode?.kind === "edit" ? undefined : { onPick: sendSticker }} />}
+      </div>
+      {DOCK ? <div className="emoji-dock">{emojiPanel}</div> : emojiPanel}
       {files.length > 0 && <SendFiles files={files} setFiles={setFiles} onSend={sendFiles} canSchedule={canSched} />}
       {sendMenu && (
         <ContextMenu {...sendMenu} target=".send-btn" onClose={() => setSendMenu(null)}>
