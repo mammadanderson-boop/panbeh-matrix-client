@@ -136,7 +136,14 @@ function EmojiGrid({ room, onPick }: { room?: Room; onPick: (e: Emoji) => void }
     n.toggleAttribute("data-end", x + n.clientWidth < n.scrollWidth - 1);
   };
   useLayoutEffect(edges, [packCats.length, rec.length]);
-  useEffect(() => { nav.current?.querySelector(".on")?.scrollIntoView({ inline: "nearest", block: "nearest" }); }, [group]);
+  // the bar alone: scrollIntoView would scroll the chat too, pulling the composer up while the docked panel still
+  // waits off screen under the keyboard
+  useEffect(() => {
+    const n = nav.current, b = n?.querySelector(".on");
+    if (!n || !b) return;
+    const r = b.getBoundingClientRect(), s = n.getBoundingClientRect();
+    n.scrollLeft += Math.min(0, r.left - s.left) + Math.max(0, r.right - s.right);
+  }, [group]);
   const cat = ([g, icon, label]: readonly [number | string, ReactNode, string]) => {
     const on = !term && g === group;
     return <button key={g} role="tab" aria-selected={on} className={on ? "on" : ""} title={label} aria-label={label} onClick={() => { setQ(""); setGroup(g); }}>{icon}</button>;
