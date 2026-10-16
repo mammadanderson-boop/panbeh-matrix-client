@@ -2,20 +2,22 @@ import { useEffect, useLayoutEffect, useMemo, useRef, type ClipboardEvent, type 
 import { mediaUrl } from "../matrix.ts";
 import { emoteRe } from "../logic.ts";
 import { tinted } from "./Emoji.tsx";
+import { emojiImg, emojiSplit } from "../jsx/jsx-runtime.ts";
 
-/* A text box that shows custom emoji as images while speaking plain text: an emoji is its ":code:", a line break "\n".
+/* A text box that shows custom emoji (and Apple's, for unicode ones) as images while speaking plain text: a custom
+   emoji is its ":code:", a unicode one itself (its alt), a line break "\n".
    Typing is left to the browser; anything structural (a newline, a paste, text set from outside, a typed ":code:"
    turning into its image) lays the box out afresh from the text. */
 
 const BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 const lastSel = new WeakMap<HTMLElement, [number, number]>(); // the caret while the box isn't focused
 
-/** The text: emoji as ":code:", "\n" as typed. <br>s are only the browser's (or our) placeholders for an empty line. */
+/** The text: custom emoji as ":code:", "\n" as typed. <br>s are only the browser's (or our) placeholders for an empty line. */
 export function textOf(n: Node): string {
   let s = "";
   for (const c of n.childNodes) {
     if (c instanceof Text) s += c.data;
-    else if (c instanceof HTMLImageElement) s += c.dataset.code ? `:${c.dataset.code}:` : "";
+    else if (c instanceof HTMLImageElement) s += c.dataset.code ? `:${c.dataset.code}:` : c.classList.contains("emoji") ? c.alt : "";
     else if (c instanceof HTMLElement && !(c instanceof HTMLBRElement)) s += (/^(DIV|P)$/.test(c.tagName) && s && !s.endsWith("\n") ? "\n" : "") + textOf(c);
   }
   return s.replaceAll(" ", " "); // the browser's stand-in for a run of spaces
@@ -30,7 +32,7 @@ function locate(root: Node, off: number): [Node, number] {
       const c = n.childNodes[i];
       if (c instanceof Text) { if (left <= c.length) return [c, left]; left -= c.length; }
       else if (c instanceof HTMLImageElement) {
-        const l = (c.dataset.code?.length ?? -2) + 2;
+        const l = c.dataset.code ? c.dataset.code.length + 2 : c.classList.contains("emoji") ? c.alt.length : 0;
         if (left < l) return [n, left ? i + 1 : i];
         left -= l;
       } else { const r = go(c); if (r) return r; }
@@ -88,7 +90,7 @@ function emoteEl(code: string, mxc: string) {
 
 function build(el: HTMLElement, text: string, re: RegExp | null, emotes: ReadonlyMap<string, string>) {
   const parts = re ? text.split(re) : [text]; // odd parts are the captured codes
-  el.replaceChildren(...parts.flatMap((p, i): (Node | string)[] => (i % 2 ? [emoteEl(p, emotes.get(p)!)] : p ? [p] : [])),
+  el.replaceChildren(...parts.flatMap((p, i): (Node | string)[] => (i % 2 ? [emoteEl(p, emotes.get(p)!)] : emojiSplit(p).flatMap((q, j): (Node | string)[] => (j % 2 ? [emojiImg(q)] : q ? [q] : [])))),
     ...(text.endsWith("\n") ? [document.createElement("br")] : [])); // holds the empty last line open
 }
 
@@ -113,7 +115,8 @@ export function EmoteInput({ value, onChange, onCaret, emotes, placeholder, auto
   const live = useRef({ re, emotes, onChange, onCaret });
   live.current = { re, emotes, onChange, onCaret };
 
-  const rawCode = (e: HTMLElement) => !!re && [...e.childNodes].some((n) => n instanceof Text && n.data.search(re) >= 0);
+  // a typed ":code:" or emoji, not yet an image
+  const rawCode = (e: HTMLElement) => [...e.childNodes].some((n) => n instanceof Text && ((!!re && n.data.search(re) >= 0) || emojiSplit(n.data).length > 1));
   /** Replaces the selection with `s`. */
   function put(s: string) {
     const e = el.current!, t = textOf(e), [a, b] = caretOf(e), next = t.slice(0, a) + s + t.slice(b);
@@ -121,7 +124,7 @@ export function EmoteInput({ value, onChange, onCaret, emotes, placeholder, auto
     placeCaret(e, a + s.length);
     live.current.onChange(next, a + s.length);
   }
-  /** After the browser's edit: an emptied box drops its leftover <br> (so the placeholder shows), a typed code becomes its image. */
+  /** After the browser's edit: an emptied box drops its leftover <br> (so the placeholder shows), a typed code or emoji becomes its image. */
   function settle() {
     const e = el.current!, t = textOf(e);
     if (!t && e.firstChild) e.replaceChildren();

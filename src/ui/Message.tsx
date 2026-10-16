@@ -21,6 +21,7 @@ import { reducedMotion, useDismiss } from "./useDismiss.ts";
 import { thumbFor } from "./Media.tsx";
 import { alertDialog, confirmDialog, promptDialog } from "./dialog.tsx";
 import { loadPrefs } from "./Settings.tsx";
+import { emojiImg, emojiSplit } from "../jsx/jsx-runtime.ts";
 
 export type Actions = {
   reply: (ev: MatrixEvent) => void;
@@ -417,8 +418,23 @@ function tagHtml(html: string) {
 }
 
 /** Sanitized HTML; gives mention pills their avatars and opens them in-app. */
+/** Message HTML with its emoji as Apple's pictures (the JSX runtime's job everywhere else); code stays as typed. */
+function emojiHtml(html: string) {
+  if (emojiSplit(html).length === 1) return html;
+  const t = document.createElement("template");
+  t.innerHTML = html;
+  const w = document.createTreeWalker(t.content, NodeFilter.SHOW_TEXT), texts: Text[] = [];
+  while (w.nextNode()) texts.push(w.currentNode as Text);
+  for (const n of texts) {
+    const parts = emojiSplit(n.data);
+    if (parts.length > 1 && !n.parentElement?.closest("pre, code")) n.replaceWith(...parts.map((p, i) => (i % 2 ? emojiImg(p) : p)));
+  }
+  return t.innerHTML;
+}
+
 function Html({ html, room, onUser }: { html: string; room: Room; onUser: (id: string) => void }) {
   const ref = useRef<HTMLSpanElement>(null);
+  const shown = useMemo(() => emojiHtml(html), [html]);
   useEffect(() => {
     ref.current?.querySelectorAll<HTMLAnchorElement>("a.mention").forEach((a) => {
       const id = a.dataset.mxid!;
@@ -498,7 +514,7 @@ function Html({ html, room, onUser }: { html: string; room: Room; onUser: (id: s
     if (a.dataset.mxid!.startsWith("@")) onUser(a.dataset.mxid!);
     else openRoomPill(a);
   };
-  return <span ref={ref} onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <span ref={ref} onClick={onClick} dangerouslySetInnerHTML={{ __html: shown }} />;
 }
 
 const LINKIFY_RE = new RegExp(`(${LINK_SRC}|${HASHTAG_SRC}|matrix:[^\\s<]+[^\\s<.,;:!?)"'])`, "giu");
