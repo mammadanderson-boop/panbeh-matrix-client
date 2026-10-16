@@ -213,6 +213,7 @@ const updatesFile = () => path.join(app.getPath("userData"), "updates.json");
 const autoUpdate = () => { try { return JSON.parse(fs.readFileSync(updatesFile(), "utf8")).auto !== false; } catch { return true; } };
 /** @type {{ status: "idle" | "checking" | "none" | "available" | "downloading" | "ready" | "error", version?: string, percent?: number }} */
 let update = { status: "idle" };
+const isDev = app.getVersion().includes("-"); // a dev build (Actions → Run workflow) only offers the release, never downloads it unasked
 const setUpdate = (u) => { update = u; win?.webContents.send("update", update); };
 /** @type {import("electron-updater").AppUpdater | null} */ let updater = null;
 
@@ -220,9 +221,9 @@ function startUpdater() {
   if (!app.isPackaged) return;
   const { autoUpdater } = require("electron-updater");
   updater = autoUpdater;
-  autoUpdater.allowPrerelease = false; // only v* releases: rolling main builds are for manual download
+  autoUpdater.allowPrerelease = false; // only v* releases; a dev build (0.1.0-N) is older than all of them, so it's offered the latest
   // Squirrel.Mac refuses unsigned updates: there, "download" points to the release page until the app is signed
-  autoUpdater.autoDownload = autoUpdate() && !isMac;
+  autoUpdater.autoDownload = autoUpdate() && !isMac && !isDev;
   // a version already found stays on show while checking again
   autoUpdater.on("checking-for-update", () => { if (!update.version) setUpdate({ status: "checking" }); });
   autoUpdater.on("update-not-available", () => setUpdate({ status: "none" }));
@@ -248,6 +249,7 @@ function downloadUpdate() {
 
 ipcMain.handle("update-state", () => update);
 ipcMain.handle("update-auto", (_e, on) => {
+  if (isDev) return undefined;
   if (typeof on === "boolean") {
     try { fs.writeFileSync(updatesFile(), JSON.stringify({ auto: on })); } catch { /* stays as it was */ }
     if (updater) updater.autoDownload = on && !isMac;

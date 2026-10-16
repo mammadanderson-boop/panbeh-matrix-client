@@ -371,6 +371,7 @@ export async function clipboardImages(): Promise<File[] | null> {
 // ---------- updates: the newest v* GitHub release's APK, handed to Android's installer (it asks; no silent install) ----------
 const RELEASE = "https://api.github.com/repos/mhfmobin/panbeh-matrix-client/releases/latest"; // "latest" skips the rolling pre-release
 const version = (import.meta.env.VITE_APP_VERSION ?? "").replace(/^v/, "");
+const devRun = /^\d+\.\d+\.\d+-(\d+)$/.exec(version)?.[1]; // a dev build (Actions → Run workflow): this run number is its versionCode
 const AUTO_UPDATE = "panbeh.autoUpdate";
 const autoUpdate = () => { try { return localStorage.getItem(AUTO_UPDATE) !== "0"; } catch { return true; } };
 let upd: Update = { status: "idle" }, apk = "";
@@ -386,12 +387,19 @@ async function checkUpdate() {
     const rel = await r.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] };
     const v = rel.tag_name.replace(/^v/, "");
     apk = rel.assets.find((a) => a.name.endsWith(".apk"))?.browser_download_url ?? "";
-    if (!apk || v.localeCompare(version, undefined, { numeric: true }) <= 0) return setUpd({ status: "none" });
+    const newer = devRun ? await releaseRun(rel.tag_name) > +devRun : v.localeCompare(version, undefined, { numeric: true }) > 0;
+    if (!apk || !newer) return setUpd({ status: "none" });
     setUpd({ status: "available", version: v });
-    if (autoUpdate() && !isMetered()) downloadUpdate(); // on mobile data it only says so
+    if (autoUpdate() && !isMetered() && !devRun) downloadUpdate(); // on mobile data it only says so; a dev build only offers it
   } catch {
     setUpd(upd.version ? { status: "available", version: upd.version } : { status: "error" });
   }
+}
+/** The run number (so the versionCode) of a release's APK: Android won't install a lower one, so a dev build made after it waits for the next release. */
+async function releaseRun(tag: string) {
+  const r = await fetch(`https://api.github.com/repos/mhfmobin/panbeh-matrix-client/actions/workflows/android.yml/runs?event=push&status=success&per_page=1&branch=${encodeURIComponent(tag)}`);
+  if (!r.ok) throw new Error(`${r.status}`);
+  return ((await r.json()) as { workflow_runs: { run_number: number }[] }).workflow_runs[0]?.run_number ?? 0;
 }
 function downloadUpdate() {
   if (upd.status !== "available") return;
@@ -403,12 +411,13 @@ function downloadUpdate() {
     .finally(() => h.then((x) => x.remove()));
 }
 
-// Release builds only: a rolling main build (0.1.0-N) has a newer versionCode than any release, so Android would refuse it
-if (isNative && !headless && /^\d+\.\d+\.\d+$/.test(version)) {
+// CI builds only: a local build has no version and a debug key, so a release can't install over it
+if (isNative && !headless && /^\d+\.\d+\.\d+(-\d+)?$/.test(version)) {
   setUpdater({
     state: async () => upd,
     onState: (cb) => { updSubs.add(cb); return () => { updSubs.delete(cb); }; },
     auto: async (on) => {
+      if (devRun) return undefined;
       if (typeof on === "boolean") {
         try { localStorage.setItem(AUTO_UPDATE, on ? "1" : "0"); } catch { /* stays as it was */ }
         if (on) downloadUpdate();
