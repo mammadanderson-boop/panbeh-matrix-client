@@ -9,8 +9,17 @@ export const LANGS: [Lang, string][] = [["fa", "فارسی"], ["en", "English"]]
 
 const pick = (): Lang => {
   if (typeof document === "undefined") return "fa"; // node --test: the tests assert Persian
-  try { const l = JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}").lang; if (l === "fa" || l === "en") return l; } catch { /* no storage */ }
-  return navigator.language.toLowerCase().startsWith("fa") ? "fa" : "en";
+  const device: Lang = navigator.language.toLowerCase().startsWith("fa") ? "fa" : "en";
+  try {
+    const prefs = JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}");
+    if (prefs.lang === "fa" || prefs.lang === "en") return prefs.lang;
+    if (localStorage.getItem("panbeh.langAuto")) return device;
+    // an install from before the English UI stays Persian whatever the phone's language; a new one follows the device from now on
+    const old = ["panbeh.prefs", "panbeh.sessions", "panbeh.session"].some((k) => localStorage.getItem(k));
+    if (old) localStorage.setItem("panbeh.prefs", JSON.stringify({ ...prefs, lang: "fa" }));
+    else localStorage.setItem("panbeh.langAuto", "1");
+    return old ? "fa" : device;
+  } catch { return device; /* no storage */ }
 };
 export const lang = pick();
 export const rtl = lang === "fa";

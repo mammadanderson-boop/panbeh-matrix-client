@@ -1,4 +1,4 @@
-import { LOCALE, t } from "./i18n.ts";
+import { lang, rtl, t } from "./i18n.ts";
 import { EventType, MatrixEventEvent, MsgType, PushRuleActionName, PushRuleKind, ReceiptType, RoomEvent, type IRoomTimelineData, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { avatarUrl, client, pastFirstSync } from "./matrix.ts";
 import { isGroupChat, previewText, senderMember, senderName, roomAvatarMxc } from "./ui/common.tsx";
@@ -132,7 +132,7 @@ async function show(room: Room, sender: string, text: string, sound: boolean, ts
   const n = new Notification(title, {
     body,
     tag: room.roomId, // newest message per chat replaces the previous one
-    icon, lang: LOCALE, dir: "auto",
+    icon, lang, dir: rtl ? "rtl" : "auto", // Persian: as before the English UI
   });
   open.set(room.roomId, { n, eventId: more.eventId });
   n.onclose = () => { if (open.get(room.roomId)?.n === n) open.delete(room.roomId); };

@@ -83,7 +83,7 @@ export function Login({ onDone, initialError, onCancel }: { onDone: () => void; 
         <button className="primary" disabled={busy || mode === "checking"}>
           {busy ? t("login.signingIn") : { "": t("login.continue"), checking: t("login.checking"), oauth: t("login.oauth"), password: t("login.signIn") }[mode]}
         </button>
-        {onCancel && <button type="button" onClick={onCancel}>{t("common.cancel")}</button>}
+        {onCancel && <button type="button" onClick={onCancel}>{t("common.dismiss")}</button>}
         {LANGS.filter(([l]) => l !== lang).map(([l, name]) => <button key={l} type="button" className="plain login-lang" lang={l} onClick={() => setLang(l)}>{name}</button>)}
       </form>
     </div>

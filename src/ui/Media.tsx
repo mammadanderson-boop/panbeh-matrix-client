@@ -355,7 +355,7 @@ export function SharedMedia({ room, onClose, onJump }: { room: Room; onClose: ()
         {busy ? <span className="spinner inline" />
           : error ? <><p className="error">{error}</p><button onClick={more}>{t("common.retry")}</button></>
           : token === null ? (!shown.length && <p className="muted">{t("common.nothingFound")}</p>)
-          : autoLeft <= 0 && <button onClick={() => setAutoLeft(AUTO_PAGES)}>{t("search.older")}</button>}
+          : autoLeft <= 0 && <button onClick={() => setAutoLeft(AUTO_PAGES)}>{t("media.searchOlder")}</button>}
       </div>
       {viewing && <MediaViewer items={[...shown].reverse()} start={viewing} onClose={() => setViewing(null)} onJump={jump} />}
     </Sheet>

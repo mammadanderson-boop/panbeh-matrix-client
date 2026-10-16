@@ -124,7 +124,7 @@ function SourcePicker({ sources, onDone }: { sources: ShareSource[]; onDone: (id
         <h3>{t("call.shareWhat")}</h3>
         {screens.length > 0 && <><h4>{t("call.screens")}</h4>{grid(screens)}</>}
         {windows.length > 0 && <><h4>{t("call.windows")}</h4>{grid(windows)}</>}
-        <button className="source-cancel" onClick={() => onDone(null)}>{t("common.cancel")}</button>
+        <button className="source-cancel" onClick={() => onDone(null)}>{t("common.dismiss")}</button>
       </div>
     </div>
   );

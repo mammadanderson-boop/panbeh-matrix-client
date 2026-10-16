@@ -95,7 +95,7 @@ const EMOTES_ONLY = /^(\s*<span class="emote"[^>]*>[^<]*<\/span>){1,3}\s*$/;
 function grab(code: string, url: string, use: Usage, info?: Record<string, unknown>) {
   if (inMyPack(url, use)) return toast(use === "sticker" ? t("msg.inStickers") : t("msg.inEmoji"));
   void confirmDialog(t(use === "sticker" ? "msg.addStickerQ" : "msg.addEmojiQ", { code }), { ok: t("common.add") }).then((y) => {
-    if (y) addToMyPack(code, { url, info }, use).then(() => toast(use === "sticker" ? t("packs.addedSticker") : t("packs.addedEmoji")), (e) => alertDialog(errText(e)));
+    if (y) addToMyPack(code, { url, info }, use).then(() => toast(use === "sticker" ? t("msg.addedSticker") : t("msg.addedEmoji")), (e) => alertDialog(errText(e)));
   });
 }
 
@@ -760,7 +760,7 @@ function LocationCard({ c }: { c: Content }) {
       <span className="file-icon"><Icon name="location" /></span>
       <span>
         <b dir="auto">{loc?.description || t("loc.title")}</b>
-        <small><bdi dir="ltr">{g.lat.toFixed(5)}, {g.lon.toFixed(5)}</bdi>{g.acc ? " · " + t("loc.accuracy", { count: Math.round(g.acc) }) : ""}</small>
+        <small><bdi dir="ltr">{g.lat.toFixed(5)}, {g.lon.toFixed(5)}</bdi>{g.acc ? " · " + t("msg.locAccuracy", { count: Math.round(g.acc) }) : ""}</small>
         <span className="location-links">
           {isNative ? <a href={neshanUrl(g.lat, g.lon)} onClick={geoClick(g.lat, g.lon, loc?.description)}>{t("loc.openMap")}</a> : <>
             <a href={neshanUrl(g.lat, g.lon)} target="_blank" rel="noreferrer noopener">{t("loc.neshan")}</a>

@@ -463,7 +463,7 @@ function PushRules() {
   return (
     <>
       {roomRules.length > 0 && (
-        <label className="switch-row"><span>{t("perm.room")}<small>{t("set.roomMentionHint")}</small></span>
+        <label className="switch-row"><span>{t("set.roomMention")}<small>{t("set.roomMentionHint")}</small></span>
           <input type="checkbox" role="switch" checked={roomRules.some((r) => r.enabled)} disabled={busy}
             onChange={(e) => act(() => Promise.all(roomRules.map((r) => client.setPushRuleEnabled("global", PushRuleKind.Override, r.rule_id, e.target.checked))))} /></label>
       )}

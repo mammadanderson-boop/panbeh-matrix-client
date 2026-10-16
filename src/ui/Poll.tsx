@@ -153,7 +153,7 @@ export function PollBody({ ev, room }: { ev: MatrixEvent; room: Room }) {
       })}
       <div className="poll-foot">
         <span>{total ? t("poll.votes", { count: total }) : t("poll.noVotes")}</span>
-        {canEdit && <button onClick={() => setEditing(true)}>{t("common.edit")}</button>}
+        {canEdit && <button onClick={() => setEditing(true)}>{t("msg.edit")}</button>}
         {canEnd && <button onClick={end}>{t("poll.end")}</button>}
       </div>
       {/* portal: a fixed sheet inside the virtualized bubble would be clipped and catch its clicks */}

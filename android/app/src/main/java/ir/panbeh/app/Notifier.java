@@ -35,10 +35,10 @@ final class Notifier {
 
     private Notifier() {}
 
-    /** ctx with the page's language (PanbehPlugin.setLanguage), else the phone's: its strings for everything the app shows itself. */
+    /** ctx with the page's language (PanbehPlugin.setLanguage): its strings for everything the app shows itself. Until the page
+     *  has said, Persian: an update from before the English UI may sync and notify before the app is opened again. */
     static Context localized(Context ctx) {
-        String lang = ctx.getSharedPreferences("panbeh", Context.MODE_PRIVATE).getString("lang", null);
-        if (lang == null) return ctx;
+        String lang = ctx.getSharedPreferences("panbeh", Context.MODE_PRIVATE).getString("lang", "fa");
         Configuration c = new Configuration(ctx.getResources().getConfiguration());
         c.setLocale(Locale.forLanguageTag(lang));
         return ctx.createConfigurationContext(c);
@@ -80,7 +80,7 @@ final class Notifier {
             .setSmallIcon(R.drawable.ic_stat_panbeh)
             .setColor(0xFF007DED)
             .setContentTitle(caller)
-            .setContentText(ctx.getString(video ? R.string.call_video : R.string.call_voice))
+            .setContentText(localized(ctx).getString(video ? R.string.call_video : R.string.call_voice))
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE), AudioManager.STREAM_RING) // before Android 8 (no channels)

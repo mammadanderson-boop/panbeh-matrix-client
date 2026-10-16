@@ -372,7 +372,7 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
 }
 .reply-quote > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
 
-.reactions, .thread-link { direction: rtl; }
+:root[dir="rtl"] :is(.reactions, .thread-link) { direction: rtl; } /* the page's direction back, inside the physically LTR row */
 .reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .reactions button {
   display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 9px; border-radius: 14px;
@@ -456,9 +456,9 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
 .sheet-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.35); animation: fade 0.18s; display: flex; }
 .sheet {
   width: min(420px, 100%); height: 100%; overflow-y: auto; padding: calc(8px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom));
-  background: var(--panel); box-shadow: -4px 0 30px rgba(0, 0, 0, 0.2); animation: sheet-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  background: var(--panel); box-shadow: calc(var(--fwd) * 4px) 0 30px rgba(0, 0, 0, 0.2); animation: sheet-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-@keyframes sheet-in { from { transform: translateX(100%); } }
+@keyframes sheet-in { from { transform: translateX(calc(var(--fwd) * -100%)); } } /* from the start edge, where it sits: the right in RTL */
 .sheet-head { display: flex; align-items: center; justify-content: space-between; height: 56px; }
 .sheet-head h2 { margin: 0; font-size: 20px; }
 .sheet h3 { margin: 24px 0 10px; font-size: 14px; color: var(--accent); }
@@ -490,7 +490,7 @@ div.msg-text blockquote { margin: 4px 0; padding-inline-start: 10px; border-inli
 .msg-text .hashtag { color: var(--accent); unicode-bidi: isolate; }
 .msg.mine .msg-text .hashtag { color: inherit; font-weight: 500; }
 
-/* user-supplied one-line labels: direction from their own text (so "Alice!" isn't "!Alice"), but always right-aligned */
+/* user-supplied one-line labels: direction from their own text (so "Alice!" isn't "!Alice"), but always aligned to the page's start */
 .room-name, .room-preview, .room-head-text b, .profile b, .invite h2, .composer-mode span, .user-row b, .chip, .info-text h2 { unicode-bidi: plaintext; text-align: var(--start); }
 /* typed text picks its direction per line; empty fields (placeholder) stay RTL — dir=auto would make them LTR */
 .search input, .emote-input, .send-caption, .card input, .form input, .modal input:not([role]) { unicode-bidi: plaintext; }
@@ -1245,6 +1245,7 @@ img.tint {
 /* a phone on its side: thumbnails stack down the side instead of covering the middle, our own window goes landscape */
 @media (orientation: landscape) and (max-height: 560px) {
   .call-screen.immersive .call-strip { flex-direction: column; top: calc(108px + env(safe-area-inset-top)); inset-inline: auto calc(8px + env(safe-area-inset-left)); overflow: hidden auto; }
+  :root[dir="ltr"] .call-screen.immersive .call-strip { inset-inline: auto calc(8px + env(safe-area-inset-right)); }
   .call-screen.immersive .call-strip .call-tile { width: 140px; height: 88px; }
   .call-screen.immersive .call-grid:has(.call-strip:not(:empty)) .call-tile.main .call-name { bottom: calc(var(--controls-h, 120px) + 4px); } /* the thumbnails moved to the side */
   .call-screen.immersive .call-grid.pip .call-tile.local { width: auto; height: 34vh; aspect-ratio: 4 / 3; }
@@ -1286,7 +1287,7 @@ img.tint {
 /* ---------- motion ---------- */
 /* one-shot entrances; transform/opacity only, so Virtuoso's row measuring and scroll anchoring are unaffected */
 @keyframes fade-out { to { opacity: 0; } }
-@keyframes sheet-out { to { transform: translateX(100%); } }
+@keyframes sheet-out { to { transform: translateX(calc(var(--fwd) * -100%)); } }
 @keyframes pop-out { to { opacity: 0; transform: scale(0.94); } }
 @keyframes toast-out { to { opacity: 0; transform: translateX(-50%) translateY(10px); } }
 @keyframes bubble-in { from { opacity: 0; transform: translateY(10px) scale(0.86); } }
