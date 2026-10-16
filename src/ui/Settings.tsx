@@ -1,3 +1,4 @@
+import { LANGS, LOCALE, lang, setLang, t } from "../i18n.ts";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { SystemBars, SystemBarsStyle } from "@capacitor/core";
 import { ClientEvent, PushRuleActionName, PushRuleKind, RuleId, TweakName, type PushRuleAction } from "matrix-js-sdk";
@@ -27,14 +28,16 @@ type Prefs = { theme: "system" | "light" | "dark"; accent: string; wallpaper: st
   cacheMB: number; autoDl: AutoDl;
   recordMode: "voice" | "video"; noteQuality: "384" | "480" | "640" }; // the mic button records voice or round video; video message size (px) // media kept on the device (mediaCache.ts reads it from localStorage too) // calls: everyone's video at its lowest layer (auto = while our connection is poor)
 const ACCENTS = ["#007ded", "#8774e1", "#40a7a0", "#e5864a", "#e0578b", "#4fae4e"];
-const WALLPAPERS = { doodle: "طرح‌دار", gradient: "گرادیان", plain: "ساده" };
-const THEMES = { system: "سیستم", light: "روشن", dark: "تیره" };
-const CAM_Q: [Prefs["camQuality"], string][] = [["360", "۳۶۰p"], ["540", "۵۴۰p"], ["720", "۷۲۰p"], ["1080", "۱۰۸۰p"]];
-const SCREEN_Q: [Prefs["screenQuality"], string][] = [["720", "۷۲۰p، ۱۵ فریم"], ["1080", "۱۰۸۰p، ۱۵ فریم"], ["1080hi", "۱۰۸۰p، ۳۰ فریم"]];
-const NOTE_Q: [Prefs["noteQuality"], string][] = [["384", "۳۸۴p"], ["480", "۴۸۰p"], ["640", "۶۴۰p"]];
-const AUDIO_Q: [Prefs["audioQuality"], string][] = [["low", "کم"], ["normal", "معمولی"], ["high", "بالا"]];
-const CACHE_MB: [number, string][] = [[250, "۲۵۰ مگابایت"], [500, "۵۰۰ مگابایت"], [1024, "۱ گیگابایت"], [2048, "۲ گیگابایت"], [5120, "۵ گیگابایت"]];
-const LOW_DATA: [Prefs["lowData"], string][] = [["off", "خاموش"], ["auto", "خودکار، با اتصال ضعیف"], ["on", "همیشه"]];
+const WALLPAPERS = { doodle: t("set.wpDoodle"), gradient: t("set.wpGradient"), plain: t("set.wpPlain") };
+const THEMES = { system: t("set.themeSystem"), light: t("set.themeLight"), dark: t("set.themeDark") };
+/** "1080p": a resolution, so no thousands separator. */
+const res = (n: number) => n.toLocaleString(LOCALE, { useGrouping: false }) + "p";
+const CAM_Q: [Prefs["camQuality"], string][] = [["360", res(360)], ["540", res(540)], ["720", res(720)], ["1080", res(1080)]];
+const SCREEN_Q: [Prefs["screenQuality"], string][] = [["720", t("set.fps", { res: res(720), fps: 15 })], ["1080", t("set.fps", { res: res(1080), fps: 15 })], ["1080hi", t("set.fps", { res: res(1080), fps: 30 })]];
+const NOTE_Q: [Prefs["noteQuality"], string][] = [["384", res(384)], ["480", res(480)], ["640", res(640)]];
+const AUDIO_Q: [Prefs["audioQuality"], string][] = [["low", t("set.qLow")], ["normal", t("set.qNormal")], ["high", t("set.qHigh")]];
+const CACHE_MB: [number, string][] = [[250, formatSize(250 << 20)], [500, formatSize(500 << 20)], [1024, formatSize(1 << 30)], [2048, formatSize(2 << 30)], [5120, formatSize(5 * 2 ** 30)]];
+const LOW_DATA: [Prefs["lowData"], string][] = [["off", t("common.off")], ["auto", t("set.lowDataAuto")], ["on", t("packs.tintAlways")]];
 
 // the Android app defaults to notifying: it asks for permission on first start. The desktop app needs no permission.
 export const loadPrefs = (): Prefs => migrate({ theme: "system", accent: ACCENTS[0], wallpaper: "doodle", notify: isNative || isDesktop, notifyDMs: true, notifyGroups: true, notifyPreview: "all", previews: true, shareLastSeen: true, searchIndex: true, dev: false, legacyCalls: false, enterSends: true, askSave: false, camQuality: "720", screenQuality: "1080hi", audioQuality: "high", lowData: "off", cacheMB: CACHE_MB_DEFAULT, recordMode: "voice", noteQuality: "640", ...JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}") });
@@ -68,9 +71,9 @@ export type View = "main" | "chats" | "notify" | "privacy" | "data" | "account" 
 /** Where a sub-page's back goes; the rest go to the main page. */
 const PARENT: Partial<Record<View, View>> = { lock: "privacy", blocked: "privacy", keys: "privacy", devices: "privacy", autodl: "data", emoji: "chats", link: "account", password: "account", deactivate: "account" };
 const ACCOUNT: [View, IconName, string, string][] = [
-  ["link", "link", "پیوند و کد QR من", "تا دیگران با یک اسکن به شما پیام بدهند"],
-  ["password", "lock", "تغییر رمز عبور", ""],
-  ["deactivate", "trash", "غیرفعال‌سازی حساب", "حذف همیشگی حساب"],
+  ["link", "link", t("set.myLinkQr"), t("set.myLinkHint")],
+  ["password", "lock", t("set.changePassword"), ""],
+  ["deactivate", "trash", t("set.deactivate"), t("set.deactivateHint")],
 ];
 
 /** A row that opens another page of settings. */
@@ -99,23 +102,23 @@ export function Settings({ start = "main", security, onClose, onSecurityChange }
     const up = () => setView(PARENT[v] ?? "main");
     const page = (title: string, body: ReactNode) => <Sheet key={v} title={title} onClose={v === "main" ? onClose : up}>{body}{child}</Sheet>;
     if (v === "lock") return <LockSettings key={v} onClose={up} />;
-    if (v === "link") return <LinkSheet key={v} title="پیوند من" link={matrixToLink(me())} onClose={up} />;
-    if (v === "autodl") return page("دانلود خودکار رسانه", <AutoDownload prefs={prefs} set={set} />);
-    if (v === "emoji") return page("اموجی و استیکر", <MyPacks />);
-    if (v === "devices") return page("دستگاه‌ها", <Devices />);
-    if (v === "password") return page("تغییر رمز عبور", isOAuth() ? <AccountPage action="org.matrix.profile" /> : <ChangePassword />);
-    if (v === "keys") return page("کلیدهای رمزنگاری", <Keys />);
-    if (v === "blocked") return page("کاربران مسدود", <Blocked />);
-    if (v === "deactivate") return page("غیرفعال‌سازی حساب", isOAuth() ? <AccountPage action="org.matrix.account_deactivate" /> : <Deactivate />);
+    if (v === "link") return <LinkSheet key={v} title={t("set.myLink")} link={matrixToLink(me())} onClose={up} />;
+    if (v === "autodl") return page(t("set.autoDl"), <AutoDownload prefs={prefs} set={set} />);
+    if (v === "emoji") return page(t("packs.both"), <MyPacks />);
+    if (v === "devices") return page(t("set.devices"), <Devices />);
+    if (v === "password") return page(t("set.changePassword"), isOAuth() ? <AccountPage action="org.matrix.profile" /> : <ChangePassword />);
+    if (v === "keys") return page(t("set.keys"), <Keys />);
+    if (v === "blocked") return page(t("set.blocked"), <Blocked />);
+    if (v === "deactivate") return page(t("set.deactivate"), isOAuth() ? <AccountPage action="org.matrix.account_deactivate" /> : <Deactivate />);
 
-    if (v === "chats") return page("گفتگوها و ظاهر", <>
-      <h3>ظاهر</h3>
+    if (v === "chats") return page(t("set.chats"), <>
+      <h3>{t("set.appearance")}</h3>
       <div className="segmented" data-pill ref={pill}>
         {(Object.keys(THEMES) as Prefs["theme"][]).map((t) => (
           <button key={t} className={prefs.theme === t ? "on" : ""} onClick={() => set({ theme: t })}>{THEMES[t]}</button>
         ))}
       </div>
-      <div className="swatches" role="radiogroup" aria-label="رنگ اصلی">
+      <div className="swatches" role="radiogroup" aria-label={t("set.accent")}>
         {ACCENTS.map((a) => (
           <button key={a} role="radio" aria-checked={prefs.accent === a} aria-label={a} className={prefs.accent === a ? "on" : ""} style={{ background: a }} onClick={() => set({ accent: a })} />
         ))}
@@ -127,91 +130,95 @@ export function Settings({ start = "main", security, onClose, onSecurityChange }
           </button>
         ))}
       </div>
-      <h3>گفتگوها</h3>
-      <label className="switch-row"><span>پیش‌نمایش پیوندها<small>سرور شما پیوندها را برای ساختن پیش‌نمایش باز می‌کند</small></span>
+      <h3>{t("chats")}</h3>
+      <label className="switch-row"><span>{t("set.previews")}<small>{t("set.previewsHint")}</small></span>
         <input type="checkbox" role="switch" checked={prefs.previews} onChange={(e) => set({ previews: e.target.checked })} /></label>
-      <label className="switch-row"><span>ارسال با Enter<small>خاموش: Enter خط جدید می‌زند و Ctrl+Enter ارسال می‌کند</small></span>
+      <label className="switch-row"><span>{t("set.enterSends")}<small>{t("set.enterSendsHint")}</small></span>
         <input type="checkbox" role="switch" checked={prefs.enterSends} onChange={(e) => set({ enterSends: e.target.checked })} /></label>
-      {isNative && <label className="switch-row"><span>پرسیدن محل ذخیره<small>خاموش: فایل‌ها در پوشه‌ی دانلودها ذخیره می‌شوند</small></span>
+      {isNative && <label className="switch-row"><span>{t("set.askSave")}<small>{t("set.askSaveHint")}</small></span>
         <input type="checkbox" role="switch" checked={prefs.askSave} onChange={(e) => set({ askSave: e.target.checked })} /></label>}
-      <h3>اموجی و استیکر</h3>
-      <Row icon="smile" label="اموجی و استیکر" hint="اموجی‌ها و استیکرهای خودتان" onClick={() => setView("emoji")} />
+      <h3>{t("packs.both")}</h3>
+      <Row icon="smile" label={t("packs.both")} hint={t("set.emojiHint")} onClick={() => setView("emoji")} />
     </>);
 
-    if (v === "notify") return page("اعلان‌ها", <>
+    if (v === "notify") return page(t("notify.title"), <>
       <Notifications prefs={prefs} set={set} />
       <PushRules />
     </>);
 
-    if (v === "privacy") return page("حریم خصوصی و امنیت", <>
-      <h3>حریم خصوصی</h3>
-      <Row icon="lock" label="قفل برنامه" hint={lockConf() ? "روشن" : "خاموش؛ با رمز عددی و اثر انگشت"} onClick={() => setView("lock")} />
-      <label className="switch-row"><span>نمایش آخرین بازدید<small>فقط وضعیت خودتان پنهان می‌شود؛ وضعیت دیگران را همچنان می‌بینید</small></span>
+    if (v === "privacy") return page(t("set.privacy"), <>
+      <h3>{t("set.privacyH")}</h3>
+      <Row icon="lock" label={t("lock.title")} hint={lockConf() ? t("mute.on") : t("set.lockOffHint")} onClick={() => setView("lock")} />
+      <label className="switch-row"><span>{t("set.lastSeen")}<small>{t("set.lastSeenHint")}</small></span>
         <input type="checkbox" role="switch" checked={prefs.shareLastSeen} onChange={(e) => { set({ shareLastSeen: e.target.checked }); void setShareLastSeen(e.target.checked); }} /></label>
-      <label className="switch-row"><span>جستجوی کامل در گفتگوهای رمزنگاری‌شده<small>متن پیام‌های رمزگشایی‌شده روی همین دستگاه نگه داشته می‌شود تا جستجو شوند؛ خاموش کردن آن را پاک می‌کند</small></span>
+      <label className="switch-row"><span>{t("set.searchIndex")}<small>{t("set.searchIndexHint")}</small></span>
         <input type="checkbox" role="switch" checked={prefs.searchIndex} onChange={(e) => { set({ searchIndex: e.target.checked }); if (e.target.checked) indexLoaded(); else void dropIndex(); }} /></label>
-      <Row icon="user" label="کاربران مسدود" onClick={() => setView("blocked")} />
-      <h3>رمزنگاری</h3>
+      <Row icon="user" label={t("set.blocked")} onClick={() => setView("blocked")} />
+      <h3>{t("set.encryption")}</h3>
       <Encryption onChange={onSecurityChange} />
-      <Row icon="file" label="کلیدهای رمزنگاری" hint="ذخیره در فایل یا وارد کردن از فایل" onClick={() => setView("keys")} />
-      <Row icon="screen" label="دستگاه‌های وارد‌شده" hint="مشاهده، تأیید و خروج از دستگاه‌های دیگر" onClick={() => setView("devices")} />
+      <Row icon="file" label={t("set.keys")} hint={t("set.keysHint")} onClick={() => setView("keys")} />
+      <Row icon="screen" label={t("set.sessions")} hint={t("set.sessionsHint")} onClick={() => setView("devices")} />
     </>);
 
-    if (v === "data") return page("داده و حافظه", <>
-      <h3>حافظه</h3>
-      <Row icon="download" label="دانلود خودکار رسانه" hint="جدا برای داده‌ی همراه و وای‌فای" onClick={() => setView("autodl")} />
+    if (v === "data") return page(t("set.data"), <>
+      <h3>{t("set.storage")}</h3>
+      <Row icon="download" label={t("set.autoDl")} hint={t("set.autoDlHint")} onClick={() => setView("autodl")} />
       <Storage prefs={prefs} set={set} />
-      <h3>کیفیت ارسال</h3>
-      <label className="select-row">دوربین در تماس
+      <h3>{t("set.quality")}</h3>
+      <label className="select-row">{t("set.camQ")}
         <Select value={prefs.camQuality} options={CAM_Q} onChange={(v) => set({ camQuality: v })} /></label>
-      {!isNative && <label className="select-row">اشتراک صفحه
+      {!isNative && <label className="select-row">{t("call.share")}
         <Select value={prefs.screenQuality} options={SCREEN_Q} onChange={(v) => set({ screenQuality: v })} /></label>}
-      <label className="select-row">پیام ویدیویی
+      <label className="select-row">{t("voice.videoMessage")}
         <Select value={prefs.noteQuality} options={NOTE_Q} onChange={(v) => set({ noteQuality: v })} /></label>
-      <label className="select-row">صدا (تماس و پیام صوتی)
+      <label className="select-row">{t("set.audioQ")}
         <Select value={prefs.audioQuality} options={AUDIO_Q} onChange={(v) => set({ audioQuality: v })} /></label>
-      <label className="select-row">تصویر کم‌مصرف در تماس
+      <label className="select-row">{t("set.lowData")}
         <Select value={prefs.lowData} options={LOW_DATA} onChange={(v) => set({ lowData: v })} /></label>
-      <p className="muted">کیفیت بالاتر اینترنت بیشتری مصرف می‌کند. تغییر از تماس یا ضبط بعدی اعمال می‌شود. تصویر کم‌مصرف، ویدیوی همه را با کمترین کیفیت می‌گیرد و می‌فرستد.</p>
+      <p className="muted">{t("set.qualityHint")}</p>
     </>);
 
-    if (v === "account") return page("حساب", ACCOUNT.map(([v, icon, label, hint]) => <Row key={v} icon={icon} label={label} hint={hint} onClick={() => setView(v)} />));
+    if (v === "account") return page(t("set.account"), ACCOUNT.map(([v, icon, label, hint]) => <Row key={v} icon={icon} label={label} hint={hint} onClick={() => setView(v)} />));
 
-    if (v === "app") return page("برنامه و به‌روزرسانی", <>
+    if (v === "app") return page(t("set.app"), <>
       {isDesktop && <Autostart />}
-      {canUpdate ? <Updates /> : <p className="muted">پنبه <span dir="ltr">{VERSION}</span></p>}
-      <h3>گزینه‌های توسعه‌دهنده</h3>
-      <label className="switch-row"><span>گزینه‌های توسعه‌دهنده<small>امکانات آزمایشی و قدیمی</small></span>
+      {canUpdate ? <Updates /> : <p className="muted">{t("app.name")} <span dir="ltr">{VERSION}</span></p>}
+      <h3>{t("set.dev")}</h3>
+      <label className="switch-row"><span>{t("set.dev")}<small>{t("set.devHint")}</small></span>
         <input type="checkbox" role="switch" checked={prefs.dev} onChange={(e) => set({ dev: e.target.checked })} /></label>
       {prefs.dev && (
-        <label className="switch-row"><span>دریافت تماس‌های قدیمی<small>تماس از FluffyChat، Nheko و Element قدیمی</small></span>
+        <label className="switch-row"><span>{t("set.legacyCalls")}<small>{t("set.legacyCallsHint")}</small></span>
           <input type="checkbox" role="switch" checked={prefs.legacyCalls} onChange={(e) => set({ legacyCalls: e.target.checked })} /></label>
       )}
     </>);
 
     const newVersion = u.status === "available" || u.status === "ready" || u.status === "downloading";
-    return page("تنظیمات", <>
+    return page(t("settings.title"), <>
       <MyProfile />
 
-      <h3>حساب‌ها</h3>
+      <h3>{t("set.accounts")}</h3>
       {sessions().map((a) => (
         <button key={a.userId} className="user-row" disabled={a.userId === client.getUserId()} onClick={() => switchAccount(a.userId)}>
           <span className="device-box"><Icon name={a.userId === client.getUserId() ? "check" : "user"} /></span>
           <span><b dir="ltr">{a.userId}</b><small dir="ltr">{new URL(a.baseUrl).host}</small></span>
         </button>
       ))}
-      <Row icon="plus" label="افزودن حساب" onClick={addAccount} />
+      <Row icon="plus" label={t("set.addAccount")} onClick={addAccount} />
 
-      <h3>تنظیمات</h3>
-      <Row icon="thread" label="گفتگوها و ظاهر" hint={`پوسته‌ی ${THEMES[prefs.theme]}، اموجی و استیکر`} onClick={() => setView("chats")} />
-      <Row icon="bell" label="اعلان‌ها" hint={prefs.notify ? "روشن" : "خاموش"} onClick={() => setView("notify")} />
-      <Row icon="lock" label="حریم خصوصی و امنیت"
-        hint={security === "unlock" ? "این دستگاه تأیید نشده است" : security === "setup" ? "بازیابی رمزنگاری راه‌اندازی نشده است" : "قفل برنامه، رمزنگاری، دستگاه‌ها"} onClick={() => setView("privacy")} />
-      <Row icon="download" label="داده و حافظه" hint="دانلود خودکار، حافظه، کیفیت ارسال" onClick={() => setView("data")} />
-      <Row icon="user" label="حساب" hint="پیوند من، رمز عبور" onClick={() => setView("account")} />
-      <Row icon="info" label="برنامه و به‌روزرسانی" hint={newVersion ? `نسخه‌ی تازه‌ی ${ver(u.version)} آمده است` : `پنبه ${ver(VERSION.replace(/^v/, ""))}`} onClick={() => setView("app")} />
+      <h3>{t("settings.title")}</h3>
+      <div className="user-row">
+        <span className="device-box"><Icon name="globe" /></span><span><b>{t("settings.language")}</b></span>
+        <Select value={lang} options={LANGS} onChange={setLang} />
+      </div>
+      <Row icon="thread" label={t("set.chats")} hint={t("set.chatsHint", { theme: THEMES[prefs.theme] })} onClick={() => setView("chats")} />
+      <Row icon="bell" label={t("notify.title")} hint={prefs.notify ? t("mute.on") : t("common.off")} onClick={() => setView("notify")} />
+      <Row icon="lock" label={t("set.privacy")}
+        hint={security === "unlock" ? t("set.unverified") : security === "setup" ? t("set.noRecovery") : t("set.privacyHint")} onClick={() => setView("privacy")} />
+      <Row icon="download" label={t("set.data")} hint={t("set.dataHint")} onClick={() => setView("data")} />
+      <Row icon="user" label={t("set.account")} hint={t("set.accountHint")} onClick={() => setView("account")} />
+      <Row icon="info" label={t("set.app")} hint={newVersion ? t("update.newIs", { v: ver(u.version) }) : t("app.name") + " " + ver(VERSION.replace(/^v/, ""))} onClick={() => setView("app")} />
 
-      <button className="danger" onClick={() => confirmDialog("از این دستگاه خارج می‌شوید؟", { danger: true }).then((y) => y && void logout())}>خروج از این حساب</button>
+      <button className="danger" onClick={() => confirmDialog(t("set.signOutQ"), { danger: true }).then((y) => y && void logout())}>{t("set.signOut")}</button>
     </>);
   };
   const chain: View[] = [view];
@@ -225,19 +232,19 @@ function Notifications(props: { prefs: Prefs; set: (p: Partial<Prefs>) => void }
 
 const KindSwitches = ({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) => void }) => (
   <>
-    <label className="switch-row"><span>گفتگوهای شخصی</span>
+    <label className="switch-row"><span>{t("set.dms")}</span>
       <input type="checkbox" role="switch" checked={prefs.notifyDMs} onChange={(e) => set({ notifyDMs: e.target.checked })} /></label>
-    <label className="switch-row"><span>گروه‌ها<small>نام‌بردن از شما همیشه اعلان می‌شود</small></span>
+    <label className="switch-row"><span>{t("folder.groups")}<small>{t("set.groupsHint")}</small></span>
       <input type="checkbox" role="switch" checked={prefs.notifyGroups} onChange={(e) => set({ notifyGroups: e.target.checked })} /></label>
-    <label className="select-row">محتوای اعلان
+    <label className="select-row">{t("set.notifyContent")}
       <Select value={prefs.notifyPreview} options={PREVIEWS} onChange={(v) => set({ notifyPreview: v })} />
     </label>
   </>
 );
-const PREVIEWS: [Prefs["notifyPreview"], string][] = [["all", "نام و متن پیام"], ["name", "فقط نام، بدون متن"], ["none", "هیچ (فقط «پیام تازه»)"]];
+const PREVIEWS: [Prefs["notifyPreview"], string][] = [["all", t("set.pvAll")], ["name", t("set.pvName")], ["none", t("set.pvNone")]];
 
 /** Background check modes: minutes between checks, 0 = real-time. */
-const INTERVALS: [number, string][] = [[0, "فوری"], ...[1, 2, 5, 10, 15, 30].map((m): [number, string] => [m, `هر ${m.toLocaleString("fa-IR")} دقیقه`]), [60, "هر ساعت"]];
+const INTERVALS: [number, string][] = [[0, t("set.realtime")], ...[1, 2, 5, 10, 15, 30].map((m): [number, string] => [m, t("set.everyMin", { count: m })]), [60, t("set.everyHour")]];
 
 /** In the app: Android notifications, delivered by a background service that keeps the client syncing. */
 function AndroidNotifications({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) => void }) {
@@ -261,34 +268,34 @@ function AndroidNotifications({ prefs, set }: { prefs: Prefs; set: (p: Partial<P
   const on = prefs.notify && st.permission === "granted";
   return (
     <>
-      <label className="switch-row"><span>اعلان پیام‌های تازه<small>پنبه در پس‌زمینه متصل می‌ماند، حتی وقتی بسته است</small></span>
+      <label className="switch-row"><span>{t("set.notifyNew")}<small>{t("set.notifyNewAndroid")}</small></span>
         <input type="checkbox" role="switch" checked={on} onChange={(e) => toggle(e.target.checked)} /></label>
       {on && <KindSwitches prefs={prefs} set={set} />}
       {on && (
         <button className="user-row" onClick={() => void openNotifySettings()}>
           <span className="device-box"><Icon name="bell" /></span>
-          <span><b>صدا و لرزش</b><small>برای گفتگوهای شخصی، گروه‌ها و نام‌بردن از شما جداگانه، در تنظیمات اندروید</small></span>
+          <span><b>{t("set.sound")}</b><small>{t("set.soundHint")}</small></span>
         </button>
       )}
       {on && <>
-        <label className="select-row">دریافت پیام در پس‌زمینه
+        <label className="select-row">{t("set.bg")}
           <Select value={st.interval} options={INTERVALS} onChange={(m) => { setSt({ ...st, interval: m }); void setBackgroundInterval(m); }} />
         </label>
-        <p className="muted">«فوری» باتری بیشتری مصرف می‌کند. اگر گوشی مدتی قفل بماند، اندروید بررسی‌های کوتاه‌تر از حدود ۱۵ دقیقه را عقب می‌اندازد.</p>
+        <p className="muted">{t("set.bgHint")}</p>
       </>}
       {on && st.batteryOptimized && (
         <button className="user-row" onClick={() => requestBatteryExemption()}>
           <span className="device-box"><Icon name="bell" /></span>
-          <span><b>اجرای بدون محدودیت در پس‌زمینه</b><small>بهینه‌سازی باتری اندروید ممکن است اعلان‌ها را دیر برساند</small></span>
+          <span><b>{t("set.battery")}</b><small>{t("set.batteryHint")}</small></span>
         </button>
       )}
       {on && !st.fullScreen && (
         <button className="user-row" onClick={() => requestFullScreen()}>
           <span className="device-box"><Icon name="phone" /></span>
-          <span><b>زنگ تماس روی صفحه‌ی قفل</b><small>اجازه دهید تماس‌های ورودی تمام‌صفحه نشان داده شوند</small></span>
+          <span><b>{t("set.fullScreen")}</b><small>{t("set.fullScreenHint")}</small></span>
         </button>
       )}
-      {st.permission === "denied" && <p className="muted">اجازه‌ی اعلان رد شده است؛ از تنظیمات اندروید، بخش برنامه‌ها، آن را برای پنبه باز کنید.</p>}
+      {st.permission === "denied" && <p className="muted">{t("set.notifyDeniedAndroid")}</p>}
     </>
   );
 }
@@ -296,7 +303,7 @@ function AndroidNotifications({ prefs, set }: { prefs: Prefs; set: (p: Partial<P
 function WebNotifications({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) => void }) {
   const supported = "Notification" in window;
   const [perm, setPerm] = useState(supported ? Notification.permission : "denied");
-  if (!supported) return <p className="muted">این مرورگر اعلان را پشتیبانی نمی‌کند.</p>;
+  if (!supported) return <p className="muted">{t("set.noNotify")}</p>;
   const toggle = async (want: boolean) => {
     if (want && perm !== "granted") {
       const p = await Notification.requestPermission(); // must run inside the click
@@ -308,11 +315,11 @@ function WebNotifications({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs
   const on = prefs.notify && perm === "granted";
   return (
     <>
-      <label className="switch-row"><span>اعلان پیام‌های تازه<small>{isDesktop ? "با بستن پنجره، پنبه در سینی سیستم متصل می‌ماند" : "تا وقتی پنبه در یک زبانه باز است"}</small></span>
+      <label className="switch-row"><span>{t("set.notifyNew")}<small>{isDesktop ? t("set.notifyNewDesktop") : t("set.notifyNewWeb")}</small></span>
         <input type="checkbox" role="switch" checked={on} onChange={(e) => toggle(e.target.checked)} /></label>
       {/* local only: turning the server's message rules off would also zero the unread badges */}
       {on && <KindSwitches prefs={prefs} set={set} />}
-      {perm === "denied" && <p className="muted">اجازه‌ی اعلان در مرورگر رد شده است؛ از تنظیمات سایت در مرورگر آن را باز کنید.</p>}
+      {perm === "denied" && <p className="muted">{t("set.notifyDeniedWeb")}</p>}
     </>
   );
 }
@@ -324,21 +331,21 @@ function Storage({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) => voi
   useEffect(refresh, []);
   return (
     <>
-      <label className="select-row">حافظه‌ی رسانه‌ها
+      <label className="select-row">{t("set.cache")}
         <Select value={prefs.cacheMB} options={CACHE_MB} onChange={(v) => { set({ cacheMB: v }); void cacheTrim().then(refresh); }} />
       </label>
-      <button className="user-row" disabled={!used} onClick={() => confirmDialog("رسانه‌های ذخیره‌شده پاک شوند؟ دوباره از سرور دریافت می‌شوند.").then((y) => { if (y) void cacheClear().then(refresh); })}>
+      <button className="user-row" disabled={!used} onClick={() => confirmDialog(t("set.clearCacheQ")).then((y) => { if (y) void cacheClear().then(refresh); })}>
         <span className="device-box"><Icon name="trash" /></span>
-        <span><b>پاک کردن حافظه</b><small>{used === undefined ? "…" : `${formatSize(used)} استفاده شده`}</small></span>
+        <span><b>{t("set.clearCache")}</b><small>{used === undefined ? "…" : t("set.used", { size: formatSize(used) })}</small></span>
       </button>
-      <p className="muted">عکس‌ها، ویدیوها و فایل‌هایی که باز کرده‌اید روی دستگاه می‌مانند تا دوباره دانلود نشوند. وقتی پر شود، قدیمی‌ترین‌ها پاک می‌شوند.</p>
+      <p className="muted">{t("set.cacheHint")}</p>
     </>
   );
 }
 
-const DL_KINDS: [DlKind, string][] = [["photos", "عکس‌ها"], ["videos", "ویدیوها"], ["files", "فایل‌ها"], ["gifs", "گیف‌ها"], ["voice", "پیام‌های صوتی و ویدیویی"]];
-const DL_MB: [number, string][] = [[1, "تا ۱ مگابایت"], [5, "تا ۵ مگابایت"], [10, "تا ۱۰ مگابایت"], [50, "تا ۵۰ مگابایت"], [100, "تا ۱۰۰ مگابایت"], [0, "بدون محدودیت"]];
-const DL_NETS: [keyof AutoDl, string][] = [["mobile", "با داده‌ی همراه"], ["wifi", "با وای‌فای"]];
+const DL_KINDS: [DlKind, string][] = [["photos", t("dl.photos")], ["videos", t("dl.videos")], ["files", t("dl.files")], ["gifs", t("dl.gifs")], ["voice", t("dl.voice")]];
+const DL_MB: [number, string][] = [...[1, 5, 10, 50, 100].map((mb): [number, string] => [mb, t("dl.upTo", { size: formatSize(mb << 20) })]), [0, t("dl.noLimit")]];
+const DL_NETS: [keyof AutoDl, string][] = [["mobile", t("dl.mobile")], ["wifi", t("dl.wifi")]];
 
 /** What downloads by itself, per network, kind of media and kind of chat; the rest waits for a tap. */
 function AutoDownload({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) => void }) {
@@ -356,15 +363,15 @@ function AutoDownload({ prefs, set }: { prefs: Prefs; set: (p: Partial<Prefs>) =
                 <b>{label}</b>
                 {"maxMB" in r && (r.dm || r.group) && <Select value={r.maxMB} options={DL_MB} onChange={(v) => put(net, kind, { maxMB: v })} />}
                 <div className="dl-chips">
-                  <button className={r.dm ? "on" : ""} aria-pressed={r.dm} onClick={() => put(net, kind, { dm: !r.dm })}>گفتگوهای شخصی</button>
-                  <button className={r.group ? "on" : ""} aria-pressed={r.group} onClick={() => put(net, kind, { group: !r.group })}>گروه‌ها</button>
+                  <button className={r.dm ? "on" : ""} aria-pressed={r.dm} onClick={() => put(net, kind, { dm: !r.dm })}>{t("set.dms")}</button>
+                  <button className={r.group ? "on" : ""} aria-pressed={r.group} onClick={() => put(net, kind, { group: !r.group })}>{t("folder.groups")}</button>
                 </div>
               </div>
             );
           })}
         </section>
       ))}
-      <p className="muted">بقیه با یک ضربه دانلود می‌شوند. {isNative ? "وای‌فای‌هایی که اندروید پرمصرف می‌داند، مثل اینترنت گوشی، داده‌ی همراه حساب می‌شوند." : "روی رایانه، اتصال وای‌فای حساب می‌شود."}</p>
+      <p className="muted">{t("dl.rest")} {isNative ? t("dl.meteredAndroid") : t("dl.desktopWifi")}</p>
     </>
   );
 }
@@ -374,22 +381,22 @@ function Autostart() {
   const [on, setOn] = useState<boolean>();
   useEffect(() => { getAutostart().then(setOn, () => {}); }, []);
   return on !== undefined && (
-    <label className="switch-row"><span>اجرا هنگام ورود به سیستم<small>پنبه در سینی سیستم باز می‌شود تا اعلان‌ها برسند</small></span>
+    <label className="switch-row"><span>{t("set.autostart")}<small>{t("set.autostartHint")}</small></span>
       <input type="checkbox" role="switch" checked={on} onChange={(e) => setAutostart(e.target.checked).then(setOn, (err) => alertDialog(errText(err)))} /></label>
   );
 }
 
-/** "0.2.0" in Persian digits. */
+/** "0.2.0" in the language's digits. */
 const ver = (v = "") => v.replace(/\d+/g, (d) => num(+d));
 
 /** What clicking an update offer does: download, or restart into the new version, each asked first. False if declined. */
 async function actOnUpdate(u: Update) {
-  const yes = u.status === "available" ? await confirmDialog(`نسخه‌ی تازه‌ی پنبه (${ver(u.version)}) آمده است. دریافت شود؟`, { ok: "دریافت" })
-    : !isDesktop ? await confirmDialog(`نسخه‌ی ${ver(u.version)} نصب شود؟`, { ok: "نصب" })
-    : await confirmDialog(`برای نصب نسخه‌ی ${ver(u.version)}، پنبه دوباره راه‌اندازی شود؟ با بستن پنبه هم نصب می‌شود.`, { ok: "راه‌اندازی دوباره" });
+  const yes = u.status === "available" ? await confirmDialog(t("update.downloadQ", { v: ver(u.version) }), { ok: t("update.download") })
+    : !isDesktop ? await confirmDialog(t("update.installQ", { v: ver(u.version) }), { ok: t("update.install") })
+    : await confirmDialog(t("update.restartQ", { v: ver(u.version) }), { ok: t("update.restart") });
   if (!yes) return false;
   if (u.status === "available") downloadUpdate();
-  else void installUpdate().then((err) => { if (err) void alertDialog(`نسخه‌ی تازه نصب نشد: ${err}\nپنبه را از منوی سینی (خروج) ببندید و دوباره باز کنید.`); });
+  else void installUpdate().then((err) => { if (err) void alertDialog(t("update.installFailed", { err })); });
   return true;
 }
 
@@ -399,20 +406,20 @@ function Updates() {
   const [version, setVersion] = useState("");
   useEffect(() => { getAutoUpdate().then(setAuto, () => {}); appVersion().then(setVersion); }, []);
   const status: Record<Update["status"], string> = {
-    idle: "بررسی به‌روزرسانی", checking: "در حال بررسی…", none: "پنبه به‌روز است؛ دوباره بررسی شود",
-    available: `نسخه‌ی ${ver(u.version)} آمده است؛ دریافت`, downloading: `در حال دریافت نسخه‌ی ${ver(u.version)}… ${num(u.percent ?? 0)}٪`,
-    ready: `نسخه‌ی ${ver(u.version)} آماده است؛ ${isDesktop ? "راه‌اندازی دوباره" : "نصب"}`, error: "بررسی نشد؛ دوباره تلاش کنید",
+    idle: t("update.check"), checking: t("update.checking"), none: t("update.none"),
+    available: t("update.available", { v: ver(u.version) }), downloading: t("update.downloading", { v: ver(u.version), pct: t("poll.pct", { n: u.percent ?? 0 }) }),
+    ready: t(isDesktop ? "update.readyRestart" : "update.readyInstall", { v: ver(u.version) }), error: t("update.error"),
   };
   const click = () => (u.status === "available" || u.status === "ready" ? void actOnUpdate(u) : checkUpdate());
   return (
     <>
       {auto !== undefined && (
-        <label className="switch-row"><span>به‌روزرسانی خودکار<small>خاموش: فقط خبر می‌دهد که نسخه‌ی تازه آمده است</small></span>
+        <label className="switch-row"><span>{t("update.auto")}<small>{t("update.autoHint")}</small></span>
           <input type="checkbox" role="switch" checked={auto} onChange={(e) => setAutoUpdate(e.target.checked).then(setAuto, (err) => alertDialog(errText(err)))} /></label>
       )}
       <button className="user-row" disabled={u.status === "checking" || u.status === "downloading"} onClick={click}>
         <span className="device-box"><Icon name="download" /></span>
-        <span><b>پنبه {ver(version)}</b><small>{status[u.status]}</small></span>
+        <span><b>{t("app.name")} {ver(version)}</b><small>{status[u.status]}</small></span>
       </button>
     </>
   );
@@ -424,7 +431,7 @@ export function UpdateBanner() {
   const [later, setLater] = useState<string>(); // "not now" for this version, until restart
   if (u.status === "downloading") return (
     <div className="banner update" role="status">
-      <Icon name="download" size={16} /> در حال دریافت نسخه‌ی {ver(u.version)}… {num(u.percent ?? 0)}٪
+      <Icon name="download" size={16} /> {t("update.downloading", { v: ver(u.version), pct: t("poll.pct", { n: u.percent ?? 0 }) })}
       <i style={{ width: (u.percent ?? 0) + "%" }} />
     </div>
   );
@@ -432,7 +439,7 @@ export function UpdateBanner() {
   const go = async () => { if (!await actOnUpdate(u) && u.status === "available") setLater(u.status + u.version); };
   return (
     <button className="banner" onClick={() => void go()}>
-      <Icon name="download" size={16} /> {u.status === "ready" ? `نسخه‌ی ${ver(u.version)} آماده‌ی نصب است` : `نسخه‌ی تازه‌ی پنبه (${ver(u.version)}) آمده است`}
+      <Icon name="download" size={16} /> {u.status === "ready" ? t("update.bannerReady", { v: ver(u.version) }) : t("update.bannerNew", { v: ver(u.version) })}
     </button>
   );
 }
@@ -456,17 +463,17 @@ function PushRules() {
   return (
     <>
       {roomRules.length > 0 && (
-        <label className="switch-row"><span>نام‌بردن از همه (@room)<small>پیام‌هایی که همه‌ی اعضای گروه را صدا می‌زنند</small></span>
+        <label className="switch-row"><span>{t("set.roomMention")}<small>{t("set.roomMentionHint")}</small></span>
           <input type="checkbox" role="switch" checked={roomRules.some((r) => r.enabled)} disabled={busy}
             onChange={(e) => act(() => Promise.all(roomRules.map((r) => client.setPushRuleEnabled("global", PushRuleKind.Override, r.rule_id, e.target.checked))))} /></label>
       )}
       <form className="form keywords" onSubmit={add}>
-        <small className="muted">کلیدواژه‌ها: پیام‌های شامل این کلمه‌ها مثل نام‌بردن از شما اعلان می‌شوند</small>
+        <small className="muted">{t("set.keywordsHint")}</small>
         {keywords.length > 0 && (
           <div className="chips">
             {keywords.map((r) => (
               <span key={r.rule_id} className="chip">
-                <button type="button" className="plain" disabled={busy} aria-label={`حذف ${r.pattern}`}
+                <button type="button" className="plain" disabled={busy} aria-label={t("set.removeKeyword", { w: r.pattern ?? "" })}
                   onClick={() => act(() => client.deletePushRule("global", PushRuleKind.ContentSpecific, r.rule_id))}><Icon name="close" size={16} /></button>
                 {r.pattern}
               </span>
@@ -474,8 +481,8 @@ function PushRules() {
           </div>
         )}
         <div className="form-head">
-          <input value={word} onChange={(e) => setWord(e.target.value)} placeholder="کلیدواژه‌ی تازه" aria-label="کلیدواژه‌ی تازه" />
-          <button className="primary" disabled={busy || !word.trim()}>افزودن</button>
+          <input value={word} onChange={(e) => setWord(e.target.value)} placeholder={t("set.newKeyword")} aria-label={t("set.newKeyword")} />
+          <button className="primary" disabled={busy || !word.trim()}>{t("common.add")}</button>
         </div>
       </form>
     </>
@@ -506,17 +513,17 @@ function MyProfile() {
   return (
     <div className="profile">
       <div className="avatar-col">
-      <label className="avatar-edit" title="تغییر عکس">
+      <label className="avatar-edit" title={t("info.changePhoto")}>
         <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) act(async () => ({ avatar_url: await setMyAvatar(f) })); }} />
         <Avatar mxc={profile.avatar_url} name={profile.displayname || me()} id={me()} size={64} />
       </label>
       {profile.avatar_url && <button className="photo-remove" disabled={busy}
-        onClick={() => confirmDialog("عکس پروفایل حذف شود؟", { danger: true }).then((y) => y && void act(async () => (await client.setAvatarUrl(""), { avatar_url: undefined })))}>حذف عکس</button>}
+        onClick={() => confirmDialog(t("set.removeAvatarQ"), { danger: true }).then((y) => y && void act(async () => (await client.setAvatarUrl(""), { avatar_url: undefined })))}>{t("info.removePhoto")}</button>}
       </div>
       <form className="form" onSubmit={(e) => { e.preventDefault(); const n = name.trim(); act(async () => (await client.setDisplayName(n), { displayname: n })); }}>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="نام" aria-label="نام" required />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("info.name")} aria-label={t("info.name")} required />
         <span dir="ltr">{me()}</span>
-        {dirty && <button className="primary" disabled={busy}>ذخیره</button>}
+        {dirty && <button className="primary" disabled={busy}>{t("common.save")}</button>}
       </form>
     </div>
   );
@@ -560,23 +567,23 @@ function Encryption({ onChange }: { onChange: () => void }) {
 
   if (newKey) return (
     <div className="card">
-      <p>این کلید بازیابی را جای امنی نگه دارید. برای خواندن پیام‌هایتان در دستگاه جدید به آن نیاز دارید.</p>
+      <p>{t("rec.keepKey")}</p>
       <code className="recovery-key" dir="ltr">{newKey}</code>
-      <button onClick={() => navigator.clipboard.writeText(newKey)}>کپی</button>
+      <button onClick={() => navigator.clipboard.writeText(newKey)}>{t("common.copy")}</button>
     </div>
   );
-  if (!state) return <p className="muted">در حال بررسی…</p>;
-  if (state === "ok") return <p className="card ok"><Icon name="lock" size={16} /> این دستگاه تأییدشده است و پشتیبان کلیدها روشن است.</p>;
+  if (!state) return <p className="muted">{t("update.checking")}</p>;
+  if (state === "ok") return <p className="card ok"><Icon name="lock" size={16} /> {t("rec.ok")}</p>;
   return (
     <form className="card" onSubmit={submit}>
       <p>{state === "unlock"
-        ? "کلید بازیابی یا عبارت امنیتی خود را وارد کنید تا این دستگاه تأیید شود و پیام‌های رمزنگاری‌شده‌ی قبلی را بخوانید."
-        : "بازیابی را راه‌اندازی کنید تا پیام‌های رمزنگاری‌شده را در دستگاه‌های دیگر هم بخوانید." + (oauth ? "" : " با رمز عبور حسابتان تأیید کنید.")}</p>
+        ? t("rec.unlockHint")
+        : t("rec.setupHint") + (oauth ? "" : " " + t("rec.confirmPassword"))}</p>
       {!(oauth && state === "setup") && <input type={state === "setup" ? "password" : "text"} value={input} onChange={(e) => setInput(e.target.value)}
-        placeholder={state === "unlock" ? "کلید بازیابی یا عبارت امنیتی" : "رمز عبور حساب"} required autoComplete="off" />}
+        placeholder={state === "unlock" ? t("rec.keyPlaceholder") : t("rec.accountPassword")} required autoComplete="off" />}
       {error && <p className="error">{error}</p>}
-      <button className="primary" disabled={busy}>{busy ? "در حال انجام…" : state === "unlock" ? "باز کردن قفل" : "راه‌اندازی بازیابی"}</button>
-      {state === "unlock" && <button type="button" onClick={otherDevice}>تأیید با دستگاه دیگر</button>}
+      <button className="primary" disabled={busy}>{busy ? t("common.working") : state === "unlock" ? t("rec.unlock") : t("rec.setup")}</button>
+      {state === "unlock" && <button type="button" onClick={otherDevice}>{t("rec.otherDevice")}</button>}
     </form>
   );
 }
@@ -633,42 +640,42 @@ function Devices() {
     try { showVerification(await client.getCrypto()!.requestDeviceVerification(me(), id)); } catch (e) { setError(errText(e)); }
   };
 
-  if (!list) return <p className="muted">{error || "در حال بارگذاری…"}</p>;
+  if (!list) return <p className="muted">{error || t("common.loading")}</p>;
   const mine = list.find((d) => d.device_id === client.getDeviceId());
   const others = list.filter((d) => d !== mine).sort((a, b) => (b.last_seen_ts ?? 0) - (a.last_seen_ts ?? 0));
   const row = (d: Device, out?: boolean) => {
-    const t = trust[d.device_id];
-    const verified = !!t?.crossSigningVerified;
+    const tr = trust[d.device_id];
+    const verified = !!tr?.crossSigningVerified;
     return (
       <div key={d.device_id} className="user-row">
         <span className="device-box"><Icon name="lock" /></span>
         <span>
           <b>{d.display_name ?? d.device_id}</b>
-          {t !== undefined && <small className={"trust" + (verified ? " ok" : "")}>{verified ? "تأییدشده" : t ? "تأییدنشده" : "بدون رمزنگاری"}</small>}
+          {tr !== undefined && <small className={"trust" + (verified ? " ok" : "")}>{verified ? t("dev.verified") : tr ? t("dev.unverified") : t("dev.noE2ee")}</small>}
           <small>{d.last_seen_ts ? stamp(d.last_seen_ts) : ""} {d.last_seen_ip && <bdi dir="ltr">{d.last_seen_ip}</bdi>}</small>
           <small className="id" dir="ltr">{d.device_id}</small>
         </span>
-        {out && t && !verified && <button className="row-btn" disabled={busy} onClick={() => verify(d.device_id)}>تأیید</button>}
-        {out && <button className="row-btn" disabled={busy} onClick={() => (oauth ? manage(d.device_id) : remove([d.device_id]))}>خروج</button>}
+        {out && tr && !verified && <button className="row-btn" disabled={busy} onClick={() => verify(d.device_id)}>{t("dev.verify")}</button>}
+        {out && <button className="row-btn" disabled={busy} onClick={() => (oauth ? manage(d.device_id) : remove([d.device_id]))}>{t("common.signOut")}</button>}
       </div>
     );
   };
 
   return (
     <>
-      {mine && <><h3>این دستگاه</h3>{row(mine)}</>}
-      {others.length > 0 && <h3>دستگاه‌های دیگر</h3>}
+      {mine && <><h3>{t("dev.this")}</h3>{row(mine)}</>}
+      {others.length > 0 && <h3>{t("dev.others")}</h3>}
       {others.map((d) => row(d, true))}
       {others.length > 0 && (oauth
-        ? <button className="primary" onClick={() => manage()}>مدیریت دستگاه‌ها</button>
-        : <button className="danger" disabled={busy} onClick={() => confirmDialog("از همه‌ی دستگاه‌های دیگر خارج می‌شوید؟", { danger: true }).then((y) => y && void remove(others.map((d) => d.device_id)))}>خروج از همه‌ی دستگاه‌های دیگر</button>)}
-      {noUrl && <p className="muted">سرور صفحه‌ی مدیریت دستگاه‌ها را ارائه نمی‌کند.</p>}
+        ? <button className="primary" onClick={() => manage()}>{t("dev.manage")}</button>
+        : <button className="danger" disabled={busy} onClick={() => confirmDialog(t("dev.signOutOthersQ"), { danger: true }).then((y) => y && void remove(others.map((d) => d.device_id)))}>{t("dev.signOutOthers")}</button>)}
+      {noUrl && <p className="muted">{t("dev.noUrl")}</p>}
       {pending && (
         <form className="card form" onSubmit={(e) => { e.preventDefault(); remove(pending, password); }}>
-          <p>برای تأیید، رمز عبور حسابتان را وارد کنید.</p>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="رمز عبور حساب" autoComplete="current-password" required autoFocus />
-          <button className="primary" disabled={busy}>تأیید</button>
-          <button type="button" onClick={() => { setPending(null); setPassword(""); }}>لغو</button>
+          <p>{t("dev.enterPassword")}</p>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("rec.accountPassword")} autoComplete="current-password" required autoFocus />
+          <button className="primary" disabled={busy}>{t("common.confirm")}</button>
+          <button type="button" onClick={() => { setPending(null); setPassword(""); }}>{t("common.cancel")}</button>
         </form>
       )}
       {error && <p className="error">{error}</p>}
@@ -688,9 +695,9 @@ function AccountPage({ action }: { action: string }) {
   };
   return (
     <>
-      <p className="muted">این کار در صفحه‌ی حساب کاربری سرور انجام می‌شود.</p>
-      <button className="primary" onClick={open}>باز کردن صفحه‌ی حساب</button>
-      {noUrl && <p className="muted">سرور صفحه‌ی مدیریت حساب را ارائه نمی‌کند.</p>}
+      <p className="muted">{t("acc.onServer")}</p>
+      <button className="primary" onClick={open}>{t("acc.open")}</button>
+      {noUrl && <p className="muted">{t("acc.noUrl")}</p>}
     </>
   );
 }
@@ -704,7 +711,7 @@ function useForm() {
     setBusy(true);
     setError("");
     setDone("");
-    try { setDone((await fn()) || ""); } catch (e) { setError(e instanceof NeedsPassword ? "رمز عبور لازم است" : errText(e)); }
+    try { setDone((await fn()) || ""); } catch (e) { setError(e instanceof NeedsPassword ? t("acc.needPassword") : errText(e)); }
     setBusy(false);
   };
   return { busy, error, done, run };
@@ -718,21 +725,21 @@ function ChangePassword() {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     run(async () => {
-      if (next !== again) throw new Error("تکرار رمز با رمز تازه یکی نیست");
+      if (next !== again) throw new Error(t("acc.mismatch"));
       // false: the server would otherwise sign out every other device
       await withPassword((auth) => client.setPassword(auth!, next, false), current);
       setCurrent(""); setNext(""); setAgain("");
-      return "رمز عبور تغییر کرد.";
+      return t("acc.changed");
     });
   };
   return (
     <form className="form" onSubmit={submit}>
-      <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} placeholder="رمز عبور فعلی" autoComplete="current-password" required />
-      <input type="password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="رمز عبور تازه" autoComplete="new-password" required minLength={8} />
-      <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder="تکرار رمز عبور تازه" autoComplete="new-password" required />
+      <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} placeholder={t("acc.current")} autoComplete="current-password" required />
+      <input type="password" value={next} onChange={(e) => setNext(e.target.value)} placeholder={t("acc.new")} autoComplete="new-password" required minLength={8} />
+      <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder={t("acc.again")} autoComplete="new-password" required />
       {error && <p className="error">{error}</p>}
       {done && <p className="card ok"><Icon name="check" size={16} /> {done}</p>}
-      <button className="primary" disabled={busy}>{busy ? "در حال انجام…" : "تغییر رمز"}</button>
+      <button className="primary" disabled={busy}>{busy ? t("common.working") : t("acc.change")}</button>
     </form>
   );
 }
@@ -748,13 +755,13 @@ function Keys() {
   const exportKeys = (e: FormEvent) => {
     e.preventDefault();
     ex.run(async () => {
-      if (pass !== again) throw new Error("تکرار عبارت عبور یکی نیست");
+      if (pass !== again) throw new Error(t("keys.mismatch"));
       const text = await encryptKeyFile(await client.getCrypto()!.exportRoomKeysAsJson(), pass);
       const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-      const t = await saveFile(url, "element-keys.txt").finally(() => setTimeout(() => URL.revokeObjectURL(url), 1000));
-      if (!t) return;
+      const saved = await saveFile(url, "element-keys.txt").finally(() => setTimeout(() => URL.revokeObjectURL(url), 1000));
+      if (!saved) return;
       setPass(""); setAgain("");
-      return t.where === "downloads" ? "فایل کلیدها در پوشه‌ی دانلودها ذخیره شد." : "فایل کلیدها ذخیره شد.";
+      return saved.where === "downloads" ? t("keys.savedDownloads") : t("keys.saved");
     });
   };
   const importKeys = (e: FormEvent) => {
@@ -765,27 +772,27 @@ function Keys() {
         progressCallback: (p) => { if (p.stage === "load_keys") setProgress(`${num(p.successes + p.failures)} / ${num(p.total)}`); },
       });
       setProgress(""); setInPass("");
-      return `${num(JSON.parse(json).length)} کلید وارد شد.`;
+      return t("keys.imported", { count: JSON.parse(json).length });
     });
   };
   return (
     <>
-      <p className="muted">کلیدهای پیام‌های رمزنگاری‌شده را در یک فایل رمزدار ذخیره کنید تا در برنامه‌ی دیگری (مثل Element) وارد شوند.</p>
+      <p className="muted">{t("keys.about")}</p>
       <form className="form" onSubmit={exportKeys}>
-        <h3>ذخیره در فایل</h3>
-        <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="عبارت عبور برای فایل" autoComplete="new-password" required />
-        <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder="تکرار عبارت عبور" autoComplete="new-password" required />
+        <h3>{t("keys.export")}</h3>
+        <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder={t("keys.pass")} autoComplete="new-password" required />
+        <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder={t("keys.passAgain")} autoComplete="new-password" required />
         {ex.error && <p className="error">{ex.error}</p>}
         {ex.done && <p className="card ok"><Icon name="check" size={16} /> {ex.done}</p>}
-        <button className="primary" disabled={ex.busy}>{ex.busy ? "در حال رمزنگاری…" : "ذخیره‌ی کلیدها"}</button>
+        <button className="primary" disabled={ex.busy}>{ex.busy ? t("keys.encrypting") : t("keys.save")}</button>
       </form>
       <form className="form" onSubmit={importKeys}>
-        <h3>وارد کردن از فایل</h3>
-        <input type="file" accept=".txt,text/plain" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required aria-label="فایل کلیدها" />
-        <input type="password" value={inPass} onChange={(e) => setInPass(e.target.value)} placeholder="عبارت عبور فایل" autoComplete="off" required />
+        <h3>{t("keys.importH")}</h3>
+        <input type="file" accept=".txt,text/plain" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required aria-label={t("keys.file")} />
+        <input type="password" value={inPass} onChange={(e) => setInPass(e.target.value)} placeholder={t("keys.filePass")} autoComplete="off" required />
         {im.error && <p className="error">{im.error}</p>}
         {im.done && <p className="card ok"><Icon name="check" size={16} /> {im.done}</p>}
-        <button className="primary" disabled={im.busy}>{im.busy ? (progress ? `در حال وارد کردن ${progress}` : "در حال رمزگشایی…") : "وارد کردن کلیدها"}</button>
+        <button className="primary" disabled={im.busy}>{im.busy ? (progress ? t("keys.importing", { progress }) : t("preview.decrypting")) : t("keys.import")}</button>
       </form>
     </>
   );
@@ -796,14 +803,14 @@ function Blocked() {
   const [busy, setBusy] = useState(false);
   const ids = client.getIgnoredUsers();
   const unblock = (id: string) => { setBusy(true); setBlocked(id, false).catch((e) => alertDialog(errText(e))).finally(() => setBusy(false)); };
-  if (!ids.length) return <p className="muted">کسی را مسدود نکرده‌اید.</p>;
+  if (!ids.length) return <p className="muted">{t("set.noBlocked")}</p>;
   return ids.map((id) => {
     const u = client.getUser(id);
     return (
       <div key={id} className="user-row">
         <Avatar mxc={u?.avatarUrl} name={u?.displayName ?? id} id={id} size={42} />
         <span><b>{u?.displayName ?? id}</b><small dir="ltr">{id}</small></span>
-        <button className="row-btn" disabled={busy} onClick={() => unblock(id)}>رفع مسدودیت</button>
+        <button className="row-btn" disabled={busy} onClick={() => unblock(id)}>{t("profile.unblock")}</button>
       </div>
     );
   });
@@ -814,7 +821,7 @@ function Deactivate() {
   const { busy, error, run } = useForm();
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!(await confirmDialog("حساب برای همیشه غیرفعال شود؟ این کار برگشت‌پذیر نیست.", { danger: true }))) return;
+    if (!(await confirmDialog(t("acc.deactivateQ"), { danger: true }))) return;
     run(async () => {
       await withPassword((auth) => client.deactivateAccount(auth, false), password);
       await logout(); // reloads into the login screen
@@ -822,10 +829,10 @@ function Deactivate() {
   };
   return (
     <form className="form" onSubmit={submit}>
-      <p className="card">با غیرفعال‌سازی، از همه‌ی گفتگوها خارج می‌شوید، از همه‌ی دستگاه‌ها خارج می‌شوید و دیگر نمی‌توانید با این حساب وارد شوید. نام کاربری شما هم دوباره قابل ثبت نیست.</p>
-      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="رمز عبور حساب" autoComplete="current-password" required />
+      <p className="card">{t("acc.deactivateAbout")}</p>
+      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("rec.accountPassword")} autoComplete="current-password" required />
       {error && <p className="error">{error}</p>}
-      <button className="danger" disabled={busy}>{busy ? "در حال انجام…" : "غیرفعال‌سازی همیشگی حساب"}</button>
+      <button className="danger" disabled={busy}>{busy ? t("common.working") : t("acc.deactivate")}</button>
     </form>
   );
 }

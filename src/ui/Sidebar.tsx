@@ -1,3 +1,4 @@
+import { rtl, t } from "../i18n.ts";
 import { useLongPress } from "./useLongPress.ts";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
 import { Virtuoso } from "react-virtuoso";
@@ -46,7 +47,7 @@ export function Sidebar({ loading, selected, onSelect, onSettings, banner }: Pro
   const shown = rows.filter((r) => (q ? normalize(r.room.name).includes(q) : inFolder(r, inArchiveView ? "archive" : active)));
   const unreadIn = (id: string) => rows.filter((r) => isUnread(r) && inFolder(r, id)).length;
   const unreadChats = rows.filter((r) => isUnread(r) && !r.muted).length;
-  useEffect(() => { document.title = unreadChats ? `(${num(unreadChats)}) پنبه` : "پنبه"; setBadge(unreadChats); }, [unreadChats]);
+  useEffect(() => { document.title = unreadChats ? t("app.titleUnread", { count: unreadChats }) : t("app.name"); setBadge(unreadChats); }, [unreadChats]);
   useEffect(() => () => setBadge(0), []); // signed out or switching accounts
 
   const nav = useRef<HTMLElement>(null);
@@ -102,7 +103,7 @@ export function Sidebar({ loading, selected, onSelect, onSettings, banner }: Pro
       if (!s || q) return;
       const dx = t.clientX - s.x, dy = t.clientY - s.y;
       if (Math.abs(dx) < 70 || Math.abs(dx) < 2 * Math.abs(dy)) return;
-      const next = folders[folders.findIndex((f) => f.id === active) + (dx > 0 ? 1 : -1)];
+      const next = folders[folders.findIndex((f) => f.id === active) + ((dx > 0) === rtl ? 1 : -1)];
       if (next) pick(next.id);
     },
   };
@@ -125,25 +126,25 @@ export function Sidebar({ loading, selected, onSelect, onSettings, banner }: Pro
     <aside className="sidebar">
       <header className="sidebar-head">
         {inArchiveView || inCalls
-          ? <button className="icon-btn" onClick={() => inCalls ? setCalls(false) : setArchive(false)} title="بازگشت" aria-label="بازگشت"><Icon name="back" /></button>
-          : <button className="icon-btn" onClick={onSettings} title="تنظیمات" aria-label="تنظیمات"><Icon name="settings" /></button>}
-        <img className="logo" src={logo} alt="پنبه" />
+          ? <button className="icon-btn" onClick={() => inCalls ? setCalls(false) : setArchive(false)} title={t("common.back")} aria-label={t("common.back")}><Icon name="back" /></button>
+          : <button className="icon-btn" onClick={onSettings} title={t("settings.title")} aria-label={t("settings.title")}><Icon name="settings" /></button>}
+        <img className="logo" src={logo} alt={t("app.name")} />
         <label className="search">
           <Icon name="search" size={16} />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={inArchiveView ? "جستجو در همه" : "جستجو"} aria-label="جستجوی گفتگوها"
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={inArchiveView ? t("sidebar.searchAll") : t("common.search")} aria-label={t("sidebar.searchChats")}
             onKeyDown={(e) => { if (e.key === "Enter" && shown[0]) { onSelect(shown[0].id); setQuery(""); } if (e.key === "Escape") setQuery(""); }} />
-          {query && <button className="icon-btn" onClick={(e) => { setQuery(""); e.currentTarget.blur(); }} title="بستن جستجو" aria-label="بستن جستجو"><Icon name="close" size={16} /></button>}
+          {query && <button className="icon-btn" onClick={(e) => { setQuery(""); e.currentTarget.blur(); }} title={t("sidebar.closeSearch")} aria-label={t("sidebar.closeSearch")}><Icon name="close" size={16} /></button>}
         </label>
-        {!inCalls && !inArchiveView && <button className="icon-btn" onClick={() => setCalls(true)} title="تماس‌ها" aria-label="تماس‌ها"><Icon name="phone" /></button>}
+        {!inCalls && !inArchiveView && <button className="icon-btn" onClick={() => setCalls(true)} title={t("calls.title")} aria-label={t("calls.title")}><Icon name="phone" /></button>}
       </header>
       {banner}
-      {inArchiveView && <h2 className="archive-title">بایگانی</h2>}
-      {inCalls && <h2 className="archive-title">تماس‌ها</h2>}
+      {inArchiveView && <h2 className="archive-title">{t("archive")}</h2>}
+      {inCalls && <h2 className="archive-title">{t("calls.title")}</h2>}
       {inCalls ? <CallsList rooms={rows.filter((r) => !r.invite).map((r) => r.room)} onSelect={onSelect} /> : <>
       {!q && !inArchiveView && (
         <nav className={"folders" + (dragging ? " sorting" : "")} role="tablist" ref={nav} {...barProps}
-          // mouse wheel scrolls the tabs sideways; RTL, so "down" moves toward the left end
-          onWheel={(e) => { if (!e.deltaX) e.currentTarget.scrollBy({ left: -e.deltaY }); }}>
+          // mouse wheel scrolls the tabs sideways: "down" moves toward the end (the left in RTL)
+          onWheel={(e) => { if (!e.deltaX) e.currentTarget.scrollBy({ left: rtl ? -e.deltaY : e.deltaY }); }}>
           {folders.map((f) => {
             const n = unreadIn(f.id);
             return (
@@ -156,24 +157,24 @@ export function Sidebar({ loading, selected, onSelect, onSettings, banner }: Pro
         </nav>
       )}
       {!q && !inArchiveView && activeSpace && (
-        <button className="space-row" onClick={() => setSpaceInfo(true)}><Icon name="space" size={18} /> مدیریت فضا</button>
+        <button className="space-row" onClick={() => setSpaceInfo(true)}><Icon name="space" size={18} /> {t("sidebar.manageSpace")}</button>
       )}
       {!q && !inArchiveView && active === "all" && archived.length > 0 && (
         <button className="space-row archive-row" onClick={() => setArchive(true)}>
-          <Icon name="archive" size={18} /> بایگانی <small>{num(archived.length)}</small>
+          <Icon name="archive" size={18} /> {t("archive")} <small>{num(archived.length)}</small>
           {unreadIn("archive") > 0 && <span className="badge muted">{num(unreadIn("archive"))}</span>}
         </button>
       )}
       {q.length >= 2 ? (
         <div className="room-list scroll">
-          {shown.length === 0 ? <p className="empty-list">گفتگویی پیدا نشد</p> : shown.map((r) => <div key={r.id}>{item(r)}</div>)}
+          {shown.length === 0 ? <p className="empty-list">{t("quick.none")}</p> : shown.map((r) => <div key={r.id}>{item(r)}</div>)}
           <MessageResults term={query} onPick={(roomId, eventId) => { requestJump(roomId, eventId); onSelect(roomId); setQuery(""); }} />
         </div>
       ) : (
         <div className="list-swipe" {...(inArchiveView ? {} : swipe)}>
           {shown.length === 0 && loading
-            ? <div className="skeleton-list" aria-busy aria-label="در حال همگام‌سازی گفتگوها…">{[0, 1, 2, 3, 4, 5, 6].map((i) => <div key={i} className="skeleton-row" style={{ animationDelay: i * 0.06 + "s" }}><i className="skeleton avatar-sk" /><span><i className="skeleton" style={{ width: 55 - (i % 3) * 8 + "%" }} /><i className="skeleton" style={{ width: 85 - (i % 4) * 10 + "%" }} /></span></div>)}</div>
-            : shown.length === 0 ? <p className="empty-list">هنوز چیزی اینجا نیست</p>
+            ? <div className="skeleton-list" aria-busy aria-label={t("sidebar.syncing")}>{[0, 1, 2, 3, 4, 5, 6].map((i) => <div key={i} className="skeleton-row" style={{ animationDelay: i * 0.06 + "s" }}><i className="skeleton avatar-sk" /><span><i className="skeleton" style={{ width: 55 - (i % 3) * 8 + "%" }} /><i className="skeleton" style={{ width: 85 - (i % 4) * 10 + "%" }} /></span></div>)}</div>
+            : shown.length === 0 ? <p className="empty-list">{t("sidebar.empty")}</p>
             : <Virtuoso className="room-list" data={shown} computeItemKey={(_, r) => r.id} itemContent={(_, r) => item(r)} />}
         </div>
       )}
@@ -208,23 +209,23 @@ function OnlineDot({ room }: { room: Room }) {
   const peer = dmPeer(room);
   const u = peer ? client.getUser(peer) : null;
   useTick(client, [UserEvent.Presence]);
-  return u?.presence === "online" ? <i className="online-dot" aria-label="آنلاین" /> : null;
+  return u?.presence === "online" ? <i className="online-dot" aria-label={t("seen.online")} /> : null;
 }
 
 function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: boolean; onClick: () => void; onMenu: (x: number, y: number) => void }) {
   const { room, last } = row;
   const { click, handlers } = useLongPress(row.invite ? undefined : onMenu);
-  let preview = row.invite ? "دعوت‌نامه" : "";
+  let preview = row.invite ? t("room.invite") : "";
   let emotes: ReadonlyMap<string, string> | undefined; // the preview's custom emoji, code → mxc
   if (last && !row.invite && isCallStart(last)) preview = "📞 " + noticeText(last); // names the caller itself
   else if (last && !row.invite) {
-    const who = last.getSender() === me() ? "شما" : row.isDM ? "" : bdi(senderName(last).split(" ")[0]);
+    const who = last.getSender() === me() ? t("common.you") : row.isDM ? "" : bdi(senderName(last).split(" ")[0]);
     preview = (who ? who + ": " : "") + previewText(last);
     emotes = formattedPlain(last.getContent())?.emotes;
   }
   const typers = useTyping(room);
   const typing = row.invite ? [] : typers;
-  if (typing.length) preview = (row.isDM ? "" : bdi(typing[0].name.split(" ")[0]) + " ") + "در حال نوشتن";
+  if (typing.length) preview = row.isDM ? t("typing.dm") : t("typing.single", { a: bdi(typing[0].name.split(" ")[0]) });
   const draft = !typing.length && row.draft;
   if (draft) { preview = draft.body.split("\n")[0]; emotes = emoteMap(room); } // composer text: this room's emoji
   const muted = !!row.muted;
@@ -237,15 +238,15 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
       <div className="room-item-body">
         <div className="room-item-top">
           <span className="room-name">{room.name}</span>
-          {muted && <span className="room-muted" aria-label="بی‌صدا"><Icon name="bellOff" size={14} /></span>}
+          {muted && <span className="room-muted" aria-label={t("chat.muted")}><Icon name="bellOff" size={14} /></span>}
           <span className="room-time">{listTime(row.ts)}</span>
         </div>
         <div className="room-item-bottom">
-          <span className={"room-preview" + (typing.length ? " typing" : "") + (previewChanged ? " changed" : "")}>{draft && <span className="draft">پیش‌نویس: </span>}{typing.length ? preview : <EmoteText text={preview} emotes={emotes} />}{typing.length > 0 && <Dots />}</span>
+          <span className={"room-preview" + (typing.length ? " typing" : "") + (previewChanged ? " changed" : "")}>{draft && <span className="draft">{t("sidebar.draft")} </span>}{typing.length ? preview : <EmoteText text={preview} emotes={emotes} />}{typing.length > 0 && <Dots />}</span>
           {mentioned && <span className="badge">@</span>}
           {(row.unread > 0 || row.invite) ? <span className={"badge" + (muted ? " muted" : "") + (bumped ? " bump" : "")}>{row.invite ? "!" : num(row.unread)}</span>
-            : row.marked ? <span className={"badge dot" + (muted ? " muted" : "")} aria-label="خوانده‌نشده" />
-            : row.pinned && <span className="room-pin" aria-label="سنجاق‌شده"><Icon name="pin" size={16} /></span>}
+            : row.marked ? <span className={"badge dot" + (muted ? " muted" : "")} aria-label={t("folder.unread")} />
+            : row.pinned && <span className="room-pin" aria-label={t("chat.pinned")}><Icon name="pin" size={16} /></span>}
         </div>
       </div>
     </button>
@@ -259,16 +260,16 @@ function ChatMenu({ row, x, y, onClose }: Menu & { onClose: () => void }) {
   return (
     <ContextMenu x={x} y={y} target=".room-item" onClose={onClose}>
         <button role="menuitem" onClick={() => run(ops.pin)}>
-          <Icon name="pin" /> {row.pinned ? "برداشتن سنجاق" : "سنجاق"}</button>
+          <Icon name="pin" /> {row.pinned ? t("msg.unpin") : t("msg.pin")}</button>
         <button role="menuitem" onClick={() => run(ops.archive)}>
-          <Icon name="archive" /> {row.archived ? "خروج از بایگانی" : "بایگانی"}</button>
+          <Icon name="archive" /> {row.archived ? t("chat.unarchive") : t("archive")}</button>
         <button role="menuitem" onClick={() => run(ops.read)}>
-          <Icon name={unread ? "checks" : "unread"} /> {unread ? "علامت خوانده‌شده" : "علامت خوانده‌نشده"}</button>
+          <Icon name={unread ? "checks" : "unread"} /> {unread ? t("chat.markRead") : t("chat.markUnread")}</button>
         <button role="menuitem" onClick={() => run(() => setMuted(room, !row.muted))}>
-          <Icon name={row.muted ? "bell" : "bellOff"} /> {row.muted ? "صدادار" : "بی‌صدا"}</button>
+          <Icon name={row.muted ? "bell" : "bellOff"} /> {row.muted ? t("chat.unmute") : t("chat.mute")}</button>
         <button role="menuitem" className="danger-item"
-          onClick={() => confirmDialog(`از «${room.name}» خارج می‌شوید و از فهرست حذف می‌شود؟`, { danger: true }).then((y) => y && run(() => leaveAndForget(room)))}>
-          <Icon name="trash" /> حذف و خروج</button>
+          onClick={() => confirmDialog(t("chat.leaveQ", { name: room.name }), { danger: true }).then((y) => y && run(() => leaveAndForget(room)))}>
+          <Icon name="trash" /> {t("chat.leave")}</button>
     </ContextMenu>
   );
 }

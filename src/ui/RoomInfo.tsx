@@ -1,3 +1,4 @@
+import { LOCALE, t } from "../i18n.ts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClientEvent, EventType, RelationType, RoomEvent, RoomStateEvent, type HierarchyRoom, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { addToSpace, canEditPacks, client, isDirect, roomPacks, removeFromSpace, seenBy, setRoomAvatar, spaceChildren } from "../matrix.ts";
@@ -19,10 +20,10 @@ import { RoomPacks } from "./Packs.tsx";
 
 /** Who the link actually lets in, by join rule (public needs no note). */
 const JOIN_HINTS: Record<string, string> = {
-  invite: "این گفتگو خصوصی است: با این پیوند فقط کسانی که دعوت شده‌اند می‌توانند بپیوندند.",
-  knock: "با این پیوند می‌توان درخواست عضویت داد؛ مدیران آن را می‌پذیرند.",
-  restricted: "فقط اعضای فضای مربوط می‌توانند با این پیوند بپیوندند.",
-  knock_restricted: "اعضای فضای مربوط با این پیوند می‌پیوندند؛ بقیه درخواست عضویت می‌دهند.",
+  invite: t("roomLink.invite"),
+  knock: t("roomLink.knock"),
+  restricted: t("roomLink.restricted"),
+  knock_restricted: t("roomLink.knockRestricted"),
 };
 
 type View = "main" | "invite" | "add" | "new-group" | "settings" | "details" | "packs";
@@ -61,31 +62,31 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
       if (r && !r.isSpaceRoom()) { onClose(); location.hash = r.roomId; }
     });
   };
-  const title = space ? "اطلاعات فضا" : "اطلاعات گفتگو";
+  const title = space ? t("info.space") : t("room.info");
 
   if (view === "invite") return (
-    <Sheet title="دعوت اعضا" onClose={() => setView("main")}>
+    <Sheet title={t("info.inviteTitle")} onClose={() => setView("main")}>
       <UserPicker exclude={members.map((m) => m.userId)} onPick={(p) => act(() => client.invite(room.roomId, p.userId), () => setView("main"))} />
     </Sheet>
   );
   if (view === "settings") return (
-    <Sheet title={space ? "تنظیمات فضا" : "تنظیمات گروه"} onClose={() => setView("main")}>
+    <Sheet title={space ? t("info.spaceSettings") : t("info.groupSettings")} onClose={() => setView("main")}>
       <GroupSettings room={room} onUser={setProfile} />
       {profile && <UserProfile userId={profile} room={room} onClose={() => setProfile(null)} onOpened={onClose} />}
     </Sheet>
   );
   if (view === "details") return (
-    <Sheet title="اطلاعات فنی" onClose={() => setView("main")}>
+    <Sheet title={t("info.tech")} onClose={() => setView("main")}>
       <RoomDetails room={room} onLeave={onClose} />
     </Sheet>
   );
   if (view === "packs") return (
-    <Sheet title="اموجی و استیکر گفتگو" onClose={() => setView("main")}>
+    <Sheet title={t("info.packs")} onClose={() => setView("main")}>
       <RoomPacks room={room} />
     </Sheet>
   );
   if (view === "new-group") return (
-    <Sheet title="گروه جدید" onClose={() => setView("main")}>
+    <Sheet title={t("new.group")} onClose={() => setView("main")}>
       <ChatForm kind="group" space={room.roomId} onDone={(id) => { onClose(); location.hash = id; }} />
     </Sheet>
   );
@@ -95,8 +96,8 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
     const candidates = client.getVisibleRooms().filter((r) => r.getMyMembership() === "join" && r.roomId !== room.roomId && !inSpace.has(r.roomId)
       && !(r.isSpaceRoom() && spaceRooms(r.roomId, spaceChildren).has(room.roomId)));
     return (
-      <Sheet title="افزودن گفتگو به فضا" onClose={() => setView("main")}>
-        {candidates.length === 0 && <p className="muted">گفتگوی دیگری برای افزودن نیست</p>}
+      <Sheet title={t("info.addToSpace")} onClose={() => setView("main")}>
+        {candidates.length === 0 && <p className="muted">{t("info.noCandidates")}</p>}
         {candidates.map((r) => (
           <button key={r.roomId} className="user-row" disabled={busy} onClick={() => act(() => addToSpace(room.roomId, r.roomId))}>
             <RoomAvatar room={r} size={42} /><span><b>{r.name}</b></span><Icon name="plus" />
@@ -110,7 +111,7 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
     <Sheet key="main" title={title} onClose={onClose}>{/* key: a sub-view's Sheet sits in this same slot; reusing it would keep its "closing" state and leave the info stuck invisible */}
       <div className="info-head">
         {photo ? (
-          <button className="avatar-view" onClick={() => setViewing(true)} title="نمایش عکس" aria-label="نمایش عکس"><RoomAvatar room={room} size={96} /></button>
+          <button className="avatar-view" onClick={() => setViewing(true)} title={t("profile.viewPhoto")} aria-label={t("profile.viewPhoto")}><RoomAvatar room={room} size={96} /></button>
         ) : <RoomAvatar room={room} size={96} />}
         {viewing && photo && <PhotoViewer mxc={photo} name={room.name} onClose={closeViewer} />}
         {can(EventType.RoomAvatar) && (
@@ -118,10 +119,10 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
             <label className="photo-remove photo-change">
               <input type="file" accept="image/*" hidden disabled={busy}
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) act(() => setRoomAvatar(room.roomId, f)); }} />
-              {room.getMxcAvatarUrl() ? "تغییر عکس" : "افزودن عکس"}
+              {room.getMxcAvatarUrl() ? t("info.changePhoto") : t("info.addPhoto")}
             </label>
             {room.getMxcAvatarUrl() && (
-              <button className="photo-remove" disabled={busy} onClick={() => confirmDialog("عکس گفتگو حذف شود؟", { danger: true }).then((y) => y && act(() => client.sendStateEvent(room.roomId, EventType.RoomAvatar, {}, "")))}>حذف عکس</button>
+              <button className="photo-remove" disabled={busy} onClick={() => confirmDialog(t("info.removePhotoQ"), { danger: true }).then((y) => y && act(() => client.sendStateEvent(room.roomId, EventType.RoomAvatar, {}, "")))}>{t("info.removePhoto")}</button>
             )}
           </span>
         )}
@@ -131,33 +132,33 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
       {!space && (
         <MuteRow room={room} busy={busy} act={act} />
       )}
-      {!space && <button className="user-row" onClick={() => setMedia(true)}><span className="device-box"><Icon name="file" /></span><span><b>رسانه‌ها، فایل‌ها و پیوندها</b></span></button>}
+      {!space && <button className="user-row" onClick={() => setMedia(true)}><span className="device-box"><Icon name="file" /></span><span><b>{t("media.title")}</b></span></button>}
       {!isDirect(room) && (
         // an alias needs no via; a bare room id does, or people outside it can't join over federation
         <button className="user-row" onClick={() => setQr(true)}>
-          <span className="device-box"><Icon name="link" /></span><span><b>{space ? "پیوند فضا" : "پیوند گفتگو"}</b><small>کپی، اشتراک‌گذاری و کد QR</small></span>
+          <span className="device-box"><Icon name="link" /></span><span><b>{space ? t("info.spaceLink") : t("info.chatLink")}</b><small>{t("info.linkHint")}</small></span>
         </button>
       )}
       {(roomPacks(room).length > 0 || canEditPacks(room)) && (
         <button className="user-row" onClick={() => setView("packs")}>
           <span className="device-box"><Icon name="smile" /></span>
-          <span><b>اموجی و استیکر گفتگو</b><small>{roomPacks(room).length ? `${num(roomPacks(room).length)} بسته` : "ساختن بسته برای اعضا"}</small></span>
+          <span><b>{t("info.packs")}</b><small>{roomPacks(room).length ? t("info.packCount", { count: roomPacks(room).length }) : t("info.makePack")}</small></span>
         </button>
       )}
       {canManage(room) && (
         <button className="user-row" onClick={() => setView("settings")}>
           <span className="device-box"><Icon name="settings" /></span>
-          <span><b>{space ? "تنظیمات فضا" : "تنظیمات گروه"}</b><small>{JOIN_RULES[room.getJoinRule()] ?? room.getJoinRule()}</small></span>
+          <span><b>{space ? t("info.spaceSettings") : t("info.groupSettings")}</b><small>{JOIN_RULES[room.getJoinRule()] ?? room.getJoinRule()}</small></span>
         </button>
       )}
 
       {space && (
         <>
-          <h3>گفتگوهای این فضا ({num(children.length)})</h3>
+          <h3>{t("info.spaceChats", { count: children.length })}</h3>
           {can(EventType.SpaceChild) && (
             <div className="row-actions">
-              <button onClick={() => setView("add")}><Icon name="plus" /> افزودن گفتگو</button>
-              <button onClick={() => setView("new-group")}><Icon name="group" /> گروه جدید</button>
+              <button onClick={() => setView("add")}><Icon name="plus" /> {t("info.addChat")}</button>
+              <button onClick={() => setView("new-group")}><Icon name="group" /> {t("new.group")}</button>
             </div>
           )}
           {children.map((id) => {
@@ -169,11 +170,11 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
                 {joined ? <RoomAvatar room={r} size={42} /> : <Avatar mxc={h?.avatar_url} name={name} id={id} size={42} />}
                 <span>
                   <b>{name}</b>
-                  <small>{[(r?.isSpaceRoom() || h?.room_type === "m.space") && "فضا", suggested && "پیشنهادی", !joined && (h ? `${num(h.num_joined_members)} عضو` : "عضو نیستید")].filter(Boolean).join(" · ")}</small>
+                  <small>{[(r?.isSpaceRoom() || h?.room_type === "m.space") && t("info.space1"), suggested && t("info.suggested"), !joined && (h ? t("room.members", { count: h.num_joined_members }) : t("info.notMember"))].filter(Boolean).join(" · ")}</small>
                 </span>
-                {!joined && <button className="primary join-btn" disabled={busy} onClick={() => join(id)}>پیوستن</button>}
+                {!joined && <button className="primary join-btn" disabled={busy} onClick={() => join(id)}>{t("invite.join")}</button>}
                 {can(EventType.SpaceChild) && (
-                  <button className="icon-btn" disabled={busy} title="حذف از فضا" aria-label="حذف از فضا"
+                  <button className="icon-btn" disabled={busy} title={t("info.removeFromSpace")} aria-label={t("info.removeFromSpace")}
                     onClick={() => act(() => removeFromSpace(room.roomId, id))}><Icon name="close" size={18} /></button>
                 )}
               </div>
@@ -183,31 +184,31 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
       )}
 
       <KnockRequests room={room} onUser={setProfile} />
-      <h3>اعضا ({num(room.getJoinedMemberCount())})</h3>
-      {room.canInvite(me()) && <div className="row-actions"><button onClick={() => setView("invite")}><Icon name="plus" /> دعوت عضو</button></div>}
+      <h3>{t("info.members", { count: room.getJoinedMemberCount() })}</h3>
+      {room.canInvite(me()) && <div className="row-actions"><button onClick={() => setView("invite")}><Icon name="plus" /> {t("info.invite")}</button></div>}
       <label className="search">
         <Icon name="search" size={16} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی اعضا" aria-label="جستجوی اعضا" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("info.searchMembers")} aria-label={t("info.searchMembers")} />
       </label>
       {members.filter((m) => normalize(m.name + " " + m.userId).includes(normalize(q.trim()))).map((m) => (
         <MemberRow key={m.userId} room={room} m={m} onUser={setProfile} sub={<><small dir="ltr">{m.userId}</small><LastSeen userId={m.userId} /></>} />
       ))}
       <BannedList room={room} onUser={setProfile} />
       <button className="user-row" onClick={() => setView("details")}>
-        <span className="device-box"><Icon name="info" /></span><span><b>اطلاعات فنی</b><small>شناسه، نسخه و سازنده</small></span>
+        <span className="device-box"><Icon name="info" /></span><span><b>{t("info.tech")}</b><small>{t("info.techHint")}</small></span>
       </button>
 
       <button className="danger" disabled={busy}
-        onClick={() => confirmDialog(space ? "از این فضا خارج می‌شوید؟" : "از این گفتگو خارج می‌شوید؟", { danger: true }).then((y) => y && act(() => client.leave(room.roomId), () => {
+        onClick={() => confirmDialog(space ? t("info.leaveSpaceQ") : t("info.leaveChatQ"), { danger: true }).then((y) => y && act(() => client.leave(room.roomId), () => {
           if (location.hash.slice(1) === room.roomId) location.hash = "";
           onClose();
         }))}>
-        {space ? "خروج از فضا" : "خروج از گفتگو"}
+        {space ? t("info.leaveSpace") : t("info.leaveChat")}
       </button>
       {profile && <UserProfile userId={profile} room={room} onClose={() => setProfile(null)} onOpened={onClose} />}
       {qr && (() => {
         const a = room.getCanonicalAlias();
-        return <LinkSheet title={space ? "پیوند فضا" : "پیوند گفتگو"} onClose={() => setQr(false)} hint={JOIN_HINTS[room.getJoinRule()]}
+        return <LinkSheet title={space ? t("info.spaceLink") : t("info.chatLink")} onClose={() => setQr(false)} hint={JOIN_HINTS[room.getJoinRule()]}
           link={a ? matrixToLink(a) : matrixToLink(room.roomId, undefined, viaServers(room.getJoinedMembers().map((m) => m.userId)))} />;
       })()}
       {media && <SharedMedia room={room} onClose={() => setMedia(false)} onJump={onClose} />}
@@ -216,13 +217,13 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
 }
 
 /** Mute choices: hours, or until turned back on. Mentions still notify (they're server push rules above the room's). */
-const MUTE_FOR: [string, string][] = [["on", "روشن"], ["1", "بی‌صدا ۱ ساعت"], ["8", "بی‌صدا ۸ ساعت"], ["24", "بی‌صدا ۱ روز"], ["168", "بی‌صدا ۱ هفته"], ["ever", "بی‌صدا تا روشن کردن"]];
+const MUTE_FOR: [string, string][] = [["on", t("mute.on")], ["1", t("mute.for", { span: t("span.hours", { count: 1 }) })], ["8", t("mute.for", { span: t("span.hours", { count: 8 }) })], ["24", t("mute.for", { span: t("span.days", { count: 1 }) })], ["168", t("mute.for", { span: t("span.weeks", { count: 1 }) })], ["ever", t("mute.ever")]];
 
 function MuteRow({ room, busy, act }: { room: Room; busy: boolean; act: (fn: () => Promise<unknown>) => void }) {
   const muted = isMuted(room), until = muted ? muteEnds(room) : undefined;
-  const options: [string, string][] = until ? [...MUTE_FOR, ["until", `بی‌صدا تا ${new Date(until).toLocaleString("fa-IR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`]] : MUTE_FOR;
+  const options: [string, string][] = until ? [...MUTE_FOR, ["until", t("mute.until", { when: new Date(until).toLocaleString(LOCALE, { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }) })]] : MUTE_FOR;
   return (
-    <label className="select-row">اعلان‌ها
+    <label className="select-row">{t("notify.title")}
       <Select value={!muted ? "on" : until ? "until" : "ever"} options={options} disabled={busy}
         onChange={(v) => act(() => setMuted(room, v !== "on", Number(v) ? Date.now() + Number(v) * 3600_000 : undefined))} />
     </label>
@@ -250,9 +251,9 @@ function Profile({ room, topic, editable }: { room: Room; topic: string; editabl
   };
   return (
     <form className="form" onSubmit={(e) => { e.preventDefault(); save(); }}>
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder={current ? "نام" : room.name} aria-label="نام" />
-      <input value={newTopic} onChange={(e) => setTopic(e.target.value)} placeholder="توضیحات" aria-label="توضیحات" />
-      {dirty && <button className="primary" disabled={busy}>ذخیره</button>}
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder={current ? t("info.name") : room.name} aria-label={t("info.name")} />
+      <input value={newTopic} onChange={(e) => setTopic(e.target.value)} placeholder={t("info.topic")} aria-label={t("info.topic")} />
+      {dirty && <button className="primary" disabled={busy}>{t("common.save")}</button>}
     </form>
   );
 }
@@ -263,8 +264,8 @@ export function SeenBy({ room, ev, onClose }: { room: Room; ev: MatrixEvent; onC
   const seen = seenBy(room, ev);
   const [profile, setProfile] = useState<string | null>(null);
   return (
-    <Sheet title="دیده‌شده توسط" onClose={onClose}>
-      {seen.length === 0 && <p className="muted">هنوز کسی ندیده</p>}
+    <Sheet title={t("msg.seenBy")} onClose={onClose}>
+      {seen.length === 0 && <p className="muted">{t("seen.none")}</p>}
       {seen.map(({ userId, member, ts }) => (
         <button key={userId} className="user-row" onClick={() => setProfile(userId)}>
           <Avatar mxc={member?.getMxcAvatarUrl()} name={member?.name ?? userId} id={userId} size={42} />
@@ -288,14 +289,14 @@ export function ReactedBy({ room, ev, onClose }: { room: Room; ev: MatrixEvent; 
   const rows = groups.filter(([k]) => key === null || k === key)
     .flatMap(([k, set]) => [...set].filter((e) => !e.isRedacted()).map((e) => ({ k, e })));
   return (
-    <Sheet title="واکنش‌ها" onClose={onClose}>
+    <Sheet title={t("reactions.title")} onClose={onClose}>
       {groups.length > 1 && (
         <div className="segmented reacted-tabs" data-pill ref={pill}>
-          <button className={key === null ? "on" : ""} onClick={() => setKey(null)}>همه {num(groups.reduce((n, [, set]) => n + set.size, 0))}</button>
+          <button className={key === null ? "on" : ""} onClick={() => setKey(null)}>{t("folder.all")} {num(groups.reduce((n, [, set]) => n + set.size, 0))}</button>
           {groups.map(([k, set]) => <button key={k} className={key === k ? "on" : ""} onClick={() => setKey(k)}><ReactionKey k={k} ev={[...set][0]} /> {num(set.size)}</button>)}
         </div>
       )}
-      {rows.length === 0 && <p className="muted">واکنشی نیست</p>}
+      {rows.length === 0 && <p className="muted">{t("reactions.none")}</p>}
       {rows.map(({ k, e }) => {
         const id = e.getSender()!, m = room.getMember(id);
         return (

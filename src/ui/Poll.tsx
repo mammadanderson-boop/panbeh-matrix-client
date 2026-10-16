@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useMemo, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { M_POLL_END, M_POLL_KIND_DISCLOSED, M_POLL_KIND_UNDISCLOSED, M_POLL_RESPONSE, M_POLL_START, PollEvent, type MatrixEvent, type Poll, type Room } from "matrix-js-sdk";
@@ -57,28 +58,28 @@ export function PollForm({ room, threadId, edit, onClose }: { room: Room; thread
 
   const setAnswer = (i: number, v: string) => setAnswers((a) => a.map((x, j) => (j === i ? v : x)));
   return (
-    <Sheet title={edit ? "ویرایش نظرسنجی" : "نظرسنجی جدید"} onClose={onClose}>
+    <Sheet title={edit ? t("poll.editTitle") : t("poll.new")} onClose={onClose}>
       <form className="form" onSubmit={submit}>
-        <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="پرسش" aria-label="پرسش" dir="auto" required autoFocus />
-        <h3>گزینه‌ها</h3>
+        <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder={t("poll.question")} aria-label={t("poll.question")} dir="auto" required autoFocus />
+        <h3>{t("poll.options")}</h3>
         {answers.map((a, i) => (
           <div key={i} className="poll-edit-opt">
-            <input value={a} onChange={(e) => setAnswer(i, e.target.value)} placeholder={`گزینه‌ی ${num(i + 1)}`} aria-label={`گزینه‌ی ${num(i + 1)}`} dir="auto" />
+            <input value={a} onChange={(e) => setAnswer(i, e.target.value)} placeholder={t("poll.option", { n: i + 1 })} aria-label={t("poll.option", { n: i + 1 })} dir="auto" />
             {answers.length > 2 && (
-              <button type="button" className="icon-btn" aria-label="حذف گزینه" onClick={() => setAnswers((x) => x.filter((_, j) => j !== i))}><Icon name="close" size={18} /></button>
+              <button type="button" className="icon-btn" aria-label={t("poll.removeOption")} onClick={() => setAnswers((x) => x.filter((_, j) => j !== i))}><Icon name="close" size={18} /></button>
             )}
           </div>
         ))}
         {answers.length < MAX_ANSWERS && (
-          <div className="row-actions"><button type="button" onClick={() => setAnswers((a) => [...a, ""])}><Icon name="plus" /> افزودن گزینه</button></div>
+          <div className="row-actions"><button type="button" onClick={() => setAnswers((a) => [...a, ""])}><Icon name="plus" /> {t("poll.addOption")}</button></div>
         )}
-        <label className="switch-row"><span>چند گزینه‌ای<small>هر نفر می‌تواند چند گزینه را انتخاب کند</small></span>
+        <label className="switch-row"><span>{t("poll.multi")}<small>{t("poll.multiHint")}</small></span>
           <input type="checkbox" role="switch" checked={multi} onChange={(e) => setMulti(e.target.checked)} /></label>
-        <label className="switch-row"><span>نتایج پس از پایان<small>تا پایان نظرسنجی، کسی نتیجه را نمی‌بیند</small></span>
+        <label className="switch-row"><span>{t("poll.hidden")}<small>{t("poll.hiddenHint")}</small></span>
           <input type="checkbox" role="switch" checked={hidden} onChange={(e) => setHidden(e.target.checked)} /></label>
-        <label className="switch-row"><span>ناشناس<small>نام رأی‌دهندگان نشان داده نمی‌شود؛ برنامه‌های دیگر ماتریکس ممکن است آن را نشان دهند</small></span>
+        <label className="switch-row"><span>{t("poll.anon")}<small>{t("poll.anonHint")}</small></span>
           <input type="checkbox" role="switch" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} /></label>
-        <button className="primary" disabled={busy || !question.trim() || opts.length < 2}>{edit ? "ذخیره" : "ارسال نظرسنجی"}</button>
+        <button className="primary" disabled={busy || !question.trim() || opts.length < 2}>{edit ? t("common.save") : t("poll.send")}</button>
       </form>
     </Sheet>
   );
@@ -93,7 +94,7 @@ export function PollBody({ ev, room }: { ev: MatrixEvent; room: Room }) {
   const [editing, setEditing] = useState(false);
 
   const p = parsePoll(ev);
-  if (!p) return <p className="msg-text muted">نظرسنجی نامعتبر</p>;
+  if (!p) return <p className="msg-text muted">{t("poll.invalid")}</p>;
   const ids = p.answers.map((a) => a.id);
   const max = Math.max(1, p.maxSelections);
   const votes = (rels?.getRelations() ?? []).map((r) => {
@@ -124,7 +125,7 @@ export function PollBody({ ev, room }: { ev: MatrixEvent; room: Room }) {
   const canEnd = !!poll && !ended && (ev.getSender() === me() || room.currentState.maySendRedactionForEvent(ev, me()));
   const canEdit = !!rels && !ended && total === 0 && votes.length === 0 && ev.getSender() === me();
   const end = async () => {
-    if (!(await confirmDialog("نظرسنجی پایان یابد؟ پس از آن کسی نمی‌تواند رأی بدهد."))) return;
+    if (!(await confirmDialog(t("poll.endQ")))) return;
     client.sendEvent(room.roomId, M_POLL_END.name as never, PollEndEvent.from(poll!.pollId, "The poll has ended").serialize().content as never)
       .catch((e) => alertDialog(errText(e)));
   };
@@ -134,7 +135,7 @@ export function PollBody({ ev, room }: { ev: MatrixEvent; room: Room }) {
     <div className="poll" onClick={(e) => e.stopPropagation()}>
       <b className="poll-q" dir="auto">{p.question.text}</b>
       <small className="poll-kind">
-        {ended ? "نظرسنجی پایان‌یافته" : [undisclosed ? "نتایج پس از پایان" : "نظرسنجی", anonymous && "ناشناس", max > 1 && "چند گزینه‌ای"].filter(Boolean).join(" · ")}
+        {ended ? t("poll.ended") : [undisclosed ? t("poll.hidden") : t("poll.poll"), anonymous && t("poll.anon"), max > 1 && t("poll.multi")].filter(Boolean).join(" · ")}
       </small>
       {p.answers.map((a) => {
         const who = voters.get(a.id)!;
@@ -142,18 +143,18 @@ export function PollBody({ ev, room }: { ev: MatrixEvent; room: Room }) {
         const on = mine.includes(a.id);
         return (
           <button key={a.id} className={"poll-opt" + (on ? " on" : "") + (ended && who.length && who.length === top ? " win" : "")}
-            disabled={ended || !poll} onClick={() => vote(a.id)} title={results && !anonymous && who.length ? who.map(name).join("، ") : undefined}>
+            disabled={ended || !poll} onClick={() => vote(a.id)} title={results && !anonymous && who.length ? who.map(name).join(t("list.sep")) : undefined}>
             <span className={"poll-mark" + (max > 1 ? " square" : "")}>{on && <Icon name="check" size={13} />}</span>
             <span className="poll-text" dir="auto">{a.text}</span>
-            {results && <span className="poll-pct">{num(pct)}٪</span>}
+            {results && <span className="poll-pct">{t("poll.pct", { n: pct })}</span>}
             {results && <span className="poll-bar" style={{ width: pct + "%" }} />}
           </button>
         );
       })}
       <div className="poll-foot">
-        <span>{total ? `${num(total)} رأی` : "هنوز رأیی نیست"}</span>
-        {canEdit && <button onClick={() => setEditing(true)}>ویرایش</button>}
-        {canEnd && <button onClick={end}>پایان نظرسنجی</button>}
+        <span>{total ? t("poll.votes", { count: total }) : t("poll.noVotes")}</span>
+        {canEdit && <button onClick={() => setEditing(true)}>{t("msg.edit")}</button>}
+        {canEnd && <button onClick={end}>{t("poll.end")}</button>}
       </div>
       {/* portal: a fixed sheet inside the virtualized bubble would be clipped and catch its clicks */}
       {editing && createPortal(<PollForm room={room} threadId={null} edit={ev} onClose={() => setEditing(false)} />, document.body)}

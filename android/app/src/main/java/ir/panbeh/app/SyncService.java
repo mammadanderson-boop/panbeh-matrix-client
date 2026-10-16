@@ -267,7 +267,7 @@ public class SyncService extends Service {
         return PendingIntent.getService(this, 1, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
-    /** «متصل» / «در حال اتصال…» / «قطع؛ تلاش دوباره…» in the permanent notification. */
+    /** Connected / connecting / offline, in the permanent notification. */
     private int statusText() {
         if (!online || "ERROR".equals(syncState)) return R.string.service_offline;
         if ("SYNCING".equals(syncState) || "PREPARED".equals(syncState)) return R.string.service_title;
@@ -288,8 +288,8 @@ public class SyncService extends Service {
         Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         return new NotificationCompat.Builder(this, Notifier.CH_SERVICE)
             .setSmallIcon(R.drawable.ic_stat_panbeh)
-            .setContentTitle(getString(inCall ? R.string.call_ongoing : statusText()))
-            .setContentText(inCall ? null : getString(R.string.service_text))
+            .setContentTitle(Notifier.localized(this).getString(inCall ? R.string.call_ongoing : statusText()))
+            .setContentText(inCall ? null : Notifier.localized(this).getString(R.string.service_text))
             .setPriority(inCall ? NotificationCompat.PRIORITY_DEFAULT : NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
             .setShowWhen(false)

@@ -1,3 +1,4 @@
+import { rtl, t } from "../i18n.ts";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
 import { createPortal } from "react-dom";
 import { type MatrixEvent, type Room } from "matrix-js-sdk";
@@ -100,14 +101,14 @@ export function MediaViewer({ items, start, onClose, onJump }: { items: MatrixEv
   const dir = useRef(0); // which way the last prev/next went: the new item slides in from there
   const goRef = useRef((_d: number) => {});
   // not zoomed, a sideways drag swipes. RTL: dragging right brings in the newer one from the left
-  const { stage, zoom, reset, moved, handlers } = useZoom(!video, (dx) => goRef.current(dx > 0 ? 1 : -1));
+  const { stage, zoom, reset, moved, handlers } = useZoom(!video, (dx) => goRef.current((dx > 0) === rtl ? 1 : -1));
   const go = (d: number) => { const n = items[i + d]; if (n) { dir.current = d; setId(n.getId()); reset(); } };
   goRef.current = go;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
-      else if (e.key === "ArrowLeft") goRef.current(1);
-      else if (e.key === "ArrowRight") goRef.current(-1);
+      else if (e.key === "ArrowLeft") goRef.current(rtl ? 1 : -1);
+      else if (e.key === "ArrowRight") goRef.current(rtl ? -1 : 1);
       else return;
       e.preventDefault();
       e.stopImmediatePropagation(); // Esc here mustn't also close the chat
@@ -130,15 +131,15 @@ export function MediaViewer({ items, start, onClose, onJump }: { items: MatrixEv
 
   const src = full ?? thumb;
   return (
-    <div className={"lightbox" + (closing ? " closing" : "") + (from ? " from-thumb" : "")} role="dialog" aria-label="نمایش رسانه">
+    <div className={"lightbox" + (closing ? " closing" : "") + (from ? " from-thumb" : "")} role="dialog" aria-label={t("media.viewer")}>
       <header className="mv-bar">
-        <button className="icon-btn" onClick={close} aria-label="بستن"><Icon name="close" /></button>
+        <button className="icon-btn" onClick={close} aria-label={t("common.close")}><Icon name="close" /></button>
         <span className="mv-who">
           <b dir="auto">{senderName(ev)}</b>
-          <small>{stamp(ev.getTs())}{items.length > 1 && ` · ${num(i + 1)} از ${num(items.length)}`}</small>
+          <small>{stamp(ev.getTs())}{items.length > 1 && " · " + t("common.nOf", { n: i + 1, total: items.length })}</small>
         </span>
-        {onJump && <button className="icon-btn" onClick={() => { onClose(); onJump(ev); }} title="نمایش در گفتگو" aria-label="نمایش در گفتگو"><Icon name="thread" /></button>}
-        <button className="icon-btn" onClick={download} title="دانلود" aria-label="دانلود"><Icon name="download" /></button>
+        {onJump && <button className="icon-btn" onClick={() => { onClose(); onJump(ev); }} title={t("media.showInChat")} aria-label={t("media.showInChat")}><Icon name="thread" /></button>}
+        <button className="icon-btn" onClick={download} title={t("media.download")} aria-label={t("media.download")}><Icon name="download" /></button>
       </header>
       <div className="mv-stage" ref={stage} {...handlers} onClick={(e) => { if (e.target === e.currentTarget && !moved()) close(); }}>
         {video ? (
@@ -148,8 +149,8 @@ export function MediaViewer({ items, start, onClose, onJump }: { items: MatrixEv
             style={{ transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`, "--dir": dir.current } as CSSProperties} />
         ) : <span className="spinner" />}
       </div>
-      {i > 0 && <button className="icon-btn mv-nav mv-prev" onClick={() => go(-1)} aria-label="قبلی"><Icon name="back" size={28} /></button>}
-      {i < items.length - 1 && <button className="icon-btn mv-nav mv-next" onClick={() => go(1)} aria-label="بعدی"><Icon name="chevron" size={28} /></button>}
+      {i > 0 && <button className="icon-btn mv-nav mv-prev" onClick={() => go(-1)} aria-label={t("media.prev")}><Icon name="back" size={28} /></button>}
+      {i < items.length - 1 && <button className="icon-btn mv-nav mv-next" onClick={() => go(1)} aria-label={t("media.next")}><Icon name="chevron" size={28} /></button>}
       {caption(c) && <p className="mv-caption" dir="auto">{caption(c)}</p>}
     </div>
   );
@@ -191,18 +192,18 @@ function VideoPlayer({ src, duration }: { src: string; duration: number }) {
         onPlay={() => { stopPlayer(); setPlaying(true); poke(); }} onPause={() => setPlaying(false)}
         onTimeUpdate={(e) => setPos(e.currentTarget.currentTime)}
         onDurationChange={(e) => Number.isFinite(e.currentTarget.duration) && setDur(e.currentTarget.duration)} />
-      {!playing && <button className="vp-big" onClick={toggle} aria-label="پخش"><Icon name="play" size={34} /></button>}
+      {!playing && <button className="vp-big" onClick={toggle} aria-label={t("media.play")}><Icon name="play" size={34} /></button>}
       <div className="vp-bar" dir="ltr">
-        <button className="icon-btn" onClick={toggle} aria-label={playing ? "توقف" : "پخش"}><Icon name={playing ? "pause" : "play"} /></button>
+        <button className="icon-btn" onClick={toggle} aria-label={playing ? t("media.pause") : t("media.play")}><Icon name={playing ? "pause" : "play"} /></button>
         <span className="vp-time">{fmtDuration(pos * 1000)}</span>
-        <input type="range" min={0} max={dur || 0} step="any" value={Math.min(pos, dur)} onChange={(e) => seek(+e.target.value)} aria-label="موقعیت پخش" />
+        <input type="range" min={0} max={dur || 0} step="any" value={Math.min(pos, dur)} onChange={(e) => seek(+e.target.value)} aria-label={t("media.position")} />
         <span className="vp-time">{fmtDuration(dur * 1000)}</span>
-        <button className="speed" onClick={cycle} aria-label="سرعت پخش">{num(speed)}×</button>
-        <button className="icon-btn" onClick={() => { v.current!.muted = !muted; setMuted(!muted); }} aria-label={muted ? "صدا" : "بی‌صدا"}>
+        <button className="speed" onClick={cycle} aria-label={t("media.speed")}>{num(speed)}×</button>
+        <button className="icon-btn" onClick={() => { v.current!.muted = !muted; setMuted(!muted); }} aria-label={muted ? t("media.unmute") : t("media.mute")}>
           <Icon name={muted ? "mute" : "speaker"} />
         </button>
         {document.fullscreenEnabled && (
-          <button className="icon-btn" aria-label={full ? "خروج از تمام‌صفحه" : "تمام‌صفحه"}
+          <button className="icon-btn" aria-label={full ? t("media.exitFull") : t("media.full")}
             onClick={() => (full ? document.exitFullscreen() : box.current!.requestFullscreen()).catch(() => {})}>
             <Icon name={full ? "shrink" : "expand"} />
           </button>
@@ -242,11 +243,11 @@ export function PhotoViewer({ mxc, name, onClose }: { mxc: string; name: string;
   }, [close]);
   const src = full ?? thumb;
   return createPortal(
-    <div className={"lightbox" + (closing ? " closing" : "") + (from ? " from-thumb" : "")} role="dialog" aria-label="نمایش عکس">
+    <div className={"lightbox" + (closing ? " closing" : "") + (from ? " from-thumb" : "")} role="dialog" aria-label={t("profile.viewPhoto")}>
       <header className="mv-bar">
-        <button className="icon-btn" onClick={close} aria-label="بستن"><Icon name="close" /></button>
+        <button className="icon-btn" onClick={close} aria-label={t("common.close")}><Icon name="close" /></button>
         <span className="mv-who"><b dir="auto">{name}</b></span>
-        <button className="icon-btn" onClick={download} title="ذخیره" aria-label="ذخیره"><Icon name="download" /></button>
+        <button className="icon-btn" onClick={download} title={t("common.save")} aria-label={t("common.save")}><Icon name="download" /></button>
       </header>
       <div className="mv-stage" ref={stage} {...handlers} onClick={(e) => { if (e.target === e.currentTarget && !moved()) close(); }}>
         {src ? <img src={src} alt={name} draggable={false} className={zoom.s > 1 ? "zoomed" : ""}
@@ -259,7 +260,7 @@ export function PhotoViewer({ mxc, name, onClose }: { mxc: string; name: string;
 
 // ---------- shared media ----------
 
-const TABS: Record<MediaKind, string> = { media: "عکس و ویدیو", file: "فایل", link: "پیوند", audio: "صدا" };
+const TABS: Record<MediaKind, string> = { media: t("media.tabMedia"), file: t("media.tabFiles"), link: t("media.tabLinks"), audio: t("media.tabAudio") };
 const AUTO_PAGES = 10; // pages fetched on their own per tab before asking for "more"
 
 type Item = { ev: MatrixEvent; kind: MediaKind };
@@ -315,12 +316,12 @@ export function SharedMedia({ room, onClose, onJump }: { room: Room; onClose: ()
   const shown = items.filter((x) => x.kind === tab).map((x) => x.ev);
   const jump = (ev: MatrixEvent) => { requestJump(room.roomId, ev.getId()!); onJump(); };
   const jumpBtn = (ev: MatrixEvent) => (
-    <button className="icon-btn" onClick={() => jump(ev)} title="نمایش در گفتگو" aria-label="نمایش در گفتگو"><Icon name="thread" size={18} /></button>
+    <button className="icon-btn" onClick={() => jump(ev)} title={t("media.showInChat")} aria-label={t("media.showInChat")}><Icon name="thread" size={18} /></button>
   );
   const meta = (ev: MatrixEvent) => <small className="sm-meta" dir="auto">{senderName(ev)} · {stamp(ev.getTs())}</small>;
 
   return (
-    <Sheet title="رسانه‌ها، فایل‌ها و پیوندها" onClose={onClose}>
+    <Sheet title={t("media.title")} onClose={onClose}>
       <div className="segmented sm-tabs" data-pill ref={pill}>
         {(Object.keys(TABS) as MediaKind[]).map((k) => (
           <button key={k} className={tab === k ? "on" : ""} onClick={() => { setTab(k); setAutoLeft(AUTO_PAGES); }}>{TABS[k]}</button>
@@ -352,9 +353,9 @@ export function SharedMedia({ room, onClose, onJump }: { room: Room; onClose: ()
       )}
       <div ref={sentinel} className="sm-foot">
         {busy ? <span className="spinner inline" />
-          : error ? <><p className="error">{error}</p><button onClick={more}>تلاش دوباره</button></>
-          : token === null ? (!shown.length && <p className="muted">چیزی پیدا نشد</p>)
-          : autoLeft <= 0 && <button onClick={() => setAutoLeft(AUTO_PAGES)}>جستجوی پیام‌های قدیمی‌تر</button>}
+          : error ? <><p className="error">{error}</p><button onClick={more}>{t("common.retry")}</button></>
+          : token === null ? (!shown.length && <p className="muted">{t("common.nothingFound")}</p>)
+          : autoLeft <= 0 && <button onClick={() => setAutoLeft(AUTO_PAGES)}>{t("media.searchOlder")}</button>}
       </div>
       {viewing && <MediaViewer items={[...shown].reverse()} start={viewing} onClose={() => setViewing(null)} onJump={jump} />}
     </Sheet>

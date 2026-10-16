@@ -238,6 +238,14 @@ public class PanbehPlugin extends Plugin {
         });
     }
 
+    /** The page's language, for what the app shows itself: notifications and their channels' names. */
+    @PluginMethod
+    public void setLanguage(PluginCall call) {
+        getContext().getSharedPreferences("panbeh", Context.MODE_PRIVATE).edit().putString("lang", call.getString("lang")).apply();
+        Notifier.createChannels(getContext()); // renames them
+        call.resolve();
+    }
+
     @PluginMethod
     public void takeLaunchRoom(PluginCall call) {
         JSObject r = new JSObject();
@@ -593,7 +601,7 @@ public class PanbehPlugin extends Plugin {
         String label = call.getString("label", "").replaceAll("[()]", "").trim();
         String q = lat + "," + lon + (label.isEmpty() ? "" : "(" + Uri.encode(label) + ")");
         Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:" + lat + "," + lon + "?q=" + q));
-        getContext().startActivity(Intent.createChooser(view, "باز کردن با").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        getContext().startActivity(Intent.createChooser(view, Notifier.localized(getContext()).getString(R.string.open_with)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         call.resolve();
     }
 

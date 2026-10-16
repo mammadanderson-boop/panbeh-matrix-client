@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useState } from "react";
 import { ClientEvent, RoomStateEvent, type Room } from "matrix-js-sdk";
 import { addToMyPack, canEditPacks, client, isPackGlobal, packsFor, personalPack, putPersonalPack, putRoomPack, roomPack, roomPacks, setPackGlobal, uploadEmote, type Pack } from "../matrix.ts";
@@ -9,9 +10,9 @@ import { alertDialog, confirmDialog, promptDialog } from "./dialog.tsx";
 import { useSlider } from "./useSlider.ts";
 import { EmoteImg } from "./Emoji.tsx";
 
-const KIND: Record<Usage, string> = { emoticon: "اموجی", sticker: "استیکر" };
+const KIND: Record<Usage, string> = { emoticon: t("packs.emoji"), sticker: t("packs.sticker") };
 const TICK = [ClientEvent.AccountData, RoomStateEvent.Events];
-const TINTS: [Tint, string][] = [["auto", "خودکار"], ["always", "همیشه"], ["never", "هرگز"]];
+const TINTS: [Tint, string][] = [["auto", t("packs.tintAuto")], ["always", t("packs.tintAlways")], ["never", t("packs.tintNever")]];
 /** `o` with its tint setting set, or dropped for "auto" (an image's "auto" = as its pack says). */
 const withTint = <T extends { [TINT]?: Tint }>(o: T, t: Tint): T => { const { [TINT]: _, ...rest } = o; return (t === "auto" ? rest : { ...rest, [TINT]: t }) as T; };
 
@@ -31,7 +32,7 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
   /** Files that don't fit the pack or can't be used are skipped and listed; the rest still go in. */
   const add = (files: File[]) => run(async () => {
     const fits = files.slice(0, Math.max(0, PACK_CAP[kind] - list.length)), errors: string[] = [];
-    if (fits.length < files.length) errors.push(`بسته پر است: ${num(files.length - fits.length)} فایل اضافه نشد (حداکثر ${num(PACK_CAP[kind])} تا).`);
+    if (fits.length < files.length) errors.push(t("packs.fullSkipped", { count: files.length - fits.length, max: PACK_CAP[kind] }));
     const up = [];
     for (const f of fits) {
       try { up.push({ name: f.name, img: await uploadEmote(f, kind) }); } catch (e) { errors.push(`${f.name}: ${errText(e)}`); }
@@ -44,10 +45,10 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
     if (errors.length) alertDialog(errors.join("\n"));
   });
   const rename = async (code: string) => {
-    const next = await promptDialog("نام کوتاه", { value: code, ok: "ذخیره", filter: (v) => cleanCode(v), hint: "حروف فارسی یا انگلیسی، عدد، _ و -" });
+    const next = await promptDialog(t("packs.shortcode"), { value: code, ok: t("common.save"), filter: (v) => cleanCode(v), hint: t("packs.shortcodeHint") });
     if (!next || next === code) return;
     const cur = load();
-    if (Object.hasOwn(cur.images ?? {}, next)) return alertDialog(`«:${next}:» در این بسته هست`);
+    if (Object.hasOwn(cur.images ?? {}, next)) return alertDialog(t("packs.exists", { code: next }));
     run(() => save({ ...cur, images: Object.fromEntries(Object.entries(cur.images ?? {}).map(([k, i]) => [k === code ? next : k, i])) }));
   };
   const without = (cur: PackContent, codes: string[]) => {
@@ -61,11 +62,11 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
     return { ...cur, images };
   };
   const remove = async (code: string) => {
-    if (!await confirmDialog(`«:${code}:» حذف شود؟`, { ok: "حذف", danger: true })) return;
+    if (!await confirmDialog(t("packs.deleteQ", { code }), { ok: t("common.delete"), danger: true })) return;
     run(() => save(without(load(), [code])));
   };
   const removeAll = async () => {
-    if (!await confirmDialog(`همه‌ی ${num(list.length)} ${KIND[kind]} ${mine ? "شما" : "این بسته برای همه‌ی اعضا"} حذف شود؟`, { ok: "حذف همه", danger: true })) return;
+    if (!await confirmDialog(t(mine ? (kind === "sticker" ? "packs.delAllMyStickers" : "packs.delAllMyEmoji") : (kind === "sticker" ? "packs.delAllRoomStickers" : "packs.delAllRoomEmoji"), { count: list.length }), { ok: t("packs.deleteAll"), danger: true })) return;
     run(async () => { const cur = load(); await save(without(cur, listOf(cur).map(([code]) => code))); });
   };
   const tintPack = (t: Tint) => run(() => { const cur = load(); return save({ ...cur, pack: withTint(cur.pack ?? {}, t) }); });
@@ -75,15 +76,15 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
   });
   const tints = editable && kind !== "sticker"; // stickers keep their colors
   const take = (code: string) =>
-    addToMyPack(code, c.images![code], kind).then(() => toast(`به ${KIND[kind]}های شما اضافه شد`), (e) => alertDialog(errText(e)));
+    addToMyPack(code, c.images![code], kind).then(() => toast(kind === "sticker" ? t("packs.addedSticker") : t("packs.addedEmoji")), (e) => alertDialog(errText(e)));
 
   return (
     <>
       {tints && <>
-        <label className="select-row">هم‌رنگ متن
+        <label className="select-row">{t("packs.tint")}
           <Select value={c.pack?.[TINT] ?? "auto"} options={TINTS} disabled={busy} onChange={tintPack} />
         </label>
-        <p className="muted">اموجیِ هم‌رنگ متن روی زمینه‌ی تیره روشن می‌شود. «خودکار»: فقط اموجی‌های تیره و تک‌رنگ. هر اموجی را هم می‌شود از منوی خودش جدا تنظیم کرد.</p>
+        <p className="muted">{t("packs.tintHint")}</p>
       </>}
       <div className="gif-grid pack-grid">
         {list.map(([code, i]) => (
@@ -92,28 +93,28 @@ function PackGrid({ load, save, use, editable, mine }: { load: () => PackContent
           </button>
         ))}
         {editable && !full && (
-          <label className="pack-add" title="افزودن تصویر" aria-label="افزودن تصویر">
+          <label className="pack-add" title={t("packs.addImage")} aria-label={t("packs.addImage")}>
             <input type="file" accept="image/*" multiple hidden disabled={busy}
               onChange={(e) => { const f = [...e.target.files!]; e.target.value = ""; if (f.length) add(f); }} />
             {busy ? <span className="spinner" /> : <Icon name="plus" />}
           </label>
         )}
       </div>
-      {!list.length && !editable && <p className="muted">خالی است</p>}
-      {editable && full && <p className="muted">بسته پر است ({num(PACK_CAP[kind])} تا). برای افزودن، چندتایی را حذف کنید.</p>}
+      {!list.length && !editable && <p className="muted">{t("packs.empty")}</p>}
+      {editable && full && <p className="muted">{t("packs.full", { count: PACK_CAP[kind] })}</p>}
       {editable && list.length > 0 && (
-        <div className="row-actions"><button className="warn" disabled={busy} onClick={() => void removeAll()}><Icon name="trash" /> حذف همه</button></div>
+        <div className="row-actions"><button className="warn" disabled={busy} onClick={() => void removeAll()}><Icon name="trash" /> {t("packs.deleteAll")}</button></div>
       )}
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} target=".pack-grid button" onClose={() => setMenu(null)}>
-          {!mine && <button role="menuitem" onClick={() => { setMenu(null); take(menu.code); }}><Icon name="plus" /> افزودن به مال من</button>}
-          {tints && ([["auto", "مثل بسته"], ...TINTS.slice(1)] as [Tint, string][]).map(([t, label]) => {
-            const on = (c.images?.[menu.code]?.[TINT] ?? "auto") === t;
-            return <button key={t} role="menuitemradio" aria-checked={on} onClick={() => { setMenu(null); if (!on) tintImage(menu.code, t); }}>
-              <span className="menu-check">{on && <Icon name="check" />}</span> هم‌رنگ متن: {label}</button>;
+          {!mine && <button role="menuitem" onClick={() => { setMenu(null); take(menu.code); }}><Icon name="plus" /> {t("packs.addToMine")}</button>}
+          {tints && ([["auto", t("packs.tintLikePack")], ...TINTS.slice(1)] as [Tint, string][]).map(([tn, label]) => {
+            const on = (c.images?.[menu.code]?.[TINT] ?? "auto") === tn;
+            return <button key={tn} role="menuitemradio" aria-checked={on} onClick={() => { setMenu(null); if (!on) tintImage(menu.code, tn); }}>
+              <span className="menu-check">{on && <Icon name="check" />}</span> {t("packs.tintIs", { v: label })}</button>;
           })}
-          {editable && <button role="menuitem" onClick={() => { setMenu(null); void rename(menu.code); }}><Icon name="edit" /> تغییر نام</button>}
-          {editable && <button role="menuitem" className="danger-item" onClick={() => { setMenu(null); void remove(menu.code); }}><Icon name="trash" /> حذف</button>}
+          {editable && <button role="menuitem" onClick={() => { setMenu(null); void rename(menu.code); }}><Icon name="edit" /> {t("common.rename")}</button>}
+          {editable && <button role="menuitem" className="danger-item" onClick={() => { setMenu(null); void remove(menu.code); }}><Icon name="trash" /> {t("common.delete")}</button>}
         </ContextMenu>
       )}
     </>
@@ -129,13 +130,13 @@ export function MyPacks() {
   return (
     <>
       <div className="segmented" data-pill ref={pill}>
-        <button className={use === "emoticon" ? "on" : ""} onClick={() => setUse("emoticon")}>اموجی‌های من</button>
-        <button className={use === "sticker" ? "on" : ""} onClick={() => setUse("sticker")}>استیکرهای من</button>
+        <button className={use === "emoticon" ? "on" : ""} onClick={() => setUse("emoticon")}>{t("packs.myEmoji")}</button>
+        <button className={use === "sticker" ? "on" : ""} onClick={() => setUse("sticker")}>{t("packs.myStickers")}</button>
       </div>
       <PackGrid key={use} load={personalPack} save={putPersonalPack} use={use} editable mine />
-      <p className="muted">{use === "sticker" ? "استیکرها در پنل اموجی، زبانه‌ی استیکر هستند."
-        : <>اموجی‌ها در همه‌ی گفتگوها کار می‌کنند: از پنل اموجی بزنید یا <bdi>:نام:</bdi> را بنویسید. اموجی دیگران را با زدن روی آن در پیام، و استیکرشان را از منوی پیام، به مال خودتان اضافه کنید.</>}</p>
-      {global.length > 0 && <h3>بسته‌های گفتگوها</h3>}
+      <p className="muted">{use === "sticker" ? t("packs.stickerHelp")
+        : <>{t("packs.emojiHelpA")}<bdi>{t("packs.codeName")}</bdi>{t("packs.emojiHelpB")}</>}</p>
+      {global.length > 0 && <h3>{t("packs.roomPacks")}</h3>}
       {global.map((p) => <GlobalSwitch key={p.key} pack={p} sub={client.getRoom(p.roomId!)?.name} />)}
     </>
   );
@@ -144,7 +145,7 @@ export function MyPacks() {
 function GlobalSwitch({ pack, sub }: { pack: Pack; sub?: string }) {
   const [busy, setBusy] = useState(false);
   return (
-    <label className="switch-row"><span>{sub ? pack.name : "استفاده در همه‌ی گفتگوها"}<small>{sub ?? "نه فقط در همین گفتگو"}</small></span>
+    <label className="switch-row"><span>{sub ? pack.name : t("packs.global")}<small>{sub ?? t("packs.globalHint")}</small></span>
       <input type="checkbox" role="switch" disabled={busy} checked={isPackGlobal(pack)}
         onChange={(e) => { setBusy(true); setPackGlobal(pack, e.target.checked).catch((er) => alertDialog(errText(er))).finally(() => setBusy(false)); }} /></label>
   );
@@ -157,44 +158,44 @@ export function RoomPacks({ room }: { room: Room }) {
   const packs = roomPacks(room), edit = canEditPacks(room);
   const load = (key: string) => () => room.currentState.getStateEvents("im.ponies.room_emotes", key)?.getContent<PackContent>() ?? {};
   const create = async (use: Usage) => {
-    const name = await promptDialog(`نام بسته‌ی ${KIND[use]}`, { ok: "ساختن", value: room.name });
+    const name = await promptDialog(use === "sticker" ? t("packs.stickerPackName") : t("packs.emojiPackName"), { ok: t("packs.create"), value: room.name });
     if (name === null) return;
     const key = freeCode(use === "sticker" ? "stickers" : "emoji", Object.fromEntries(packs.map((p) => [p.stateKey, 1])));
     putRoomPack(room, key, { pack: { display_name: name || room.name, usage: [use] }, images: {} }).then(() => setOpen(key), (e) => alertDialog(errText(e)));
   };
   const rename = async (p: Pack) => {
-    const name = await promptDialog("نام بسته", { ok: "ذخیره", value: p.name });
+    const name = await promptDialog(t("packs.name"), { ok: t("common.save"), value: p.name });
     if (name) putRoomPack(room, p.stateKey!, { ...p.content, pack: { ...p.content.pack, display_name: name } }).catch((e) => alertDialog(errText(e)));
   };
   const remove = async (p: Pack) => {
-    if (await confirmDialog(`بسته‌ی «${p.name}» برای همه‌ی اعضا حذف شود؟`, { ok: "حذف", danger: true }))
+    if (await confirmDialog(t("packs.deletePackQ", { name: p.name }), { ok: t("common.delete"), danger: true }))
       putRoomPack(room, p.stateKey!, {}).then(() => setOpen(null), (e) => alertDialog(errText(e)));
   };
   const cur = open === null ? null : roomPack(room, open, load(open)());
   return (
     <>
-      {packs.length === 0 && <p className="muted">این گفتگو بسته‌ی اموجی یا استیکر ندارد.</p>}
+      {packs.length === 0 && <p className="muted">{t("packs.none")}</p>}
       {packs.map((p) => {
         const first = Object.values(p.content.images ?? {})[0]?.url;
-        const kinds = p.content.pack?.usage?.length === 1 ? KIND[p.content.pack.usage[0]] : "اموجی و استیکر";
+        const kinds = p.content.pack?.usage?.length === 1 ? KIND[p.content.pack.usage[0]] : t("packs.both");
         return (
           <button key={p.key} className="user-row" onClick={() => setOpen(p.stateKey!)}>
             <span className="device-box">{p.avatar ?? first ? <EmoteImg url={(p.avatar ?? first)!} alt="" className="" sticker={kinds === KIND.sticker} /> : <Icon name="smile" />}</span>
-            <span><b>{p.name}</b><small>{kinds} · {num(Object.keys(p.content.images ?? {}).length)} تصویر</small></span>
+            <span><b>{p.name}</b><small>{kinds} · {t("packs.images", { count: Object.keys(p.content.images ?? {}).length })}</small></span>
           </button>
         );
       })}
       {edit && <>
-        <button className="user-row" onClick={() => void create("emoticon")}><span className="device-box"><Icon name="plus" /></span><span><b>بسته‌ی اموجی جدید</b></span></button>
-        <button className="user-row" onClick={() => void create("sticker")}><span className="device-box"><Icon name="plus" /></span><span><b>بسته‌ی استیکر جدید</b></span></button>
+        <button className="user-row" onClick={() => void create("emoticon")}><span className="device-box"><Icon name="plus" /></span><span><b>{t("packs.newEmoji")}</b></span></button>
+        <button className="user-row" onClick={() => void create("sticker")}><span className="device-box"><Icon name="plus" /></span><span><b>{t("packs.newSticker")}</b></span></button>
       </>}
       {cur && (
         <Sheet title={cur.name} onClose={() => setOpen(null)}>
           <GlobalSwitch pack={cur} />
           <PackGrid load={load(open!)} save={(c) => putRoomPack(room, open!, c)} editable={edit} />
           {edit && <>
-            <button className="user-row" onClick={() => void rename(cur)}><span className="device-box"><Icon name="edit" /></span><span><b>تغییر نام بسته</b></span></button>
-            <button className="danger" onClick={() => void remove(cur)}>حذف بسته</button>
+            <button className="user-row" onClick={() => void rename(cur)}><span className="device-box"><Icon name="edit" /></span><span><b>{t("packs.rename")}</b></span></button>
+            <button className="danger" onClick={() => void remove(cur)}>{t("packs.delete")}</button>
           </>}
         </Sheet>
       )}

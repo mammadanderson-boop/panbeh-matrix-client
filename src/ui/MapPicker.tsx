@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -22,11 +23,11 @@ export function MapPicker({ canLocate, onClose, onPick, onPickSelf, onLive }: {
   const [moving, setMoving] = useState(false);
   const [center, setCenter] = useState<L.LatLng>(L.latLng(TEHRAN));
   const [locating, setLocating] = useState(canLocate); // the fix at open starts right away
-  const [fix, setFix] = useState<{ lat: number; lon: number; acc: number } | null>(null); // the last GPS fix, for "ارسال موقعیت من"
+  const [fix, setFix] = useState<{ lat: number; lon: number; acc: number } | null>(null); // the last GPS fix, for "send my location"
 
   /** The user's position: silently at open (the map just stays where it is), with an error on the button. */
   function locate(auto = false) {
-    if (!navigator.geolocation) return void (auto || alertDialog("این مرورگر موقعیت مکانی را پشتیبانی نمی‌کند."));
+    if (!navigator.geolocation) return void (auto || alertDialog(t("loc.unsupported")));
     setLocating(true);
     navigator.geolocation.getCurrentPosition((p) => {
       setLocating(false);
@@ -39,7 +40,7 @@ export function MapPicker({ canLocate, onClose, onPick, onPickSelf, onLive }: {
       m.setView(ll, Math.max(m.getZoom(), 16), { animate: !auto });
     }, (e) => {
       setLocating(false);
-      if (!auto) alertDialog(e.code === e.PERMISSION_DENIED ? "اجازه‌ی دسترسی به موقعیت مکانی داده نشد." : "موقعیت مکانی پیدا نشد.");
+      if (!auto) alertDialog(e.code === e.PERMISSION_DENIED ? t("loc.denied") : t("loc.notFound"));
     }, { enableHighAccuracy: true, timeout: 10_000 });
   }
 
@@ -66,42 +67,42 @@ export function MapPicker({ canLocate, onClose, onPick, onPickSelf, onLive }: {
   const lat = +pick.lat.toFixed(6), lon = +pick.lng.toFixed(6);
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal map-modal" role="dialog" aria-label="موقعیت مکانی" onClick={(e) => e.stopPropagation()}
+      <div className="modal map-modal" role="dialog" aria-label={t("loc.title")} onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>موقعیت مکانی</h2>
+        <h2>{t("loc.title")}</h2>
         <div className="map-wrap">
           <div className="map" ref={mapEl} />
           <svg className={`map-pin${moving ? " lifted" : ""}`} viewBox="0 0 24 24" fillRule="evenodd" aria-hidden="true">
             <path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />
           </svg>
           {canLocate && (
-            <button className="icon-btn map-locate" title="موقعیت من" aria-label="موقعیت من" onClick={() => locate()}>
+            <button className="icon-btn map-locate" title={t("loc.mine")} aria-label={t("loc.mine")} onClick={() => locate()}>
               <Icon name="location" />
             </button>
           )}
-          {locating && <div className="map-locating"><span className="spinner inline" /> در حال پیدا کردن موقعیت…</div>}
+          {locating && <div className="map-locating"><span className="spinner inline" /> {t("loc.locating")}</div>}
         </div>
-        <p className="muted">نقشه را بکشید تا نشانگر روی جای دلخواهتان بیفتد. <bdi dir="ltr">{lat.toFixed(5)}, {lon.toFixed(5)}</bdi></p>
+        <p className="muted">{t("loc.drag")} <bdi dir="ltr">{lat.toFixed(5)}, {lon.toFixed(5)}</bdi></p>
         {(canLocate || onLive) && (
           <div className="map-options">
             {/* the GPS fix itself, not the pin; its accuracy is in sight, so no confirm */}
             {canLocate && (
               <button disabled={!fix} onClick={() => fix && onPickSelf(+fix.lat.toFixed(6), +fix.lon.toFixed(6), fix.acc)}>
                 <Icon name="location" />
-                <span>ارسال موقعیت فعلی من<small>{fix ? `دقت حدود ${num(fix.acc)} متر` : locating ? "در حال پیدا کردن موقعیت…" : "موقعیت پیدا نشد؛ دکمه‌ی موقعیت روی نقشه را بزنید"}</small></span>
+                <span>{t("loc.sendCurrent")}<small>{fix ? t("loc.accuracy", { count: fix.acc }) : locating ? t("loc.locating") : t("loc.notFoundTap")}</small></span>
               </button>
             )}
             {onLive && (
               <button onClick={onLive}>
                 <Icon name="clock" />
-                <span>اشتراک موقعیت زنده<small>برای مدتی که انتخاب می‌کنید</small></span>
+                <span>{t("loc.shareLive")}<small>{t("loc.shareLiveHint")}</small></span>
               </button>
             )}
           </div>
         )}
         <div className="modal-actions">
-          <button onClick={onClose}>لغو</button>
-          <button className="primary" onClick={() => onPick(lat, lon)}>ارسال این نقطه</button>
+          <button onClick={onClose}>{t("common.cancel")}</button>
+          <button className="primary" onClick={() => onPick(lat, lon)}>{t("loc.sendPoint")}</button>
         </div>
       </div>
     </div>

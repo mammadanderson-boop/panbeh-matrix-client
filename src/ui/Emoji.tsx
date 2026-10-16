@@ -1,3 +1,4 @@
+import { lang, t } from "../i18n.ts";
 import { useSlider } from "./useSlider.ts";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from "react";
 import { ClientEvent, RoomStateEvent, type MatrixEvent, type Room } from "matrix-js-sdk";
@@ -17,8 +18,8 @@ type Raw = { unicode: string; label: string; tags?: string[]; group?: number; or
 // emojibase group ids; 2 = skin-tone/hair components
 // ponytail: no skin tones (base emoji only); add a tone picker from `skins` if people ask
 const GROUPS: [number, string, string][] = [
-  [0, "😀", "شکلک‌ها"], [1, "👋", "آدم‌ها"], [3, "🐱", "حیوانات و طبیعت"], [4, "🍔", "خوراکی‌ها"],
-  [5, "✈️", "سفر و مکان‌ها"], [6, "⚽", "فعالیت‌ها"], [7, "💡", "اشیا"], [8, "❤️", "نمادها"], [9, "🏳️", "پرچم‌ها"],
+  [0, "😀", t("emoji.smileys")], [1, "👋", t("emoji.people")], [3, "🐱", t("emoji.nature")], [4, "🍔", t("emoji.food")],
+  [5, "✈️", t("emoji.travel")], [6, "⚽", t("emoji.activities")], [7, "💡", t("emoji.objects")], [8, "❤️", t("emoji.symbols")], [9, "🏳️", t("emoji.flags")],
 ];
 
 const IRAN = "🇮🇷", ISRAEL = "🇮🇱";
@@ -26,7 +27,7 @@ const strip = (s: string) => s.replace(/️/g, ""); // CLDR keys drop the emoji 
 let data: Promise<Map<number, Emoji[]>> | null = null;
 
 function loadEmoji() {
-  data ??= Promise.all([fetch(enUrl).then((r) => r.json()), fetch(faUrl).then((r) => r.json())]).then(([en, fa]: [Raw[], any]) => {
+  data ??= Promise.all([fetch(enUrl).then((r) => r.json()), (lang === "fa" ? fetch(faUrl).then((r) => r.json()) : { annotations: { annotations: {} } })]).then(([en, fa]: [Raw[], any]) => {
     const names = new Map<string, { default?: string[]; tts?: string[] }>();
     for (const [k, v] of Object.entries(fa.annotations.annotations)) names.set(strip(k), v as never);
     const groups = new Map<number, Emoji[]>();
@@ -83,7 +84,7 @@ export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, onBackspace
   return (
     <>
       {!docked && <div className="menu-backdrop" onClick={onClose} />}
-      <div className={"emoji-panel" + (closing ? " closing" : "") + (tabs || bksp ? " floating" : "")} role="dialog" aria-label="اموجی" onScrollCapture={onScroll}>
+      <div className={"emoji-panel" + (closing ? " closing" : "") + (tabs || bksp ? " floating" : "")} role="dialog" aria-label={t("emoji.emoji")} onScrollCapture={onScroll}>
         {tab === "sticker" && stickers ? <StickerGrid room={room} {...stickers} />
           : tab === "gif" && gifs ? <GifGrid {...gifs} />
           : <EmojiGrid room={room} onPick={(e) => { remember(e.u); if (e.custom) onEmoji(e.name, e.custom); else onEmoji(e.u); }} />}
@@ -91,12 +92,12 @@ export function EmojiPanel({ onEmoji, onClose, room, gifs, stickers, onBackspace
           <div className={"emoji-float" + (away ? " away" : "")}>
             {tabs && (
               <div className="segmented" data-pill ref={pill} role="tablist">
-                <button role="tab" aria-selected={tab === "emoji"} className={tab === "emoji" ? "on" : ""} onClick={() => setTab("emoji")}>اموجی</button>
-                {stickers && <button role="tab" aria-selected={tab === "sticker"} className={tab === "sticker" ? "on" : ""} onClick={() => setTab("sticker")}>استیکر</button>}
-                {gifs && <button role="tab" aria-selected={tab === "gif"} className={tab === "gif" ? "on" : ""} onClick={() => setTab("gif")}>گیف</button>}
+                <button role="tab" aria-selected={tab === "emoji"} className={tab === "emoji" ? "on" : ""} onClick={() => setTab("emoji")}>{t("emoji.emoji")}</button>
+                {stickers && <button role="tab" aria-selected={tab === "sticker"} className={tab === "sticker" ? "on" : ""} onClick={() => setTab("sticker")}>{t("emoji.sticker")}</button>}
+                {gifs && <button role="tab" aria-selected={tab === "gif"} className={tab === "gif" ? "on" : ""} onClick={() => setTab("gif")}>{t("emoji.gif")}</button>}
               </div>
             )}
-            {bksp && <button className="emoji-bksp" aria-label="پاک کردن" title="پاک کردن" onMouseDown={(e) => e.preventDefault()} onClick={onBackspace}><Icon name="backspace" size={22} /></button>}
+            {bksp && <button className="emoji-bksp" aria-label={t("common.backspace")} title={t("common.backspace")} onMouseDown={(e) => e.preventDefault()} onClick={onBackspace}><Icon name="backspace" size={22} /></button>}
           </div>
         )}
       </div>
@@ -154,14 +155,14 @@ function EmojiGrid({ room, onPick }: { room?: Room; onPick: (e: Emoji) => void }
       {/* a mouse wheel's vertical turn scrolls the bar sideways, toward its end */}
       <nav className="emoji-cats" role="tablist" ref={nav} onScroll={edges}
         onWheel={(e) => { if (!e.deltaX) nav.current?.scrollBy({ left: getComputedStyle(nav.current).direction === "rtl" ? -e.deltaY : e.deltaY }); }}>
-        {rec.length > 0 && cat([-1, "🕘", "اخیر"])}
+        {rec.length > 0 && cat([-1, "🕘", t("emoji.recent")])}
         {packCats.map(cat)}
         <div className="emoji-groups">{GROUPS.map(cat)}</div>
       </nav>
-      <input className="emoji-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی اموجی" aria-label="جستجوی اموجی" />
+      <input className="emoji-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("emoji.search")} aria-label={t("emoji.search")} />
       <div className="emoji-grid" key={term ? "q" : group}>
         {!groups ? <span className="spinner" />
-          : !list.length ? <p className="muted">اموجی‌ای پیدا نشد</p>
+          : !list.length ? <p className="muted">{t("emoji.none")}</p>
           // mousedown default would move focus off the composer: keep its caret where the emoji goes
           : list.map((e) => <button key={e.u} title={e.name} aria-label={e.name} onMouseDown={(ev) => ev.preventDefault()} onClick={() => onPick(e)}>
             {e.custom ? <EmoteImg url={e.custom.img.url} alt={e.name} /> : e.u}</button>)}
@@ -222,7 +223,7 @@ export function ReactionKey({ k, ev }: { k: string; ev?: MatrixEvent }) {
 function StickerGrid({ room, onPick }: { room?: Room; onPick: (s: Emote) => void }) {
   useTick(client, [ClientEvent.AccountData, RoomStateEvent.Events]);
   const list = emotesFor(room, "sticker");
-  if (!list.length) return <p className="muted">استیکری ندارید. در تنظیمات ← اموجی و استیکر بسازید یا استیکر دیگران را ذخیره کنید.</p>;
+  if (!list.length) return <p className="muted">{t("emoji.noStickers")}</p>;
   return (
     <div className="gif-grid sticker-grid">
       {list.map((s, i) => (
@@ -240,12 +241,12 @@ function StickerGrid({ room, onPick }: { room?: Room; onPick: (s: Emote) => void
 function GifGrid({ onPick }: { onPick: (g: Gif) => void }) {
   useTick(client, [ClientEvent.AccountData]);
   const gifs = savedGifs();
-  if (!gifs.length) return <p className="muted">گیفی ندارید. ویدیو را با گزینه‌ی «ارسال به صورت گیف» بفرستید یا گیف دیگران را ذخیره کنید.</p>;
-  const remove = (g: Gif) => confirmDialog("این گیف از گیف‌های شما حذف شود؟", { danger: true }).then((y) => { if (y) void toggleGif(g); });
+  if (!gifs.length) return <p className="muted">{t("emoji.noGifs")}</p>;
+  const remove = (g: Gif) => confirmDialog(t("emoji.removeGif"), { danger: true }).then((y) => { if (y) void toggleGif(g); });
   return (
     <div className="gif-grid">
       {gifs.map((g) => (
-        <button key={g.url ?? g.file?.url} aria-label="گیف" onClick={() => onPick(g)}
+        <button key={g.url ?? g.file?.url} aria-label={t("emoji.gif")} onClick={() => onPick(g)}
           onContextMenu={(e) => { e.preventDefault(); void remove(g); }}><GifView c={g} /></button>
       ))}
     </div>

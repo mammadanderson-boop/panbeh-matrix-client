@@ -1,3 +1,4 @@
+import { lang, t } from "./i18n.ts";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { downloadPath, openDownload, setUpdater, type Update } from "./desktop.ts";
 import { loadPrefs } from "./ui/Settings.tsx";
@@ -56,6 +57,7 @@ interface PanbehPlugin {
   biometricAvailable(): Promise<{ available: boolean }>;
   biometricUnlock(p: { title: string; cancel: string }): Promise<{ ok: boolean }>;
   metered(): Promise<{ metered: boolean }>;
+  setLanguage(p: { lang: string }): Promise<void>;
   updateDownload(p: { url: string }): Promise<void>;
   updateInstall(): Promise<void>;
   addListener(e: "openRoom", f: (d: { roomId: string }) => void): Promise<PluginListenerHandle>;
@@ -75,6 +77,8 @@ const plugin = registerPlugin<PanbehPlugin>("Panbeh");
 export const isNative = !!headless || Capacitor.isNativePlatform();
 /** The background service's invisible copy of the app: sync and notify only, no UI. */
 export const isHeadless = !!headless && new URLSearchParams(location.search).has("headless");
+// notifications and their channels in the page's language (older app builds: the phone's)
+if (isNative && !isHeadless) plugin.setLanguage({ lang }).catch(() => {});
 
 export function nativeNotify(p: Payload) {
   if (headless) headless.showNotification(JSON.stringify(p));
@@ -195,7 +199,7 @@ export function isMetered() {
 
 /** The app lock's fingerprint/face unlock: whether the phone has one set up, and asking for it. */
 export const biometricAvailable = () => (isNative && !headless ? plugin.biometricAvailable().then((r) => r.available, () => false) : Promise.resolve(false));
-export const biometricUnlock = () => plugin.biometricUnlock({ title: "باز کردن پنبه", cancel: "ورود رمز" }).then((r) => r.ok, () => false);
+export const biometricUnlock = () => plugin.biometricUnlock({ title: t("native.unlockTitle"), cancel: t("native.unlockPin") }).then((r) => r.ok, () => false);
 
 /** Message notification buttons, in the app's page or (via window.panbehNotifyAction) the headless one. Returns an unsubscribe. */
 export function onNotifyAction(f: (a: NotifyAction) => void) {
@@ -286,7 +290,7 @@ export async function openSaved(key: string, mime: string): Promise<boolean> {
     if (isNative) { await plugin.openFile({ uri: loc, mime }); return true; }
     if (await openDownload(loc)) return true;
   } catch (e) {
-    if ((e as Error).message === "no app") throw new Error("برنامه‌ای برای باز کردن این فایل پیدا نشد.");
+    if ((e as Error).message === "no app") throw new Error(t("native.noApp"));
     if ((e as Error).message !== "gone") throw e;
   }
   setSaved(key);
@@ -395,7 +399,7 @@ function downloadUpdate() {
   setUpd({ status: "downloading", version: v, percent: 0 });
   const h = plugin.addListener("updateProgress", (d) => setUpd({ status: "downloading", version: v, percent: d.percent }));
   plugin.updateDownload({ url: apk })
-    .then(() => setUpd({ status: "ready", version: v }), () => { setUpd({ status: "available", version: v }); toast("دریافت نسخه‌ی تازه نشد؛ دوباره تلاش کنید"); })
+    .then(() => setUpd({ status: "ready", version: v }), () => { setUpd({ status: "available", version: v }); toast(t("update.downloadFailed")); })
     .finally(() => h.then((x) => x.remove()));
 }
 

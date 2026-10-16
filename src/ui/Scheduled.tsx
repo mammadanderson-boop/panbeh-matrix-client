@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useEffect, useState } from "react";
 import { MatrixEvent, type Room } from "matrix-js-sdk";
 import { cancelScheduled, canSchedule, onScheduledChange, scheduledIn, scheduleMessage, sendScheduledNow, type Scheduled } from "../matrix.ts";
@@ -7,8 +8,8 @@ import { Icon } from "../icons.tsx";
 import { errText, me, previewText, Select, Sheet } from "./common.tsx";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 
-const HOURS: [number, string][] = Array.from({ length: 24 }, (_, h) => [h, num(h).padStart(2, "۰")]);
-const MINUTES: [number, string][] = Array.from({ length: 12 }, (_, i) => [i * 5, num(i * 5).padStart(2, "۰")]);
+const HOURS: [number, string][] = Array.from({ length: 24 }, (_, h) => [h, num(h).padStart(2, num(0))]);
+const MINUTES: [number, string][] = Array.from({ length: 12 }, (_, i) => [i * 5, num(i * 5).padStart(2, num(0))]);
 const STEP = 5 * 60_000;
 
 /** A Jalali day, hour and minute (5-minute steps) for a message to go out; starts an hour ahead unless `initial` is given. */
@@ -21,16 +22,16 @@ export function SchedulePicker({ initial, onPick, onClose }: { initial?: number;
   const at = new Date(day).setHours(hour, minute);
   const past = at < Date.now() + 60_000;
   return (
-    <Sheet title="ارسال زمان‌بندی‌شده" onClose={onClose}>
-      <label className="select-row">روز
+    <Sheet title={t("schedule.title")} onClose={onClose}>
+      <label className="select-row">{t("schedule.day")}
         <Select value={day} options={days.map((d) => [d.ts, d.label] as [number, string])} onChange={setDay} /></label>
-      <label className="select-row">ساعت
+      <label className="select-row">{t("schedule.time")}
         <span className="time-pick" dir="ltr">
           <Select value={hour} options={HOURS} onChange={setHour} />:<Select value={minute} options={MINUTES} onChange={setMinute} />
         </span>
       </label>
-      {past && <p className="error">این زمان گذشته است</p>}
-      <button className="primary" disabled={past} onClick={() => onPick(at)}>ارسال در {scheduleLabel(at)}</button>
+      {past && <p className="error">{t("schedule.past")}</p>}
+      <button className="primary" disabled={past} onClick={() => onPick(at)}>{t("schedule.sendAt", { when: scheduleLabel(at) })}</button>
     </Sheet>
   );
 }
@@ -57,7 +58,7 @@ export function useScheduled(room: Room) {
 }
 
 const preview = (s: Scheduled) =>
-  s.content ? previewText(new MatrixEvent({ type: s.type, content: s.content, sender: me(), room_id: s.roomId })) : "پیام رمزنگاری‌شده از دستگاهی دیگر";
+  s.content ? previewText(new MatrixEvent({ type: s.type, content: s.content, sender: me(), room_id: s.roomId })) : t("schedule.otherDevice");
 
 /** Scheduled messages of a chat: send now, change (text and time), delete. */
 export function ScheduledList({ room, list, onClose }: { room: Room; list: Scheduled[]; onClose: () => void }) {
@@ -67,17 +68,17 @@ export function ScheduledList({ room, list, onClose }: { room: Room; list: Sched
   useEffect(() => { if (!list.length && !editing) onClose(); }, [list.length]);
   if (editing) return <EditScheduled room={room} s={editing} onDone={() => setEditing(null)} />;
   return (
-    <Sheet title={`پیام‌های زمان‌بندی‌شده (${num(list.length)})`} onClose={onClose}>
+    <Sheet title={t("schedule.list", { count: list.length })} onClose={onClose}>
       <div className="scheduled-list">
         {list.map((s) => (
           <div key={s.id} className="scheduled-item">
             <small className="scheduled-when"><Icon name="clock" size={16} /> {scheduleLabel(s.sendAt)}</small>
             <p dir="auto" className={s.content ? undefined : "muted"}>{preview(s)}</p>
             <div className="scheduled-actions">
-              <button className="row-btn" disabled={busy} onClick={() => act(() => sendScheduledNow(s.id))}><Icon name="send" size={16} /> ارسال اکنون</button>
-              {s.content && <button className="icon-btn" disabled={busy} title="تغییر" aria-label="تغییر" onClick={() => setEditing(s)}><Icon name="edit" size={18} /></button>}
-              <button className="icon-btn" disabled={busy} title="حذف" aria-label="حذف"
-                onClick={() => confirmDialog("این پیام زمان‌بندی‌شده حذف شود؟", { danger: true }).then((y) => y && act(() => cancelScheduled(s.id)))}><Icon name="trash" size={18} /></button>
+              <button className="row-btn" disabled={busy} onClick={() => act(() => sendScheduledNow(s.id))}><Icon name="send" size={16} /> {t("schedule.sendNow")}</button>
+              {s.content && <button className="icon-btn" disabled={busy} title={t("common.edit")} aria-label={t("common.edit")} onClick={() => setEditing(s)}><Icon name="edit" size={18} /></button>}
+              <button className="icon-btn" disabled={busy} title={t("common.delete")} aria-label={t("common.delete")}
+                onClick={() => confirmDialog(t("schedule.deleteQ"), { danger: true }).then((y) => y && act(() => cancelScheduled(s.id)))}><Icon name="trash" size={18} /></button>
             </div>
           </div>
         ))}
@@ -110,11 +111,11 @@ function EditScheduled({ room, s, onDone }: { room: Room; s: Scheduled; onDone: 
   };
   if (picking) return <SchedulePicker initial={s.sendAt} onPick={(ts) => void save(ts)} onClose={text ? () => setPicking(false) : onDone} />;
   return (
-    <Sheet title="تغییر پیام زمان‌بندی‌شده" onClose={onDone}>
-      <textarea className="send-caption" rows={4} dir="auto" value={body} onChange={(e) => setBody(e.target.value)} aria-label="متن پیام" />
+    <Sheet title={t("schedule.editTitle")} onClose={onDone}>
+      <textarea className="send-caption" rows={4} dir="auto" value={body} onChange={(e) => setBody(e.target.value)} aria-label={t("composer.text")} />
       <p className="muted">{scheduleLabel(s.sendAt)}</p>
-      <button disabled={busy} onClick={() => setPicking(true)}><Icon name="clock" size={18} /> تغییر زمان</button>
-      <button className="primary" disabled={busy || !body.trim()} onClick={() => void save(s.sendAt)}>ذخیره</button>
+      <button disabled={busy} onClick={() => setPicking(true)}><Icon name="clock" size={18} /> {t("schedule.changeTime")}</button>
+      <button className="primary" disabled={busy || !body.trim()} onClick={() => void save(s.sendAt)}>{t("common.save")}</button>
     </Sheet>
   );
 }

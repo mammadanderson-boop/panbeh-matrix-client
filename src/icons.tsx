@@ -1,3 +1,5 @@
+import { rtl } from "./i18n.ts";
+
 const P = {
   send: "M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z",
   attach: "M16.5 6.5v10a4.5 4.5 0 0 1-9 0V5a3 3 0 0 1 6 0v10.5a1.5 1.5 0 0 1-3 0V6.5",
@@ -62,13 +64,15 @@ const P = {
   headphones: "M4 15v-3a8 8 0 0 1 16 0v3M4 15h3v5H5a1 1 0 0 1-1-1zM20 15h-3v5h2a1 1 0 0 0 1-1z",
   expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   shrink: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5",
+  globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9c-2.4-2.5-3.6-5.5-3.6-9S9.6 5.5 12 3z",
 };
 
 export type IconName = keyof typeof P;
 /** The same outline icon as markup, for DOM built outside React (sanitized message HTML). */
 export const iconSvg = (name: IconName, size = 20) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name]}"/></svg>`;
-const FLIP = new Set<IconName>(["back", "reply", "forward", "chevron"]); // directional, mirrored for RTL
+// reply/forward are drawn the other way round, so both directions flip them; back/chevron follow the page
+const FLIP = new Set<IconName>(rtl ? ["back", "reply", "forward", "chevron"] : ["reply", "forward"]);
 const FILLED = new Set<IconName>(["send", "play", "pause", "stop", "hangup"]);
 
 export const Icon = ({ name, size = 20 }: { name: IconName; size?: number }) => (

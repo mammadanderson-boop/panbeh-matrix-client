@@ -1,3 +1,4 @@
+import { t } from "../i18n.ts";
 import { useCallback, useMemo, useState } from "react";
 import { ClientEvent, type Room } from "matrix-js-sdk";
 import { client, findDM, openDM, setBlocked } from "../matrix.ts";
@@ -48,10 +49,10 @@ export function UserProfile({ userId, room, onClose, onOpened }: { userId: strin
   const dmRoom = dm ? client.getRoom(dm) : null; // calls only in a DM they've joined: an invite can't ring
   const callIn = (video: boolean) => { location.hash = dmRoom!.roomId; onClose(); onOpened?.(); startCall(dmRoom!, video).catch((e) => alertDialog(errText(e))); };
   return (
-    <Sheet title="اطلاعات کاربر" onClose={onClose}>
+    <Sheet title={t("profile.title")} onClose={onClose}>
       <div className="info-head">
         {photo ? (
-          <button className="avatar-view" onClick={() => setViewing(true)} title="نمایش عکس" aria-label="نمایش عکس"><Avatar mxc={photo} name={name} id={userId} size={120} /></button>
+          <button className="avatar-view" onClick={() => setViewing(true)} title={t("profile.viewPhoto")} aria-label={t("profile.viewPhoto")}><Avatar mxc={photo} name={name} id={userId} size={120} /></button>
         ) : <Avatar name={name} id={userId} size={120} />}
         {viewing && photo && <PhotoViewer mxc={photo} name={name} onClose={closeViewer} />}
         <div className="info-text"><h2 dir="auto">{name}</h2></div>
@@ -59,26 +60,26 @@ export function UserProfile({ userId, room, onClose, onOpened }: { userId: strin
         {userId !== me() && seen.text && <span className={seen.online ? "typing" : "muted"}>{seen.text}</span>}
         {other && trust?.known && (
           <span className={"trust" + (trust.isCrossSigningVerified() ? " ok" : "")}>
-            <Icon name="lock" size={14} /> {trust.isCrossSigningVerified() ? "هویت تأییدشده" : "هویت تأییدنشده"}
+            <Icon name="lock" size={14} /> {trust.isCrossSigningVerified() ? t("profile.verified") : t("profile.unverified")}
           </span>
         )}
       </div>
-      {other && <button className="primary" disabled={busy} onClick={open}>{dm ? "پیام" : "شروع گفتگو"}</button>}
+      {other && <button className="primary" disabled={busy} onClick={open}>{dm ? t("profile.message") : t("profile.startChat")}</button>}
       {other && dmRoom && (
         <div className="profile-calls">
-          <button className="secondary" disabled={busy} onClick={() => callIn(false)}><Icon name="phone" size={18} /> تماس صوتی</button>
-          <button className="secondary" disabled={busy} onClick={() => callIn(true)}><Icon name="video" size={18} /> تماس تصویری</button>
+          <button className="secondary" disabled={busy} onClick={() => callIn(false)}><Icon name="phone" size={18} /> {t("call.voice")}</button>
+          <button className="secondary" disabled={busy} onClick={() => callIn(true)}><Icon name="video" size={18} /> {t("call.video")}</button>
         </div>
       )}
-      <button className="secondary" onClick={() => setQr(true)}><Icon name="link" size={18} /> پیوند و کد QR</button>
-      {qr && <LinkSheet title="پیوند کاربر" link={matrixToLink(userId)} onClose={() => setQr(false)} />}
+      <button className="secondary" onClick={() => setQr(true)}><Icon name="link" size={18} /> {t("profile.linkQr")}</button>
+      {qr && <LinkSheet title={t("profile.link")} link={matrixToLink(userId)} onClose={() => setQr(false)} />}
       {other && trust?.known && !trust.isCrossSigningVerified() && (
-        <button className="secondary" disabled={busy} onClick={verify}>تأیید هویت با شکلک‌ها</button>
+        <button className="secondary" disabled={busy} onClick={verify}>{t("profile.verify")}</button>
       )}
       {other && (
         <button className="danger" disabled={busy}
-          onClick={async () => { if (blocked || await confirmDialog(`${name} مسدود شود؟ دیگر پیام و دعوتی از او نمی‌بینید.`, { danger: true })) act(() => setBlocked(userId, !blocked)); }}>
-          {blocked ? "رفع مسدودیت" : "مسدود کردن"}
+          onClick={async () => { if (blocked || await confirmDialog(t("profile.blockQ", { name }), { danger: true })) act(() => setBlocked(userId, !blocked)); }}>
+          {blocked ? t("profile.unblock") : t("profile.block")}
         </button>
       )}
       {room && <MemberAdmin room={room} userId={userId} />}

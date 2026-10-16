@@ -1,3 +1,4 @@
+import { LOCALE, t } from "./i18n.ts";
 import { useSyncExternalStore } from "react";
 import { AutoDiscovery, CallEvent, CallFeedEvent, createNewMatrixCall, EventType, MatrixEventEvent, RelationType, RoomEvent, type IRoomTimelineData, type MatrixCall, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { CallErrorCode, CallState } from "matrix-js-sdk/lib/webrtc/call.js";
@@ -62,13 +63,13 @@ export const ourTransport = () => transport ??= (async () => {
  * names after the Matrix room and slot for both endpoints. The SDK reads both kinds of membership, so calls mix.
  */
 // ponytail: /sfu/get only; switch to sticky m.rtc.member + /get_token together once our servers support MSC4354 sticky events
-async function sfuToken(t: LivekitTransportConfig, roomId: string): Promise<{ url: string; jwt: string }> {
+async function sfuToken(tr: LivekitTransportConfig, roomId: string): Promise<{ url: string; jwt: string }> {
   const openid_token = await client.getOpenIdToken();
-  const r = await fetch(t.livekit_service_url.replace(/\/+$/, "") + "/sfu/get", {
+  const r = await fetch(tr.livekit_service_url.replace(/\/+$/, "") + "/sfu/get", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ room: roomId, openid_token, device_id: client.getDeviceId() }),
   });
-  if (!r.ok) throw new Error(`سرور تماس در دسترس نیست (${r.status})`);
+  if (!r.ok) throw new Error(t("call.sfuDown", { status: String(r.status) }));
   return r.json();
 }
 
@@ -148,7 +149,7 @@ export async function call(room: Room, video: boolean, ring = true, legacy = fal
   const oldest = session.getOldestMembership();
   const theirs = oldest?.getTransport(oldest);
   const sfu = theirs && isLivekitTransportConfig(theirs) ? theirs : mine;
-  if (!sfu) { media.forEach((t) => t.stop()); throw new Error("سرور شما از تماس پشتیبانی نمی‌کند"); }
+  if (!sfu) { media.forEach((t) => t.stop()); throw new Error(t("call.noSupport")); }
   const e2ee = isEncrypted(room);
   const keys = newKeys();
   const p = loadPrefs();
@@ -182,10 +183,10 @@ export async function call(room: Room, video: boolean, ring = true, legacy = fal
     if (!snap.active?.since && lk.remoteParticipants.size) patch({ since: Date.now() });
     else bump();
   };
-  const said = (verb: string) => (p: Participant) => { if (!isDirect(room)) notice(`${nameOf(room, userOf(session, p.identity))} ${verb}`); };
+  const said = (key: "call.joined" | "call.left") => (p: Participant) => { if (!isDirect(room)) notice(t(key, { name: nameOf(room, userOf(session, p.identity)) })); };
   lk.on(LK.RoomEvent.TrackSubscribed, onTrack).on(LK.RoomEvent.TrackUnsubscribed, offTrack)
     .on(LK.RoomEvent.ParticipantConnected, onPeople).on(LK.RoomEvent.ParticipantDisconnected, bump)
-    .on(LK.RoomEvent.ParticipantConnected, said("پیوست")).on(LK.RoomEvent.ParticipantDisconnected, said("رفت"))
+    .on(LK.RoomEvent.ParticipantConnected, said("call.joined")).on(LK.RoomEvent.ParticipantDisconnected, said("call.left"))
     .on(LK.RoomEvent.Reconnecting, () => patch({ reconnecting: true })).on(LK.RoomEvent.SignalReconnecting, () => patch({ reconnecting: true }))
     .on(LK.RoomEvent.Reconnected, () => patch({ reconnecting: false })).on(LK.RoomEvent.ConnectionQualityChanged, bump)
     .on(LK.RoomEvent.TrackMuted, bump).on(LK.RoomEvent.TrackUnmuted, bump).on(LK.RoomEvent.ActiveSpeakersChanged, bump)
@@ -475,8 +476,8 @@ function showLegacy(room: Room, mc: MatrixCall, video: boolean) {
       console.warn("legacy call didn't connect", report);
       void hangup();
       alertDialog(mc.state === CallState.WaitLocalMedia
-        ? "میکروفون یا دوربین در دسترس نیست. اجازه‌ی دسترسی پنبه به آن‌ها را بررسی کنید."
-        : `اتصال تماس برقرار نشد. احتمالاً سرور ماتریکس شما سرور TURN ندارد یا به آن دسترسی نیست؛ با مدیر سرور در میان بگذارید.\n\n${report}`);
+        ? t("call.noMedia")
+        : t("call.noTurn") + "\n\n" + report);
     }, 30_000);
   };
   const onState = (s: CallState) => {
@@ -519,7 +520,7 @@ async function placeLegacy(room: Room, video: boolean) {
   legacyDevices();
   await withTurn(); // createCall copies the TURN servers we have now
   const mc = client.createCall(room.roomId);
-  if (!mc) throw new Error("این دستگاه از تماس پشتیبانی نمی‌کند");
+  if (!mc) throw new Error(t("call.noDevice"));
   showLegacy(room, mc, video);
   try {
     await legacyStart(mc, () => video ? mc.placeVideoCall() : mc.placeVoiceCall()); // the SDK gets mic/camera before inviting
@@ -582,7 +583,7 @@ let stopRing: (() => void)[] = [];
 /** missed: it stopped without any of our devices answering or declining (caller gave up, or it timed out). */
 function stopRinging(missed = false) {
   const i = snap.incoming;
-  if (missed && i) void callNotice(i.room, i.video ? "تماس تصویری از دست رفته" : "تماس صوتی از دست رفته");
+  if (missed && i) void callNotice(i.room, i.video ? t("call.missedVideo") : t("call.missedVoice"));
   stopRing.forEach((f) => f());
   stopRing = [];
   if (isNative && snap.incoming && !snap.active) nativeCallActive(false, false); // a ring that woke the lock screen lets it sleep again
@@ -601,7 +602,7 @@ function ring(room: Room, ev: MatrixEvent) {
   const inIt = session.memberships.some((m) => m.userId === me); // already in it (another device)
   if (ev.getSender() === me || inIt || isMuted(room) || client.isUserIgnored(ev.getSender()!)) return;
   const video = c["m.call.intent"] === "video";
-  if (isGroupCallAlert(c, until, me)) return void callNotice(room, `${senderName(ev)} ${video ? "تماس تصویری" : "تماس صوتی"} گروهی را شروع کرد`, true);
+  if (isGroupCallAlert(c, until, me)) return void callNotice(room, t(video ? "call.groupVideo" : "call.groupVoice", { name: senderName(ev) }), true);
   if (!isRing(c, until, me) || !shouldRing(room, ev.getSender()!)) return;
   startRinging({ room, ev, video }, until);
   // stops when the caller gives up or one of our devices answers
@@ -618,7 +619,7 @@ function ringLegacy(room: Room, ev: MatrixEvent, mc?: MatrixCall) {
   const c = ev.getContent<MCallInviteNegotiate>();
   if (mc?.callHasEnded() || !isLegacyRing(c, ev.getTs(), client.getSafeUserId()) || ev.getSender() === client.getUserId() || !shouldRing(room, ev.getSender()!)) return;
   // off by default: say so instead of ringing. No reject, so the user's other apps still ring.
-  if (!legacyCallsOn()) return void callNotice(room, `${senderName(ev)} با روش قدیمی تماس گرفت که پشتیبانی نمی‌شود. برای دریافت این تماس‌ها، از تنظیمات › گزینه‌های توسعه‌دهنده «دریافت تماس‌های قدیمی» را روشن کنید.`);
+  if (!legacyCallsOn()) return void callNotice(room, t("call.legacyOff", { name: senderName(ev) }));
   startRinging({ room, ev, mc, video: isVideoOffer(c) }, ev.getTs() + c.lifetime);
   if (!mc) return; // headless: onEvent stops it on the hangup / answer events
   // caller gave up, or answered/declined on another of our devices
@@ -631,8 +632,8 @@ function ringLegacy(room: Room, ev: MatrixEvent, mc?: MatrixCall) {
 function startRinging(i: Incoming, until: number) {
   const { room, ev, video } = i;
   set({ incoming: i });
-  const t = setTimeout(() => stopRinging(true), until - Date.now());
-  stopRing = [() => clearTimeout(t)];
+  const timer = setTimeout(() => stopRinging(true), until - Date.now());
+  stopRing = [() => clearTimeout(timer)];
 
   // ponytail: call waiting is only our banner and beep, even with the app in the background (where the call keeps the page alive)
   if (snap.active) return void stopRing.push(waitingTone());
@@ -647,7 +648,7 @@ function startRinging(i: Incoming, until: number) {
   }
   stopRing.push(ringtone());
   if (!isWindowVisible() && "Notification" in window && Notification.permission === "granted") {
-    const n = new Notification(room.name, { body: video ? "تماس تصویری…" : "تماس صوتی…", tag: "call:" + room.roomId, requireInteraction: true, lang: "fa", dir: "rtl" });
+    const n = new Notification(room.name, { body: video ? t("call.ringVideo") : t("call.ringVoice"), tag: "call:" + room.roomId, requireInteraction: true, lang: LOCALE, dir: "auto" });
     n.onclick = () => { showWindow(); n.close(); };
     stopRing.push(() => n.close());
   }
