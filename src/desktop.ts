@@ -18,7 +18,7 @@ type Bridge = {
   update?: { // older desktop builds lack it
     state(): Promise<Update>;
     onState(cb: (u: Update) => void): () => void;
-    auto(on?: boolean): Promise<boolean>;
+    auto(on?: boolean): Promise<boolean | undefined>; // undefined: a dev build, which only offers the release
     check(): Promise<void>;
     download(): Promise<void>;
     install(): Promise<string | void>; // why it didn't install, if it didn't
