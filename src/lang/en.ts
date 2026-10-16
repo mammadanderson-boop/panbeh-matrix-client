@@ -4,6 +4,8 @@ import type fa from "./fa.ts";
 export default {
   "app.name": "Panbeh",
   "settings.language": "Language",
+  "lang.choose": "Choose your language",
+  "lang.switchTo": "Change language to English",
   "day.today": "Today",
   "day.yesterday": "Yesterday",
   "day.tomorrow": "Tomorrow",

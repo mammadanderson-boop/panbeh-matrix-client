@@ -139,7 +139,13 @@ button:disabled { opacity: 0.6; cursor: default; }
 }
 .login-card input:focus, .card input:focus, .form input:focus { outline: none; border-color: var(--accent); }
 .login-card button { margin-top: 6px; }
-.login-card .login-lang { justify-self: center; margin-top: 2px; padding: 6px 12px; color: var(--muted); font-size: 14px; }
+.login-card .login-lang {
+  justify-self: center; display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; padding: 8px 16px; border-radius: 999px;
+  color: var(--accent); font-size: 14px; font-weight: 500; border: 1.5px solid color-mix(in srgb, var(--accent) 55%, transparent); transition: background 0.15s;
+}
+.login-card .login-lang:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.lang-pick .lang-hint { margin: -6px 0 4px; text-align: center; font-size: 14px; color: var(--muted); }
+.lang-pick button.primary { height: 52px; margin-top: 0; font-size: 17px; }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
 
 /* ---------- app layout ---------- */

@@ -2,6 +2,8 @@
 export default {
   "app.name": "پنبه",
   "settings.language": "زبان (Language)",
+  "lang.choose": "زبان را انتخاب کنید",
+  "lang.switchTo": "تغییر زبان به فارسی",
   "day.today": "امروز",
   "day.yesterday": "دیروز",
   "day.tomorrow": "فردا",

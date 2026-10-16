@@ -1,10 +1,25 @@
-import { LANGS, lang, setLang, t } from "../i18n.ts";
+import { DICTS, LANGS, lang, setLang, t } from "../i18n.ts";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { login, loginMode, startOAuth } from "../matrix.ts";
 import { normalizeServer } from "../logic.ts";
 import { errText } from "./common.tsx";
 import { isDesktop } from "../desktop.ts";
+import { Icon } from "../icons.tsx";
 import logo from "../logo.svg";
+
+/** First start on a new install, before login: the logo, «پنبه» and one button per language. Picking saves and reloads into it. */
+export function LangPick() {
+  return (
+    <div className="login wallpaper">
+      <div className="login-card lang-pick">
+        <img className="login-logo" src={logo} alt="" />
+        <h1 lang="fa">{DICTS.fa["app.name"]}</h1>
+        <p className="lang-hint">{LANGS.map(([l], i) => <span key={l}>{i > 0 && " · "}<span lang={l} dir={l === "fa" ? "rtl" : "ltr"}>{DICTS[l]["lang.choose"]}</span></span>)}</p>
+        {LANGS.map(([l, name]) => <button key={l} className="primary" lang={l} onClick={() => setLang(l)}>{name}</button>)}
+      </div>
+    </div>
+  );
+}
 
 // only here does M_FORBIDDEN mean bad credentials; elsewhere it's a missing permission
 const loginErr = (e: unknown) => ((e as { errcode?: string })?.errcode === "M_FORBIDDEN" ? t("login.wrong") : errText(e));
@@ -84,7 +99,12 @@ export function Login({ onDone, initialError, onCancel }: { onDone: () => void; 
           {busy ? t("login.signingIn") : { "": t("login.continue"), checking: t("login.checking"), oauth: t("login.oauth"), password: t("login.signIn") }[mode]}
         </button>
         {onCancel && <button type="button" onClick={onCancel}>{t("common.dismiss")}</button>}
-        {LANGS.filter(([l]) => l !== lang).map(([l, name]) => <button key={l} type="button" className="plain login-lang" lang={l} onClick={() => setLang(l)}>{name}</button>)}
+        {/* in the language it switches to, so someone who can't read this one finds it */}
+        {LANGS.filter(([l]) => l !== lang).map(([l]) => (
+          <button key={l} type="button" className="login-lang" lang={l} dir={l === "fa" ? "rtl" : "ltr"} onClick={() => setLang(l)}>
+            <Icon name="globe" size={18} />{DICTS[l]["lang.switchTo"]}
+          </button>
+        ))}
       </form>
     </div>
   );

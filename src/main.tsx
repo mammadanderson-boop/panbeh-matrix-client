@@ -1,4 +1,4 @@
-import { t } from "./i18n.ts";
+import { langChosen, t } from "./i18n.ts";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ClientEvent, SyncState } from "matrix-js-sdk";
@@ -14,7 +14,7 @@ import { drainLinks, handleIncomingLink } from "./openTarget.ts";
 import { isDesktop, onDesktopLink } from "./desktop.ts";
 import { parseMatrixHash } from "./uri.ts";
 import { isMarkedUnread, setMarkedUnread } from "./chats.ts";
-import { Login } from "./ui/Login.tsx";
+import { LangPick, Login } from "./ui/Login.tsx";
 import { Sidebar } from "./ui/Sidebar.tsx";
 import { Room } from "./ui/Room.tsx";
 import { ShareSheet } from "./ui/Forward.tsx";
@@ -181,4 +181,4 @@ function headless() {
 }
 
 if (isHeadless) headless();
-else createRoot(document.getElementById("root")!).render(<App />);
+else createRoot(document.getElementById("root")!).render(langChosen ? <App /> : <LangPick />); // a new install picks its language first

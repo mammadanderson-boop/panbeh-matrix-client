@@ -7,21 +7,23 @@ export type Key = keyof typeof fa;
 /** Each language in its own name, for the picker. */
 export const LANGS: [Lang, string][] = [["fa", "فارسی"], ["en", "English"]];
 
+/** False on a new install until the user picks on the first-start page (LangPick); Persian meanwhile. */
+export let langChosen = true;
 const pick = (): Lang => {
   if (typeof document === "undefined") return "fa"; // node --test: the tests assert Persian
-  const device: Lang = navigator.language.toLowerCase().startsWith("fa") ? "fa" : "en";
   try {
     const prefs = JSON.parse(localStorage.getItem("panbeh.prefs") ?? "{}");
     if (prefs.lang === "fa" || prefs.lang === "en") return prefs.lang;
-    if (localStorage.getItem("panbeh.langAuto")) return device;
-    // an install from before the English UI stays Persian whatever the phone's language; a new one follows the device from now on
-    const old = ["panbeh.prefs", "panbeh.sessions", "panbeh.session"].some((k) => localStorage.getItem(k));
-    if (old) localStorage.setItem("panbeh.prefs", JSON.stringify({ ...prefs, lang: "fa" }));
-    else localStorage.setItem("panbeh.langAuto", "1");
-    return old ? "fa" : device;
-  } catch { return device; /* no storage */ }
+    // an install from before the English UI stays Persian; a new one asks
+    if (["panbeh.prefs", "panbeh.sessions", "panbeh.session"].some((k) => localStorage.getItem(k))) {
+      localStorage.setItem("panbeh.prefs", JSON.stringify({ ...prefs, lang: "fa" }));
+    } else langChosen = false;
+  } catch { /* no storage: the choice couldn't be kept anyway */ }
+  return "fa";
 };
 export const lang = pick();
+/** Every dictionary, for the first-start page: it speaks all the languages at once. */
+export const DICTS = { fa, en } as const;
 export const rtl = lang === "fa";
 export const LOCALE = lang === "fa" ? "fa-IR" : "en-US"; // fa-IR: Jalali calendar + Persian digits
 
