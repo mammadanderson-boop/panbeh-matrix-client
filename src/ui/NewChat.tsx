@@ -6,7 +6,7 @@ import { aliasLocalpart, isUserId, num, supportsRestricted } from "../logic.ts";
 import { usePromise } from "../hooks.ts";
 import { Icon, type IconName } from "../icons.tsx";
 import { Avatar, errText, me, Select, Sheet, toast } from "./common.tsx";
-import { alertDialog, confirmDialog } from "./dialog.tsx";
+import { alertDialog, confirmDialog, editAvatar } from "./dialog.tsx";
 import { useExit } from "./useDismiss.ts";
 
 type Kind = "dm" | "group" | "space" | "join";
@@ -160,7 +160,7 @@ export function ChatForm({ kind, space, onDone }: { kind: "group" | "space"; spa
     <form className="form" onSubmit={submit}>
       <div className="form-head">
         <label className="avatar-pick" title={t("new.pickPhoto")}>
-          <input type="file" accept="image/*" hidden onChange={(e) => setAvatar(e.target.files?.[0] ?? null)} />
+          <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void editAvatar(f).then((a) => a && setAvatar(a)); }} />
           {preview ? <img src={preview} alt="" /> : <Icon name={kind === "space" ? "space" : "group"} size={28} />}
         </label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "space" ? t("new.spaceName") : t("new.groupName")} required autoFocus />

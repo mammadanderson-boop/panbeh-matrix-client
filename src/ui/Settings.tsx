@@ -17,7 +17,7 @@ import { decryptKeyFile, encryptKeyFile } from "../keyfile.ts";
 import { showVerification } from "./Verify.tsx";
 import { appVersion, canUpdate, checkUpdate, downloadUpdate, getAutostart, getAutoUpdate, installUpdate, isDesktop, setAutostart, setAutoUpdate, useUpdate, type Update } from "../desktop.ts";
 import { isNative, nativeCancelAll, nativeStatus, openNotifySettings, requestBatteryExemption, requestFullScreen, requestNotifyPermission, saveFile, setBackgroundInterval, setBackgroundService } from "../native.ts";
-import { alertDialog, confirmDialog } from "./dialog.tsx";
+import { alertDialog, confirmDialog, editAvatar } from "./dialog.tsx";
 import { LinkSheet } from "./LinkSheet.tsx";
 import { MyPacks } from "./Packs.tsx";
 import { matrixToLink } from "../uri.ts";
@@ -531,7 +531,7 @@ function MyProfile() {
     <div className="profile">
       <div className="avatar-col">
       <label className="avatar-edit" title={t("info.changePhoto")}>
-        <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) act(async () => ({ avatar_url: await setMyAvatar(f) })); }} />
+        <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void editAvatar(f).then((a) => a && act(async () => ({ avatar_url: await setMyAvatar(a) }))); }} />
         <Avatar mxc={profile.avatar_url} name={profile.displayname || me()} id={me()} size={64} />
       </label>
       {profile.avatar_url && <button className="photo-remove" disabled={busy}

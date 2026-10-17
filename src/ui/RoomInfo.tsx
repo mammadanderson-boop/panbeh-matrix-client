@@ -13,7 +13,7 @@ import { ChatForm, joinOrKnock, UserPicker } from "./NewChat.tsx";
 import { isMuted, muteEnds, setMuted } from "../notify.ts";
 import { PhotoViewer, SharedMedia } from "./Media.tsx";
 import { BannedList, canManage, GroupSettings, KnockRequests, MemberRow, RoomDetails } from "./Admin.tsx";
-import { alertDialog, confirmDialog } from "./dialog.tsx";
+import { alertDialog, confirmDialog, editAvatar } from "./dialog.tsx";
 import { LinkSheet } from "./LinkSheet.tsx";
 import { ReactionKey } from "./Emoji.tsx";
 import { RoomPacks } from "./Packs.tsx";
@@ -118,7 +118,7 @@ export function RoomInfo({ room, onClose }: { room: Room; onClose: () => void })
           <span>
             <label className="photo-remove photo-change">
               <input type="file" accept="image/*" hidden disabled={busy}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) act(() => setRoomAvatar(room.roomId, f)); }} />
+                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void editAvatar(f).then((a) => a && act(() => setRoomAvatar(room.roomId, a))); }} />
               {room.getMxcAvatarUrl() ? t("info.changePhoto") : t("info.addPhoto")}
             </label>
             {room.getMxcAvatarUrl() && (
