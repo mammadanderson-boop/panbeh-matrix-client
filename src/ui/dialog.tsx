@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { pushBack } from "../back.ts";
 import { reducedMotion } from "./useDismiss.ts";
+import type { Room } from "matrix-js-sdk";
 
 type Opts = { ok?: string; danger?: boolean };
 /** filter: applied as the user types, so disallowed characters never appear; hint: a line under the field. */
@@ -54,3 +55,20 @@ export const confirmDialog = (text: string, o?: Opts) => show(text, true, o).the
 export const promptDialog = (text: string, o?: Opts & Input) => show(text, true, o, o ?? {}).then((v) => v?.trim() ?? null);
 /** In-app replacement for window.alert. */
 export const alertDialog = (text: string) => { void show(text, false); };
+
+/** Photos the editor takes: not GIFs (they'd stop moving) or SVGs. */
+export const editable = (f: File) => /^image\/(jpeg|png|webp|bmp|avif|heic|heif)$/.test(f.type);
+
+/** The photo editor, full screen: the edited file (the same one if nothing changed), or null if cancelled.
+ *  avatar: a square crop shown as a circle. Loaded on first use, it stays out of the main bundle. */
+/** A picked profile or room photo, cropped square in the editor first (GIFs and SVGs as they are); null: cancelled. */
+export const editAvatar = (f: File) => (editable(f) ? editImage(f, { avatar: true }) : Promise.resolve(f));
+
+export async function editImage(file: File, o: { avatar?: boolean; room?: Room } = {}): Promise<File | null> {
+  const { ImageEditor } = await import("./ImageEditor.tsx");
+  return new Promise((resolve) => {
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    root.render(<ImageEditor file={file} {...o} done={(f) => { root.unmount(); host.remove(); resolve(f); }} />);
+  });
+}

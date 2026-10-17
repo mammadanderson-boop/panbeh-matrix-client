@@ -65,6 +65,30 @@ const P = {
   expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   shrink: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5",
   globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9c-2.4-2.5-3.6-5.5-3.6-9S9.6 5.5 12 3z",
+  // photo editor
+  crop: "M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14",
+  rotate: "M4 4v5h5M4.6 15A8 8 0 1 0 6 6.3L4 9",
+  mirror: "M12 3v18M9 7 4 17h5zM15 7l5 10h-5z",
+  brush: "M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12zM9 12.2c-2 0-3.5 1.6-3.5 3.5 0 1.4-1 2.3-2.5 2.8 1 1 2.6 1.5 4 1.5 3 0 5-2 5-4.8",
+  text: "M5 7V4h14v3M12 4v16M9 20h6",
+  shapes: "M3 14h7v7H3zM17.5 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM7.5 3 12 10H3z",
+  adjust: "M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4",
+  blur: "M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11zM9.5 14h.01M12 16.5h.01M14.5 14h.01M12 11.5h.01",
+  undo: "M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
+  redo: "M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13",
+  eraser: "M8 21h12M5 15.2 14.4 5.8a2 2 0 0 1 2.8 0l2.6 2.6a2 2 0 0 1 0 2.8L11 20H7.6L5 17.4a1.6 1.6 0 0 1 0-2.2zM9 11.2l5.6 5.6",
+  eyedropper: "M19.5 4.5a2.1 2.1 0 0 0-3 0l-2.7 2.7-1-1-1.4 1.4 1 1L5 16v3h3l7.4-7.4 1 1 1.4-1.4-1-1 2.7-2.7a2.1 2.1 0 0 0 0-3z",
+  marker: "M9 15 4 20M15.5 4.5l4 4L11 17l-4-4zM13 7l4 4",
+  neon: "M13 2 5 13h6l-1 9 8-11h-6z",
+  arrow: "M5 19 19 5M10 5h9v9",
+  rect: "M4 6h16v12H4z",
+  ellipse: "M12 18c4.4 0 8-2.7 8-6s-3.6-6-8-6-8 2.7-8 6 3.6 6 8 6z",
+  line: "M5 19 19 5",
+  alignLeft: "M4 6h16M4 10h10M4 14h16M4 18h10",
+  alignCenter: "M4 6h16M7 10h10M4 14h16M7 18h10",
+  alignRight: "M4 6h16M10 10h10M4 14h16M10 18h10",
+  pixel: "M4 4h16v16H4zM4 9.3h16M4 14.7h16M9.3 4v16M14.7 4v16",
+  front: "M9 9h11v11H9zM5 15H4V4h11v1",
 };
 
 export type IconName = keyof typeof P;
@@ -72,7 +96,7 @@ export type IconName = keyof typeof P;
 export const iconSvg = (name: IconName, size = 20) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name]}"/></svg>`;
 // reply/forward are drawn the other way round, so both directions flip them; back/chevron follow the page
-const FLIP = new Set<IconName>(rtl ? ["back", "reply", "forward", "chevron"] : ["reply", "forward"]);
+const FLIP = new Set<IconName>(rtl ? ["back", "reply", "forward", "chevron", "undo", "redo"] : ["reply", "forward"]);
 const FILLED = new Set<IconName>(["send", "play", "pause", "stop", "hangup"]);
 
 export const Icon = ({ name, size = 20 }: { name: IconName; size?: number }) => (

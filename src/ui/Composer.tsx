@@ -12,7 +12,7 @@ import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from ".
 import { PollForm } from "./Poll.tsx";
 import { EmojiPanel, EmoteImg, PreviewText } from "./Emoji.tsx";
 import { caretOf, EmoteInput, focusAt, placeCaret } from "./EmoteInput.tsx";
-import { alertDialog, promptDialog } from "./dialog.tsx";
+import { alertDialog, editable, editImage, promptDialog } from "./dialog.tsx";
 import { isSendKey, loadPrefs } from "./Settings.tsx";
 import { useExit } from "./useDismiss.ts";
 import { useLongPress } from "./useLongPress.ts";
@@ -56,6 +56,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const [menu, setMenu] = useState(false);
   const [menuShown, menuClosing] = useExit(menu);
   const [pollForm, setPollForm] = useState(false);
+  const [editNext, setEditNext] = useState<File | null>(null); // a photo just taken: the send dialog opens the editor on it
   // recording a voice or video message: held while the finger is down (slide up locks, slide toward the text cancels)
   const [rec, setRec] = useState<{ kind: "voice" | "video"; locked: boolean; dx: number } | null>(null);
   const recording = !!rec;
@@ -366,9 +367,15 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   async function takePhoto() {
     if (isNative) {
       const f = await captureCameraPhoto();
-      if (f) { if (f.length) setFiles((x) => [...x, ...f]); return; }
+      if (f) { if (f.length) shot(f); return; }
     }
     camInput.current?.click();
+  }
+
+  /** A photo just taken lands in the send dialog with the editor open on it. */
+  function shot(f: File[]) {
+    setFiles((x) => [...x, ...f]);
+    if (f[0] && editable(f[0])) setEditNext(f[0]);
   }
 
   /** Paste from clipboard: the image copied in another app. Android's WebView hides it from the paste event, so it's
@@ -570,7 +577,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
             {/* outside the menu: picking closes the menu, and an unmounted input never gets its change event */}
             <input ref={fileInput} type="file" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
             <input ref={imgInput} type="file" accept="image/*" multiple hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
-            <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = [...e.target.files!]; setFiles((x) => [...x, ...f]); e.target.value = ""; }} />
+            <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = [...e.target.files!]; shot(f); e.target.value = ""; }} />
             <button className="icon-btn" title={t("composer.attach")} aria-label={t("composer.attach")} aria-expanded={menu} aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined} onClick={() => setMenu((m) => !m)}><Icon name="attach" /></button>
             {hasSched && <button className="icon-btn" title={t("composer.scheduled")} aria-label={t("composer.scheduled")} aria-hidden={attachAway} tabIndex={attachAway ? -1 : undefined}
               onClick={() => setSchedList(true)}><Icon name="clock" /></button>}
@@ -600,7 +607,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
         </div>
       </div>
       {DOCK ? <div className="emoji-dock">{emojiPanel}</div> : emojiPanel}
-      {files.length > 0 && <SendFiles room={room} files={files} setFiles={setFiles} onSend={sendFiles} canSchedule={canSched} />}
+      {files.length > 0 && <SendFiles room={room} files={files} setFiles={setFiles} onSend={sendFiles} canSchedule={canSched} editNext={editNext} onEditing={() => setEditNext(null)} />}
       {sendMenu && (
         <ContextMenu {...sendMenu} target=".send-btn" onClose={() => setSendMenu(null)}>
           <button role="menuitem" onClick={() => { setSendMenu(null); setPicking(true); }}><Icon name="clock" /> {t("schedule.title")}</button>
@@ -623,8 +630,9 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
 }
 
 /** Custom emoji by code → mxc; the first pack's wins, as in the suggestions. */
-function SendFiles({ room, files, setFiles, onSend, canSchedule }: { room: Room; files: File[]; setFiles: Props["setFiles"]; canSchedule: boolean;
-  onSend: (files: File[], caption: string, asFile: boolean, asGif: boolean, sendAt?: number) => void }) {
+/** editNext: a photo to open in the editor straight away (one just taken). */
+function SendFiles({ room, files, setFiles, onSend, canSchedule, editNext, onEditing }: { room: Room; files: File[]; setFiles: Props["setFiles"]; canSchedule: boolean;
+  onSend: (files: File[], caption: string, asFile: boolean, asGif: boolean, sendAt?: number) => void; editNext: File | null; onEditing: () => void }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [picking, setPicking] = useState(false);
   const press = useLongPress(canSchedule ? (x, y) => setMenu({ x, y }) : undefined);
@@ -639,6 +647,13 @@ function SendFiles({ room, files, setFiles, onSend, canSchedule }: { room: Room;
   }, [files]);
   const close = () => setFiles(() => []);
   const send = () => onSend(files, caption.trim(), asFile, asGif);
+  const edit = async (f: File) => {
+    const e = await editImage(f, { room });
+    if (e && e !== f) setFiles((x) => x.map((y) => (y === f ? e : y)));
+  };
+  useEffect(() => {
+    if (editNext && files.includes(editNext)) { onEditing(); void edit(editNext); }
+  }, [editNext, files]);
   const remove = (i: number) => setFiles((x) => x.filter((_, j) => j !== i));
   const imgs = files.map((f, i) => i).filter((i) => urls[i]);
   const others = files.map((f, i) => i).filter((i) => !urls[i]);
@@ -652,7 +667,16 @@ function SendFiles({ room, files, setFiles, onSend, canSchedule }: { room: Room;
         <h2>{title}</h2>
         {imgs.length > 0 && (
           <div className="send-grid">
-            {imgs.map((i) => <div key={i} className="send-thumb"><img src={urls[i]!} alt="" />{x(i)}</div>)}
+            {imgs.map((i) => (
+              <div key={i} className="send-thumb">
+                {editable(files[i]) ? (
+                  <button className="send-edit" aria-label={t("edit.edit")} title={t("edit.edit")} onClick={() => void edit(files[i])}>
+                    <img src={urls[i]!} alt="" /><span className="send-pencil"><Icon name="brush" size={14} /></span>
+                  </button>
+                ) : <img src={urls[i]!} alt="" />}
+                {x(i)}
+              </div>
+            ))}
           </div>
         )}
         {others.map((i) => (
