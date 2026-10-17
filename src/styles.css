@@ -1122,10 +1122,9 @@ img.tint {
 @media (hover: none) {
   body, body * { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   body input, body textarea, body .emote-input, body .emote-input * { user-select: text; -webkit-user-select: text; }
-  .select-text, .select-text * { user-select: text; -webkit-user-select: text; }
+  .msg.selected .msg-text, .msg.selected .msg-text * { user-select: text; -webkit-user-select: text; -webkit-touch-callout: default; } /* hold the text to select it */
   .recovery-key { user-select: all; -webkit-user-select: all; }
 }
-.modal .select-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg-menu { z-index: 46; min-width: 220px; max-width: calc(100vw - 16px); padding: 6px; }
 .msg-menu:focus { outline: none; }
 .msg-menu .quick-react { position: static; margin-bottom: 4px; padding: 2px; box-shadow: none; background: transparent; animation: none; justify-content: space-between; }

@@ -21,7 +21,6 @@ import { useBackdropHold } from "./useBackdropHold.ts";
 import { reducedMotion, useDismiss } from "./useDismiss.ts";
 import { thumbFor } from "./Media.tsx";
 import { alertDialog, confirmDialog, promptDialog } from "./dialog.tsx";
-import { pushBack } from "../back.ts";
 import { loadPrefs } from "./Settings.tsx";
 import { emojiImg, emojiSplit, watch } from "../jsx/jsx-runtime.ts";
 
@@ -136,10 +135,10 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   const [fullPicker, setFullPicker] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null); // touch screens have no hover: a tap (or right-click) opens this
   const [sel, setSel] = useState(""); // what was selected inside this message when its menu opened (the menu's focus can collapse it)
-  const [picking, setPicking] = useState(false); // touch: the "Select text" sheet
   const row = useRef<HTMLDivElement>(null);
   const g = useRef<{ id: number; x: number; y: number; timer: number; lock: boolean; px: number; crossed: boolean } | null>(null);
   const swallow = useRef(false); // the click that follows a swipe / hold
+  const textSel = useRef(false); // touch: this press began while text in a selected message was selected; its tap only clears that
   const openMenu = (x: number, y: number) => { setSel(selectedText(row.current!)); setMenu((m) => m ?? { x, y }); };
   const mine = ev.getSender() === me();
   const [deleting, setDeleting] = useState(false);
@@ -171,6 +170,11 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   const reacted = items.some((e) => !!e.getId() && !!room.relations.getChildEventsForEvent(e.getId()!, RelationType.Annotation, EventType.Reaction)
     ?.getSortedAnnotationsByKey()?.some(([, set]) => set.size > 0));
 
+  useEffect(() => { // unselected: its text can't be selected any more, nor stay so
+    const s = getSelection();
+    if (!selected && s?.anchorNode && row.current?.contains(s.anchorNode)) s.removeAllRanges();
+  }, [selected]);
+
   const setX = (px: number) => { row.current!.style.setProperty("--sx", `${-px}px`); row.current!.style.setProperty("--sp", String(Math.min(1, px / SWIPE_AT))); };
   const end = (cancel: boolean) => {
     if (swallow.current) setTimeout(() => { swallow.current = false; }, 350); // eat only the click this finger-up brings
@@ -188,6 +192,8 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   // swipe LEFT to reply for both own and others' messages; rows stay physically LTR so -x is left
   const inside = (e: { target: EventTarget }) => row.current!.contains(e.target as Node); // portals (menu, picker) bubble through React
   const down = (e: PointerEvent) => {
+    const s = getSelection();
+    textSel.current = !!s && !s.isCollapsed && !!s.anchorNode?.parentElement?.closest(".msg.selected");
     if (!inside(e) || e.pointerType !== "touch" || !live || selecting || (e.target as HTMLElement).closest("input,video,audio")) return;
     const { clientX: x, clientY: y } = e;
     clearTimeout(g.current?.timer);
@@ -223,7 +229,9 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
       onPointerDown={down} onPointerMove={move} onPointerUp={() => end(false)} onPointerCancel={() => end(true)}
       onContextMenu={(e) => {
         if (!inside(e)) return;
-        if (touched) return e.preventDefault(); // Android's own long-press: our hold timer has it
+        // Android's own long-press: our hold timer has it. Except on a selected message's text: that's where the system's
+        // text selection starts (Telegram's), with its own Copy and Select all.
+        if (touched) return void (selected && (e.target as HTMLElement).closest(".msg-text") || e.preventDefault());
         if (!live || selecting) return;
         e.preventDefault();
         openMenu(e.clientX, e.clientY);
@@ -231,7 +239,10 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
       onClickCapture={(e) => {
         if (!inside(e)) return;
         if (swallow.current) { e.preventDefault(); e.stopPropagation(); swallow.current = false; } // first: a hold that just selected
-        else if (selecting) { e.preventDefault(); e.stopPropagation(); select(); } // taps only toggle while selecting
+        else if (selecting) { // taps only toggle while selecting; one that ends a text selection does just that
+          e.preventDefault(); e.stopPropagation();
+          if (textSel.current) getSelection()?.removeAllRanges(); else select();
+        }
       }}
       onClick={(e) => { // touch: a tap anywhere on the row opens the menu (Telegram's), unless on a link, button or media
         const t = e.target as HTMLElement;
@@ -305,7 +316,6 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
           { icon: "reply", label: t("msg.reply"), run: () => actions.reply(ev) },
           sel && { icon: "copy", label: t("msg.copySelection"), run: () => void copyMessages(sel) },
           text && { icon: "copy", label: t("common.copy"), run: () => void copyMessages(text) },
-          text && touched && { icon: "select", label: t("msg.selectText"), run: () => setPicking(true) },
           ev.getId() && { icon: "link", label: t("common.copyLink"), run: copyLink },
           !M_POLL_START.matches(ev.getType()) && { icon: "forward", label: t("msg.forward"), run: forward },
           actions.thread && { icon: "thread", label: t("msg.replyThread"), run: () => actions.thread!(ev) },
@@ -323,39 +333,12 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
           canDelete && { icon: "trash", label: t("common.delete"), danger: true, run: remove },
         ]} />
       )}
-      {picking && <SelectText text={text} onClose={() => setPicking(false)} />}
       {/* portal: .msg-actions fades out when the pointer leaves the message */}
       {fullPicker && createPortal(
         <div className="react-picker"><EmojiPanel room={room} onEmoji={(k, custom) => { toggleReaction(room, ev, custom?.img.url ?? k, custom && k); setFullPicker(false); }} onClose={() => setFullPicker(false)} /></div>,
         document.body)}
     </div>
   );
-}
-
-/** Touch can't select message text (a hold selects the message), so this sheet shows it selectable: a hold there starts the
- *  system's selection, with its own Copy; ours takes the selection, else all of it. */
-function SelectText({ text, onClose }: { text: string; onClose: () => void }) {
-  const [closing, close] = useDismiss(onClose, 150);
-  const box = useRef<HTMLParagraphElement>(null);
-  const picked = useRef(""); // kept as it changes: the tap on Copy can clear a touch selection before its click
-  useEffect(() => {
-    const track = () => { const a = getSelection()?.anchorNode; if (a && box.current?.contains(a)) picked.current = selectedText(box.current); };
-    document.addEventListener("selectionchange", track);
-    return () => document.removeEventListener("selectionchange", track);
-  }, []);
-  useEffect(() => pushBack(() => { close(); }), [close]);
-  const copy = () => { close(); void copyMessages(picked.current || text); };
-  return createPortal(
-    <div className={"modal-backdrop" + (closing ? " closing" : "")} onClick={close}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={t("msg.selectText")} onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } }}>
-        <p ref={box} className="select-text" dir={textDir(text)}>{text}</p>
-        <div className="modal-actions">
-          <button onClick={close}>{t("common.cancel")}</button>
-          <button className="primary" onClick={copy}>{t("common.copy")}</button>
-        </div>
-      </div>
-    </div>, document.body);
 }
 
 type MenuItem = { icon: IconName; label: string; run: () => unknown; danger?: boolean };

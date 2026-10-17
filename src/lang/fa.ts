@@ -769,7 +769,6 @@ export default {
   "msg.gifAdded": "به گیف‌ها اضافه شد",
   "msg.select": "انتخاب",
   "msg.copySelection": "کپی متن انتخاب‌شده",
-  "msg.selectText": "انتخاب متن",
   "msg.report": "گزارش",
   "msg.options": "گزینه‌های پیام",
   "msg.undecryptable": "فعلاً رمزگشایی نشد. رمزنگاری را در تنظیمات باز کنید.",
