@@ -20,7 +20,7 @@ import { Room } from "./ui/Room.tsx";
 import { ShareSheet } from "./ui/Forward.tsx";
 import { shareInto } from "./drafts.ts";
 import { NowPlaying } from "./ui/Voice.tsx";
-import { Settings, UpdateBanner, applyPrefs, loadPrefs, type View } from "./ui/Settings.tsx";
+import { Settings, UpdateBanner, applyPrefs, loadPrefs, notesAfterUpdate, skipNotes, type View } from "./ui/Settings.tsx";
 import { VerificationListener } from "./ui/Verify.tsx";
 import { CallBar, CallLayer } from "./ui/Call.tsx";
 import { alertDialog } from "./ui/dialog.tsx";
@@ -91,6 +91,7 @@ function Shell() {
   useEffect(startNotifications, []);
   useEffect(startSearchIndex, []);
   useEffect(startSendQueue, []);
+  useEffect(notesAfterUpdate, []);
   useEffect(startCalls, []);
   // Android call notification buttons: answering may have cold-started the app, so wait for the rooms
   useEffect(() => (synced ? onCallAction((a) => void onNativeCall(a).catch((e) => alertDialog(errText(e)))) : undefined), [synced]);
@@ -181,4 +182,7 @@ function headless() {
 }
 
 if (isHeadless) headless();
-else createRoot(document.getElementById("root")!).render(langChosen ? <App /> : <LangPick />); // a new install picks its language first
+else {
+  if (!langChosen) skipNotes(); // a new install: nothing new to it
+  createRoot(document.getElementById("root")!).render(langChosen ? <App /> : <LangPick />); // a new install picks its language first
+}

@@ -832,6 +832,8 @@ export default {
   "set.dataHint": "دانلود خودکار، حافظه، کیفیت ارسال",
   "set.accountHint": "پیوند من، رمز عبور",
   "update.newIs": "نسخه‌ی تازه‌ی {v} آمده است",
+  "notes.title": "تازه‌های نسخه‌ی {v}",
+  "notes.row": "تازه‌های این نسخه",
   "set.signOutQ": "از این دستگاه خارج می‌شوید؟",
   "set.signOut": "خروج از این حساب",
   "set.dms": "گفتگوهای شخصی",
