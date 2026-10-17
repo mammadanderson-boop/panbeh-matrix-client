@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { EventType, MatrixEventEvent, RoomEvent, type IRoomTimelineData, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client } from "../matrix.ts";
+import { isEmojiOnly } from "../logic.ts";
 
 type Floaty = { key: number; char: string; left: number; size: number; dur: number; sway: number };
 type Piece = { key: number; x: number; dx: number; dur: number; delay: number; rot: number; color: string };
@@ -51,7 +52,14 @@ export function LiveEmojis({ room }: { room: Room }) {
     if (!id || ev.status != null || seen.current.has(id)) return;
     const char = emojiOfRel(ev.getRelation());
     if (char) { seen.current.add(id); emit(char); return; }
-    if (typeof ev.getContent().body === "string" && ev.getContent().body.includes("🎉")) { seen.current.add(id); confetti(); }
+    const body = ev.getContent().body;
+    if (typeof body !== "string" || !/[^ -~]/u.test(body)) return; // needs at least one emoji-ish char to matter
+    if (body.includes("🎉")) { seen.current.add(id); confetti(); return; }
+    // an emoji-only message floats its exact emojis; whitespace-split keeps ZWJ and tone-marker clusters whole
+    if (isEmojiOnly(body)) {
+      seen.current.add(id);
+      [...new Set(body.split(/\s+/).filter((w) => w && /[^ -~]/u.test(w)))].slice(0, 4).forEach(emit);
+    }
   };
 
   useEffect(() => {
