@@ -1,12 +1,12 @@
 import { useLongPress } from "./useLongPress.ts";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { NotificationCountType, UserEvent, type Room } from "matrix-js-sdk";
-import { client, dmPeer } from "../matrix.ts";
+import { EventStatus, NotificationCountType, UserEvent, type MatrixEvent, type Room } from "matrix-js-sdk";
+import { client, dmPeer, seenBy } from "../matrix.ts";
 import { setMuted } from "../notify.ts";
 import { isCallStart, useFolderOrder, useRooms, useTick, useTyping, type RoomRow } from "../hooks.ts";
 import { ARCHIVED, leaveAndForget, markRead, PINNED, setMarkedUnread, setTag } from "../chats.ts";
-import { applyFolderOrder, BASE_FOLDERS, inFolder, isUnread, listTime, moveFolder, normalize, num } from "../logic.ts";
+import { applyFolderOrder, BASE_FOLDERS, inFolder, isUnread, listTime, moveFolder, normalize, num, stamp } from "../logic.ts";
 import { useSortableTabs } from "./useSortableTabs.ts";
 import { pushBack } from "../back.ts";
 import { setBadge } from "../desktop.ts";
@@ -203,6 +203,24 @@ function chatOps(row: RoomRow) {
   };
 }
 
+/** Clock / check / checks shown before the preview: the state of my last message there. */
+function LastTick({ room, ev }: { room: Room; ev: MatrixEvent }) {
+  const failed = ev.status === EventStatus.NOT_SENT;
+  const sending = !failed && !!ev.status;
+  const seen = failed || sending ? [] : seenBy(room, ev);
+  const changed = useChange(failed ? 0 : sending ? 1 : seen.length ? 3 : 2); // clock → check → checks pop when they change
+  const title = failed ? "ارسال نشد"
+    : sending ? "در حال ارسال"
+    : seen.length ? (seen[0].ts ? `دیده‌شده ${stamp(seen[0].ts)}` : "دیده‌شده")
+    : "ارسال شد";
+  return (
+    <span className={"tick" + (failed ? " failed" : "") + (!sending && seen.length ? " read" : "") + (changed ? " changed" : "")}
+      title={title} aria-label={title}>
+      {failed ? "!" : <Icon name={sending ? "clock" : seen.length ? "checks" : "check"} size={14} />}
+    </span>
+  );
+}
+
 function OnlineDot({ room }: { room: Room }) {
   const peer = dmPeer(room);
   const u = peer ? client.getUser(peer) : null;
@@ -228,6 +246,8 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
   const bumped = useChange(row.unread);
   const previewChanged = useChange(preview, 350);
   const mentioned = row.unread > 0 && room.getUnreadNotificationCount(NotificationCountType.Highlight) > 0;
+  // the tick only makes sense while the preview is the message itself (not typing, not a draft), and only for my own last message
+  const mineLast = !row.invite && !!last && !isCallStart(last) && last.getSender() === me();
   return (
     <button className={"room-item" + (active ? " active" : "")} onClick={click(onClick)} {...handlers}>
       <span className="avatar-wrap"><RoomAvatar room={room} size={50} />{row.isDM && !row.invite && <OnlineDot room={room} />}</span>
@@ -238,6 +258,7 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
           <span className="room-time">{listTime(row.ts)}</span>
         </div>
         <div className="room-item-bottom">
+          {mineLast && !typing.length && !draft && <LastTick room={room} ev={last!} />}
           <span className={"room-preview" + (typing.length ? " typing" : "") + (previewChanged ? " changed" : "")}>{draft && <span className="draft">پیش‌نویس: </span>}{preview}{typing.length > 0 && <Dots />}</span>
           {mentioned && <span className="badge">@</span>}
           {(row.unread > 0 || row.invite) ? <span className={"badge" + (muted ? " muted" : "") + (bumped ? " bump" : "")}>{row.invite ? "!" : num(row.unread)}</span>

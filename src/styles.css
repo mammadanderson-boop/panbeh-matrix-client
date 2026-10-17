@@ -220,6 +220,10 @@ button:disabled { opacity: 0.6; cursor: default; }
 .room-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-time { font-size: 12px; color: var(--muted); flex: none; }
 .room-preview { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+/* the tick before the preview: state of my last message (clock → check → checks) */
+.room-item .tick { color: var(--muted); flex: none; }
+.room-item .tick.read { color: var(--accent); }
+.room-item.active .tick { color: rgba(255, 255, 255, 0.85); }
 
 .avatar {
   flex: none; display: grid; place-items: center; border-radius: 50%; overflow: hidden;
