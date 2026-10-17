@@ -69,7 +69,7 @@ export function LiveEmojis({ room }: { room: Room }) {
       else route(ev);
     };
     client.on(RoomEvent.Timeline, onTimeline);
-    return () => client.off(RoomEvent.Timeline, onTimeline);
+    return () => { client.off(RoomEvent.Timeline, onTimeline); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room]); // route closes over the refs only
 
