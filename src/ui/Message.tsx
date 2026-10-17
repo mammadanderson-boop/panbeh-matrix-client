@@ -21,6 +21,7 @@ import { useBackdropHold } from "./useBackdropHold.ts";
 import { reducedMotion, useDismiss } from "./useDismiss.ts";
 import { thumbFor } from "./Media.tsx";
 import { alertDialog, confirmDialog, promptDialog } from "./dialog.tsx";
+import { pushBack } from "../back.ts";
 import { loadPrefs } from "./Settings.tsx";
 import { emojiImg, emojiSplit, watch } from "../jsx/jsx-runtime.ts";
 
@@ -52,6 +53,23 @@ export function copyTextOf(ev: MatrixEvent): string {
   if (c.msgtype === "m.audio") return "";
   if (c.msgtype === "m.image" || c.msgtype === "m.video" || c.msgtype === "m.file" || ev.getType() === EventType.Sticker) return captionOf(c);
   return stripReplyFallback(String(c.body ?? ""));
+}
+
+/** The selection's text if it touches `el`. Emoji pictures give their emoji (Selection.toString skips images; a copy keeps
+ *  their alt), and the time and avatars, which can't be selected, are left out. */
+function selectedText(el: Node) {
+  const s = getSelection();
+  if (!s?.rangeCount || s.isCollapsed || !s.getRangeAt(0).intersectsNode(el)) return "";
+  const r = s.getRangeAt(0), at = r.commonAncestorContainer;
+  const box = document.createElement("div"); // innerText needs it laid out, to give the line breaks
+  box.style.cssText = `position:fixed;left:-9999px;top:0;white-space:${getComputedStyle(at instanceof Element ? at : at.parentElement!).whiteSpace}`;
+  box.append(r.cloneContents());
+  box.querySelectorAll(".msg-meta, .avatar").forEach((n) => n.remove());
+  box.querySelectorAll("img").forEach((i) => i.replaceWith(i.alt));
+  document.body.append(box);
+  const text = box.innerText.replace(/^\n+|\n+$/g, ""); // a triple-click takes the line's break too
+  box.remove();
+  return text;
 }
 
 export const copyMessages = (text: string) => copyText(text).then(() => toast(t("msg.copied")), (e) => alertDialog(errText(e)));
@@ -122,6 +140,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   const row = useRef<HTMLDivElement>(null);
   const g = useRef<{ id: number; x: number; y: number; timer: number; lock: boolean; px: number; crossed: boolean } | null>(null);
   const swallow = useRef(false); // the click that follows a swipe / hold
+  const openMenu = (x: number, y: number) => { setSel(selectedText(row.current!)); setMenu((m) => m ?? { x, y }); };
   const mine = ev.getSender() === me();
   const [deleting, setDeleting] = useState(false);
   const items = album ?? [ev];
@@ -176,7 +195,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
       g.current = null; // held: no swipe after this
       swallow.current = true;
       navigator.vibrate?.(15);
-      if (actions.select) select(); else setMenu({ x, y }); // a thread has no selection: its hold still opens the menu
+      if (actions.select) select(); else openMenu(x, y); // a thread has no selection: its hold still opens the menu
     }, LONG_PRESS) };
   };
   const move = (e: PointerEvent) => {
@@ -207,9 +226,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
         if (touched) return e.preventDefault(); // Android's own long-press: our hold timer has it
         if (!live || selecting) return;
         e.preventDefault();
-        const s = getSelection();
-        setSel(s && !s.isCollapsed && row.current!.contains(s.anchorNode) ? s.toString() : "");
-        setMenu((m) => m ?? { x: e.clientX, y: e.clientY });
+        openMenu(e.clientX, e.clientY);
       }}
       onClickCapture={(e) => {
         if (!inside(e)) return;
@@ -218,7 +235,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
       }}
       onClick={(e) => { // touch: a tap anywhere on the row opens the menu (Telegram's), unless on a link, button or media
         const t = e.target as HTMLElement;
-        if (touched && live && inside(e) && !t.closest("a,button,input,video,audio,[role=button],[data-mx-spoiler]")) setMenu({ x: e.clientX, y: e.clientY });
+        if (touched && live && inside(e) && !t.closest("a,button,input,video,audio,[role=button],[data-mx-spoiler]")) openMenu(e.clientX, e.clientY);
       }}>
       {selecting && <span className="sel-check" aria-hidden>{selected && <Icon name="check" size={14} />}</span>}
       {swipeOk && <span className="swipe-ico" aria-hidden><Icon name="reply" size={20} /></span>}
@@ -315,14 +332,24 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   );
 }
 
-/** Touch can't select message text (a hold opens the menu), so this sheet shows it selectable; Copy takes the selection, else all. */
+/** Touch can't select message text (a hold selects the message), so this sheet shows it selectable: a hold there starts the
+ *  system's selection, with its own Copy; ours takes the selection, else all of it. */
 function SelectText({ text, onClose }: { text: string; onClose: () => void }) {
   const [closing, close] = useDismiss(onClose, 150);
-  const copy = () => { const s = getSelection()?.toString(); close(); void copyMessages(s || text); };
+  const box = useRef<HTMLParagraphElement>(null);
+  const picked = useRef(""); // kept as it changes: the tap on Copy can clear a touch selection before its click
+  useEffect(() => {
+    const track = () => { const a = getSelection()?.anchorNode; if (a && box.current?.contains(a)) picked.current = selectedText(box.current); };
+    document.addEventListener("selectionchange", track);
+    return () => document.removeEventListener("selectionchange", track);
+  }, []);
+  useEffect(() => pushBack(() => { close(); }), [close]);
+  const copy = () => { close(); void copyMessages(picked.current || text); };
   return createPortal(
     <div className={"modal-backdrop" + (closing ? " closing" : "")} onClick={close}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={t("msg.selectText")} onClick={(e) => e.stopPropagation()}>
-        <p className="select-text" dir="auto">{text}</p>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={t("msg.selectText")} onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } }}>
+        <p ref={box} className="select-text" dir={textDir(text)}>{text}</p>
         <div className="modal-actions">
           <button onClick={close}>{t("common.cancel")}</button>
           <button className="primary" onClick={copy}>{t("common.copy")}</button>

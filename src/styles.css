@@ -1125,6 +1125,7 @@ img.tint {
   .select-text, .select-text * { user-select: text; -webkit-user-select: text; }
   .recovery-key { user-select: all; -webkit-user-select: all; }
 }
+.modal .select-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg-menu { z-index: 46; min-width: 220px; max-width: calc(100vw - 16px); padding: 6px; }
 .msg-menu:focus { outline: none; }
 .msg-menu .quick-react { position: static; margin-bottom: 4px; padding: 2px; box-shadow: none; background: transparent; animation: none; justify-content: space-between; }
