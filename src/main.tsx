@@ -8,7 +8,7 @@ import { onNotifyButton, startNotifications } from "./notify.ts";
 import { startSearchIndex } from "./searchIndex.ts";
 import { startSendQueue } from "./sendQueue.ts";
 import { isHeadless, isNative, onCallAction, onNotifyAction, onOpenLink, onOpenRoom, onShare, requestNotifyPermission, setBackgroundService } from "./native.ts";
-import { onNativeCall, startCalls } from "./call.ts";
+import { onNativeCall, getCall, startCalls } from "./call.ts";
 import { startBackButton } from "./back.ts";
 import { drainLinks, handleIncomingLink } from "./openTarget.ts";
 import { isDesktop, onDesktopLink } from "./desktop.ts";
@@ -47,6 +47,18 @@ function App() {
   const [phase, setPhase] = useState<"boot" | "login" | "ready" | "error">((savedSession() && !isAdding()) || isOAuthCallback() ? "boot" : "login");
   const [loginError, setLoginError] = useState<unknown>();
   const [bootError, setBootError] = useState<unknown>();
+  const [stale, setStale] = useState(false);
+  useEffect(() => { // a web deploy while the tab is open: the old bundle runs in memory until a reload happens
+    if (!location.protocol.startsWith("http")) return; // native/desktop ship assets inside their bundle; desktop has its own updater
+    const mine = document.querySelector<HTMLScriptElement>("script[src*='/assets/']")?.src.split("/").pop() ?? "none";
+    let gone = false;
+    const tick = setInterval(() => fetch("", { cache: "no-store" }).then((r) => r.text()).then((html) => {
+      if (gone || html.includes(mine)) return;
+      // don't yank a live call out from under the user: surprise them only by reloading a hidden, call-free tab
+      if (document.hidden && !getCall()?.active) location.reload(); else setStale(true);
+    }).catch(() => {}), 300_000); // offline or fetch failure: try again later
+    return () => { gone = true; clearInterval(tick); };
+  }, []);
   useEffect(() => {
     const s = savedSession();
     // keep the session on failure: dropping it silently would orphan this device and its crypto store
@@ -146,6 +158,7 @@ function Shell() {
         banner={<>
           {(sync === SyncState.Error || sync === SyncState.Reconnecting) && <div className="banner warn">{t("boot.connecting")}</div>}
           <UpdateBanner />
+          {stale && <button className="banner" onClick={() => location.reload()}>{t("web.newBuild")}</button>}
           {security !== "ok" && (
             <button className="banner" onClick={() => setSettings("privacy")}>
               <Icon name="lock" size={16} /> {security === "unlock" ? t("banner.verify") : t("banner.setupRecovery")}
