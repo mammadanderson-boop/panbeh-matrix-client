@@ -783,3 +783,9 @@ export function cachedSlice<T extends { id: string }>(older: T[], n: number, bac
   if (older.length > n) return { chunk, end: prefix + chunk.at(-1)!.id };
   return back ? { chunk, end: back } : { chunk };
 }
+
+/** Up to 3 emoji and nothing else (spaces allowed): shown big, without a bubble. */
+let EMOJI_ONLY: RegExp;
+try { EMOJI_ONLY = new RegExp("^\\s*(?:\\p{RGI_Emoji}\\s*){1,3}$", "v"); }
+catch { EMOJI_ONLY = /^\p{Extended_Pictographic}{1,3}$/u; } // an old WebView without the v flag
+export const isEmojiOnly = (s: string) => EMOJI_ONLY.test(s);
