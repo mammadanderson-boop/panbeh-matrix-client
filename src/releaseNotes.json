@@ -1,4 +1,20 @@
 {
+  "0.9.0": {
+    "fa": [
+      "ویرایشگر عکس: برش، نقاشی، متن، استیکر، شکل، تنظیم رنگ و محو کردن، قبل از ارسال یا برای عکس پروفایل و گروه",
+      "حباب عکس، گیف و ویدیو دیگر به‌خاطر نقل‌قول یا نام فرستنده پهن نمی‌شود",
+      "ایموجی‌هایی مثل 👍️ و ✨️ که از انتخابگر فرستاده می‌شوند، حالا بزرگ و بدون حباب نمایش داده می‌شوند",
+      "شمارندهٔ پیام‌های خوانده‌نشدهٔ رشته‌ها (Thread) در گفتگوهای رمزگذاری‌شده درست شد",
+      "«علامت‌گذاری به‌عنوان خوانده‌شده» حالا رشته‌ها را هم شامل می‌شود"
+    ],
+    "en": [
+      "Photo editor: crop, draw, add text, stickers and shapes, adjust colors and blur, before sending or for profile and group photos",
+      "Photo, GIF and video bubbles no longer stretch because of a reply quote or a long sender name",
+      "Emoji from the picker, like 👍️ and ✨️, now show large and without a bubble when sent alone",
+      "Unread counts for threads in encrypted chats are accurate again",
+      "“Mark as read” now clears unread threads too"
+    ]
+  },
   "0.8.2": {
     "fa": [
       "نمایش تغییرات هر ورژن موقع آپدیت",
