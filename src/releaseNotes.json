@@ -1,13 +1,15 @@
 {
   "0.8.2": {
     "fa": [
-      "ایموجی‌های اپل همه‌جا: پیام‌ها، نام‌ها، واکنش‌ها و انتخابگر ایموجی",
-      "تیک فرستاده‌شدن و دیده‌شدن آخرین پیام شما، در فهرست گفتگوها",
-      "پیامی که با اینترنت کند می‌فرستید دیگر ناپدید نمی‌شود: با ساعت می‌ماند تا فرستاده شود",
-      "تازه‌های هر نسخه، پس از به‌روزرسانی و در تنظیمات، بخش برنامه"
+      "نمایش تغییرات هر ورژن موقع آپدیت",
+      "استفاده از ایموجی‌های اپل: پیام‌ها، نام‌ها، واکنش‌ها و انتخابگر ایموجی",
+      "پیامی که فقط ایموجی است، بزرگ و بدون حباب نمایش داده می‌شود.",
+      "وضعیت دیده‌شدن آخرین پیام شما، در فهرست گفتگوها",
+      "اصلاح عملکرد ارسال پیام در اینترنت ضعیف"
     ],
     "en": [
       "Apple emoji everywhere: messages, names, reactions and the emoji picker",
+      "Emoji-only messages show large and without a bubble",
       "Sent and seen ticks for your last message in the chat list",
       "A message sent on a slow connection no longer disappears: it stays with a clock until it's sent",
       "What's new in each version, after an update and in Settings › App"
