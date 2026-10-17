@@ -117,6 +117,8 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   const [picker, setPicker] = useState(false);
   const [fullPicker, setFullPicker] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null); // touch screens have no hover: a tap (or right-click) opens this
+  const [sel, setSel] = useState(""); // what was selected inside this message when its menu opened (the menu's focus can collapse it)
+  const [picking, setPicking] = useState(false); // touch: the "Select text" sheet
   const row = useRef<HTMLDivElement>(null);
   const g = useRef<{ id: number; x: number; y: number; timer: number; lock: boolean; px: number; crossed: boolean } | null>(null);
   const swallow = useRef(false); // the click that follows a swipe / hold
@@ -205,6 +207,8 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
         if (touched) return e.preventDefault(); // Android's own long-press: our hold timer has it
         if (!live || selecting) return;
         e.preventDefault();
+        const s = getSelection();
+        setSel(s && !s.isCollapsed && row.current!.contains(s.anchorNode) ? s.toString() : "");
         setMenu((m) => m ?? { x: e.clientX, y: e.clientY });
       }}
       onClickCapture={(e) => {
@@ -282,7 +286,9 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
       {menu && (
         <MsgMenu {...menu} onClose={() => setMenu(null)} onReact={(k) => toggleReaction(room, ev, k)} onMore={() => setFullPicker(true)} items={[
           { icon: "reply", label: t("msg.reply"), run: () => actions.reply(ev) },
+          sel && { icon: "copy", label: t("msg.copySelection"), run: () => void copyMessages(sel) },
           text && { icon: "copy", label: t("common.copy"), run: () => void copyMessages(text) },
+          text && touched && { icon: "select", label: t("msg.selectText"), run: () => setPicking(true) },
           ev.getId() && { icon: "link", label: t("common.copyLink"), run: copyLink },
           !M_POLL_START.matches(ev.getType()) && { icon: "forward", label: t("msg.forward"), run: forward },
           actions.thread && { icon: "thread", label: t("msg.replyThread"), run: () => actions.thread!(ev) },
@@ -300,12 +306,29 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
           canDelete && { icon: "trash", label: t("common.delete"), danger: true, run: remove },
         ]} />
       )}
+      {picking && <SelectText text={text} onClose={() => setPicking(false)} />}
       {/* portal: .msg-actions fades out when the pointer leaves the message */}
       {fullPicker && createPortal(
         <div className="react-picker"><EmojiPanel room={room} onEmoji={(k, custom) => { toggleReaction(room, ev, custom?.img.url ?? k, custom && k); setFullPicker(false); }} onClose={() => setFullPicker(false)} /></div>,
         document.body)}
     </div>
   );
+}
+
+/** Touch can't select message text (a hold opens the menu), so this sheet shows it selectable; Copy takes the selection, else all. */
+function SelectText({ text, onClose }: { text: string; onClose: () => void }) {
+  const [closing, close] = useDismiss(onClose, 150);
+  const copy = () => { const s = getSelection()?.toString(); close(); void copyMessages(s || text); };
+  return createPortal(
+    <div className={"modal-backdrop" + (closing ? " closing" : "")} onClick={close}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={t("msg.selectText")} onClick={(e) => e.stopPropagation()}>
+        <p className="select-text" dir="auto">{text}</p>
+        <div className="modal-actions">
+          <button onClick={close}>{t("common.cancel")}</button>
+          <button className="primary" onClick={copy}>{t("common.copy")}</button>
+        </div>
+      </div>
+    </div>, document.body);
 }
 
 type MenuItem = { icon: IconName; label: string; run: () => unknown; danger?: boolean };
