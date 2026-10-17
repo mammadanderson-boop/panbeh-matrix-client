@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ClientEvent, EventTimeline, EventType, M_POLL_START, RoomEvent, RoomMemberEvent, RoomStateEvent, UserEvent, type Room, type RoomMember, type MatrixEvent } from "matrix-js-sdk";
 import { client, getFolderOrder, spaceChildren, getUploads, setFolderOrder, subscribeUploads } from "./matrix.ts";
 import { byListOrder, lastSeen, spaceRooms, type RoomInfo } from "./logic.ts";
-import { ARCHIVED, hasTag, isMarkedUnread, PINNED } from "./chats.ts";
+import { ARCHIVED, hasTag, isMarkedUnread, PINNED, unreadCount } from "./chats.ts";
 import { isMuted } from "./notify.ts";
 import { draftPreview, useDrafts, type Draft } from "./drafts.ts";
 
@@ -136,7 +136,7 @@ export function useRooms() {
       invite,
       draft,
       isDM: dmIds.has(room.roomId) || !!room.getDMInviter(),
-      unread: room.getUnreadNotificationCount(),
+      unread: unreadCount(room),
       spaces: membership.get(room.roomId) ?? [],
       pinned: hasTag(room, PINNED),
       archived: hasTag(room, ARCHIVED),

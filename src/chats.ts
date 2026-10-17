@@ -1,6 +1,7 @@
 // Chat-list state kept on the server: tags (pin/archive) and "marked as unread".
-import { RoomEvent, type Room } from "matrix-js-sdk";
+import { NotificationCountType, RoomEvent, type MatrixEvent, type Room, type Thread } from "matrix-js-sdk";
 import { client } from "./matrix.ts";
+import { unreadSince } from "./logic.ts";
 
 export const PINNED = "m.favourite"; // Element shows these as Favourites
 export const ARCHIVED = "u.archived"; // user-defined tags must start with "u."
@@ -22,11 +23,33 @@ export async function setMarkedUnread(room: Room, unread: boolean) {
   if (!unread && room.getAccountData(MARKED_OLD)?.getContent().unread) await put(room, MARKED_OLD, false);
 }
 
-/** Receipt on the newest event + clear the manual mark.
- *  ponytail: thread receipts aren't touched; threads keep their own unread counts. */
+/** A thread's replies, oldest first (some servers list them newest-first), without its root. */
+const repliesOf = (th: Thread) => th.liveTimeline.getEvents().filter((e) => e.getId() !== th.id).sort((a, b) => a.getTs() - b.getTs());
+
+/** A thread's unread count: its replies from others after my read point, when that's loaded. In encrypted chats the SDK
+ *  counts thread replies itself as they decrypt and miscounts: one reply twice, or, after a restart, replies already
+ *  read; only the server's next word on that chat corrects it. Its count stands only when the read point isn't loaded. */
+export function threadUnread(th: Thread, type = NotificationCountType.Total) {
+  const counted = th.room.getThreadUnreadNotificationCount(th.id, type);
+  if (!counted) return 0;
+  const me = client.getUserId()!;
+  const counts = (e: MatrixEvent) => {
+    const a = e.getSender() !== me && client.getPushActionsForEvent(e);
+    return !!a && (type === NotificationCountType.Highlight ? !!a.tweaks?.highlight : a.notify);
+  };
+  const replies = repliesOf(th);
+  return unreadSince(replies, (e) => th.hasUserReadEvent(me, e.getId()!), counts, replies.length >= th.length) ?? counted;
+}
+
+/** A chat's unread count, its threads' included. */
+export const unreadCount = (room: Room, type = NotificationCountType.Total) =>
+  room.getThreads().reduce((n, th) => n + threadUnread(th, type), room.getRoomUnreadNotificationCount(type));
+
+/** Receipts on the newest event and on each unread thread's newest reply + clear the manual mark. */
 export async function markRead(room: Room) {
   const last = room.getLiveTimeline().getEvents().filter((e) => !e.status).at(-1);
-  if (last) await client.sendReadReceipt(last);
+  const threads = room.getThreads().filter((th) => threadUnread(th) > 0).map((th) => repliesOf(th).filter((e) => !e.status).at(-1));
+  await Promise.all([last, ...threads].map((e) => e && client.sendReadReceipt(e)));
   if (isMarkedUnread(room)) await setMarkedUnread(room, false);
 }
 

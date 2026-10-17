@@ -4,7 +4,7 @@ import { avatarUrl, client, pastFirstSync } from "./matrix.ts";
 import { isGroupChat, previewText, senderMember, senderName, roomAvatarMxc } from "./ui/common.tsx";
 import { loadPrefs } from "./ui/Settings.tsx";
 import { isHeadless, isNative, nativeCancel, nativeNotify, nativeUnnotify, toDataUrl, type NotifyAction } from "./native.ts";
-import { markRead } from "./chats.ts";
+import { markRead, unreadCount } from "./chats.ts";
 import { isAttentive, showWindow } from "./desktop.ts";
 
 /** Muted = a room or override rule for this room that doesn't notify (ours, or Element's). */
@@ -57,7 +57,7 @@ export function startNotifications() {
     const me = client.getUserId()!;
     const mine = Object.values(ev.getContent()).some((r) => [ReceiptType.Read, ReceiptType.ReadPrivate].some((t) => r?.[t]?.[me]));
     const last = room.getLiveTimeline().getEvents().filter((e) => !e.status).at(-1);
-    if (mine && (room.getUnreadNotificationCount() === 0 || (last && room.hasUserReadEvent(me, last.getId()!)))) clear(room.roomId);
+    if (mine && (unreadCount(room) === 0 || (last && room.hasUserReadEvent(me, last.getId()!)))) clear(room.roomId);
   };
   // a deleted message comes out of the notification (Android keeps several per chat; a browser one shows only the newest)
   const onRedaction = (ev: MatrixEvent, room: Room) => {

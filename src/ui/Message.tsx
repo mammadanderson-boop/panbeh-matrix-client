@@ -8,6 +8,7 @@ import { EventStatus, EventType, M_POLL_START, RelationType, type MatrixEvent, t
 import { addToMyPack, avatarUrl, inMyPack, BLURHASH, client, isCached, isSavedGif, loadEvent, mediaUrl, pinnedIds, prefetch, seenBy, toggleGif, togglePin } from "../matrix.ts";
 import { abortSave, geoClick, isMetered, isNative, openSave, openSaved, rememberSave, writeSave, type SaveTarget } from "../native.ts";
 import { usePromise } from "../hooks.ts";
+import { threadUnread } from "../chats.ts";
 import { HASHTAG_SRC, LINK_SRC, blurhashDecode, clock, fmtDuration, isEmojiOnly, isGif, linkHref, neshanUrl, num, parseGeoUri, shouldAutoDl, stamp, textDir, type DlKind, type Usage } from "../logic.ts";
 import { Icon, iconSvg, type IconName } from "../icons.tsx";
 import { Avatar, colorFor, copyText, errText, formatSize, isGroupChat, me, menuPos, senderMember, senderName, stripReplyFallback, toast, useChange, isVoice } from "./common.tsx";
@@ -248,7 +249,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
         {thread && thread.length > 0 && (
           <button className="thread-link" onClick={() => actions.thread?.(ev)}>
             <Icon name="thread" size={15} /> {t("thread.replies", { count: thread.length })}
-            {room.getThreadUnreadNotificationCount(thread.id) > 0 && <span className="badge">{num(room.getThreadUnreadNotificationCount(thread.id))}</span>}
+            {threadUnread(thread) > 0 && <span className="badge">{num(threadUnread(thread))}</span>}
           </button>
         )}
       </div>
