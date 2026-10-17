@@ -230,6 +230,8 @@ button:disabled { opacity: 0.6; cursor: default; }
 .room-item-top, .room-item-bottom { display: flex; align-items: center; gap: 8px; }
 .room-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-time { font-size: 12px; color: var(--muted); flex: none; }
+.room-time .tick { vertical-align: middle; margin-inline-end: 3px; }
+.room-item.active .tick.read { color: #fff; }
 .room-preview { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 
 .avatar {

@@ -803,7 +803,7 @@ function ReplyQuote({ room, id, onJump }: { room: Room; id: string; onJump?: (id
   );
 }
 
-function Ticks({ ev, room }: { ev: MatrixEvent; room: Room }) {
+export function Ticks({ ev, room }: { ev: MatrixEvent; room: Room }) {
   const failed = ev.status === EventStatus.NOT_SENT;
   const sending = !failed && !!ev.status;
   const seen = failed || sending ? [] : seenBy(room, ev);
