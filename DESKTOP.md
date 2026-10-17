@@ -30,7 +30,7 @@ Release files carry the tag before the extension (`Panbeh-windows-setup-v1.0.0.e
 | --- | --- |
 | Windows 10/11 | `Panbeh-windows-setup.exe`: installs for the current user, no admin needed |
 | macOS 11+ (Intel and Apple Silicon) | `Panbeh-mac.dmg` |
-| Linux | `Panbeh-linux-x86_64.AppImage` (any distro: `chmod +x` and run) or `Panbeh-linux-amd64.deb` |
+| Linux | `Panbeh-linux-x86_64.AppImage` (any distro: `chmod +x` and run), `Panbeh-linux-amd64.deb` (Debian/Ubuntu) or `Panbeh-linux-x86_64.rpm` (Fedora/openSUSE) |
 
 ### First launch of unsigned builds
 
@@ -45,8 +45,9 @@ The apps aren't code-signed yet, so the first launch shows a warning:
 The app checks for a new version at start and every 6 hours, against GitHub releases made from `v*` tags
 (manual builds from the Actions tab never auto-update anyone).
 
-- **Windows, Linux AppImage/deb**: the update downloads in the background (a banner above the chat list shows
-  the progress) and installs when you restart Panbeh from that banner, or the next time Panbeh quits.
+- **Windows, Linux AppImage/deb/rpm**: the update downloads in the background (a banner above the chat list shows
+  the progress) and installs when you restart Panbeh from that banner, or the next time Panbeh quits (deb/rpm
+  installs ask for the password through pkexec, like the deb already does).
   With **Settings → برنامه → به‌روزرسانی خودکار** off, the banner only says a new version is out and downloads
   it when you confirm. The same section shows the version and checks on demand.
 - **macOS**: macOS refuses to auto-install updates of unsigned apps, so Panbeh only says a new version is out
@@ -75,7 +76,7 @@ signature, the minimum Apple Silicon needs to run them at all.
 
 As on Android, login opens in your browser and comes back to the app through the `ir.panbeh.app:/oauth`
 URL scheme, which the installers register. With the bare AppImage, the scheme is registered only once the
-AppImage has been integrated into the system (e.g. by AppImageLauncher); otherwise use the `.deb`, or a
+AppImage has been integrated into the system (e.g. by AppImageLauncher); otherwise use the `.deb`/`.rpm`, or a
 password login. See the end of [ANDROID.md](ANDROID.md) to change the scheme.
 
 ## Building locally

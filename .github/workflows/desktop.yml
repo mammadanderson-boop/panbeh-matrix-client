@@ -94,7 +94,7 @@ jobs:
         working-directory: out
         run: |
           for f in Panbeh-*; do
-            case "$f" in *.exe|*.dmg|*.zip|*.AppImage|*.deb) ;; *) continue ;; esac
+            case "$f" in *.exe|*.dmg|*.zip|*.AppImage|*.deb|*.rpm) ;; *) continue ;; esac
             v="${f%.*}-$GITHUB_REF_NAME.${f##*.}"
             mv "$f" "$v"
             [ -f "$f.blockmap" ] && mv "$f.blockmap" "$v.blockmap"
