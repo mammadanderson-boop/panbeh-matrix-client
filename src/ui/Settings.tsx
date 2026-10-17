@@ -21,6 +21,7 @@ import { alertDialog, confirmDialog } from "./dialog.tsx";
 import { LinkSheet } from "./LinkSheet.tsx";
 import { MyPacks } from "./Packs.tsx";
 import { matrixToLink } from "../uri.ts";
+import NOTES from "../releaseNotes.json";
 
 type Prefs = { theme: "system" | "light" | "dark"; accent: string; wallpaper: string; notify: boolean; notifyDMs: boolean; notifyGroups: boolean; notifyPreview: "all" | "name" | "none"; previews: boolean; shareLastSeen: boolean; searchIndex: boolean; dev: boolean; legacyCalls: boolean; enterSends: boolean; askSave: boolean;
   camQuality: "360" | "540" | "720" | "1080"; screenQuality: "720" | "1080" | "1080hi"; audioQuality: "low" | "normal" | "high";
@@ -84,6 +85,21 @@ const Row = ({ icon, label, hint, onClick }: { icon: IconName; label: string; hi
 );
 
 const VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
+
+// ---------- release notes (src/releaseNotes.json, by version) ----------
+const notes: string[] | undefined = (NOTES as Record<string, Record<string, string[]>>)[VERSION.replace(/^v/, "")]?.[lang];
+const NOTES_SEEN = "panbeh.notesSeen";
+const showNotes = () => notes && alertDialog(t("notes.title", { v: ver(VERSION.replace(/^v/, "")) }) + "\n\n• " + notes.join("\n• "));
+/** A new install has nothing to compare with: its version's notes count as read. */
+export const skipNotes = () => { try { localStorage.setItem(NOTES_SEEN, VERSION); } catch { /* no storage */ } };
+/** This version's notes, once, after an update. */
+export function notesAfterUpdate() {
+  try {
+    if (!notes || localStorage.getItem(NOTES_SEEN) === VERSION) return;
+    localStorage.setItem(NOTES_SEEN, VERSION);
+  } catch { return; } // no storage: they'd show on every start
+  showNotes();
+}
 
 export function Settings({ start = "main", security, onClose, onSecurityChange }: { start?: View; security: string; onClose: () => void; onSecurityChange: () => void }) {
   const [prefs, setPrefs] = useState(loadPrefs);
@@ -183,6 +199,7 @@ export function Settings({ start = "main", security, onClose, onSecurityChange }
     if (v === "app") return page(t("set.app"), <>
       {isDesktop && <Autostart />}
       {canUpdate ? <Updates /> : <p className="muted">{t("app.name")} <span dir="ltr">{VERSION}</span></p>}
+      {notes && <Row icon="info" label={t("notes.row")} onClick={showNotes} />}
       <h3>{t("set.dev")}</h3>
       <label className="switch-row"><span>{t("set.dev")}<small>{t("set.devHint")}</small></span>
         <input type="checkbox" role="switch" checked={prefs.dev} onChange={(e) => set({ dev: e.target.checked })} /></label>

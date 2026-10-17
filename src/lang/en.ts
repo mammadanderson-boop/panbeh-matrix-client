@@ -867,6 +867,8 @@ export default {
   "set.dataHint": "Auto-download, storage, upload quality",
   "set.accountHint": "My link, password",
   "update.newIs": "Version {v} is available",
+  "notes.title": "What's new in {v}",
+  "notes.row": "What's new in this version",
   "set.signOutQ": "Sign out of this device?",
   "set.signOut": "Sign out of this account",
   "set.dms": "Personal chats",

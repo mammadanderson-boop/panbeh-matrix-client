@@ -74,9 +74,15 @@ jobs:
           path: Panbeh*.apk
           archive: false # the artifact is the raw Panbeh.apk, not a zip
 
+      # src/releaseNotes.json, Persian then English; this workflow only (the desktop one has no checkout and keeps the body)
+      - name: Release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: jq -r --arg v "${GITHUB_REF_NAME#v}" '.[$v] // empty | [.fa, .en] | map(map("- " + .) | join("\n")) | join("\n\n")' src/releaseNotes.json > release.md
+
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: Panbeh-*.apk
+          body_path: release.md
 
