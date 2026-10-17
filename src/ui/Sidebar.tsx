@@ -15,6 +15,7 @@ import logo from "../logo.svg";
 import { Icon } from "../icons.tsx";
 import { bdi, ContextMenu, Dots, errText, formattedPlain, useChange, me, noticeText, previewText, RoomAvatar, senderName } from "./common.tsx";
 import { EmoteText } from "./Emoji.tsx";
+import { Ticks } from "./Message.tsx";
 import { NewChat } from "./NewChat.tsx";
 import { RoomInfo } from "./RoomInfo.tsx";
 import { MessageResults, requestJump } from "./Search.tsx";
@@ -228,6 +229,7 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
   if (typing.length) preview = row.isDM ? t("typing.dm") : t("typing.single", { a: bdi(typing[0].name.split(" ")[0]) });
   const draft = !typing.length && row.draft;
   if (draft) { preview = draft.body.split("\n")[0]; emotes = emoteMap(room); } // composer text: this room's emoji
+  const mine = last && !row.invite && !isCallStart(last) && last.getSender() === me(); // sent/seen, like in the chat
   const muted = !!row.muted;
   const bumped = useChange(row.unread);
   const previewChanged = useChange(preview, 350);
@@ -239,7 +241,7 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
         <div className="room-item-top">
           <span className="room-name">{room.name}</span>
           {muted && <span className="room-muted" aria-label={t("chat.muted")}><Icon name="bellOff" size={14} /></span>}
-          <span className="room-time">{listTime(row.ts)}</span>
+          <span className="room-time">{mine && <Ticks ev={last} room={room} />}{listTime(row.ts)}</span>
         </div>
         <div className="room-item-bottom">
           <span className={"room-preview" + (typing.length ? " typing" : "") + (previewChanged ? " changed" : "")}>{draft && <span className="draft">{t("sidebar.draft")} </span>}{typing.length ? preview : <EmoteText text={preview} emotes={emotes} />}{typing.length > 0 && <Dots />}</span>
