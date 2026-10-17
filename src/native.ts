@@ -65,6 +65,7 @@ interface PanbehPlugin {
   addListener(e: "callAction", f: (d: CallAction) => void): Promise<PluginListenerHandle>;
   addListener(e: "notifyAction", f: (d: NotifyAction) => void): Promise<PluginListenerHandle>;
   addListener(e: "share", f: (d: Shared) => void): Promise<PluginListenerHandle>;
+  addListener(e: "imeImage", f: (d: Pick<Shared, "files">) => void): Promise<PluginListenerHandle>;
   addListener(e: "audioRoutes", f: (d: Routes) => void): Promise<PluginListenerHandle>;
   addListener(e: "updateProgress", f: (d: { percent: number }) => void): Promise<PluginListenerHandle>;
 }
@@ -366,6 +367,13 @@ export async function clipboardImages(): Promise<File[] | null> {
     console.error("clipboard read failed", e);
     return [];
   }
+}
+
+/** An image the keyboard inserted (Gboard's copied-image pill or clipboard screen, a GIF or sticker): see PanbehWebView. */
+export function onImeImage(f: (files: File[]) => void) {
+  if (!isNative || headless) return () => {};
+  const h = plugin.addListener("imeImage", (d) => void Promise.all(d.files.map((x) => uriToFile(x))).then(f).catch((e) => console.error("keyboard image failed", e)));
+  return () => { h.then((x) => x.remove()); };
 }
 
 // ---------- updates: the newest v* GitHub release's APK, handed to Android's installer (it asks; no silent install) ----------
