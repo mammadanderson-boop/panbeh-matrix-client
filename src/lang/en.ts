@@ -801,6 +801,7 @@ export default {
   "msg.saveGif": "Save GIF",
   "msg.gifAdded": "Added to GIFs",
   "msg.select": "Select",
+  "msg.copySelection": "Copy selected text",
   "msg.report": "Report",
   "msg.options": "Message options",
   "msg.undecryptable": "Couldn't decrypt yet. Unlock encryption in Settings.",
