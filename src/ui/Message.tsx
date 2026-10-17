@@ -21,6 +21,7 @@ import { reducedMotion, useDismiss } from "./useDismiss.ts";
 import { thumbFor } from "./Media.tsx";
 import { alertDialog, confirmDialog, promptDialog } from "./dialog.tsx";
 import { loadPrefs } from "./Settings.tsx";
+import { emojiImg, emojiSplit, watch } from "../jsx/jsx-runtime.ts";
 
 export type Actions = {
   reply: (ev: MatrixEvent) => void;
@@ -375,9 +376,9 @@ function Body({ ev, room, onView, onUser, album }: { ev: MatrixEvent; room: Room
   if (c.msgtype === "m.location") return <LocationCard c={c} />;
   const emote = c.msgtype === "m.emote" ? `* ${senderName(ev)} ` : "";
   if (rich !== null) {
-    const html = rich;
+    const html = rich, jumbo = !emote && EMOTES_ONLY.test(html);
     // the emote prefix holds a user-chosen display name: keep it out of innerHTML
-    return <div className={"msg-text" + (emote ? " emote" : EMOTES_ONLY.test(html) ? " jumbo" : "")} dir={textDir(emote + stripReplyFallback(String(c.body ?? "")))}>{emote}<Html html={html} room={room} onUser={onUser} /></div>;
+    return <div className={"msg-text" + (emote ? " emote" : jumbo ? " jumbo" : "")} dir={textDir(emote + stripReplyFallback(String(c.body ?? "")))}>{emote}<Html html={html} room={room} onUser={onUser} big={jumbo} /></div>;
   }
   const text = emote + stripReplyFallback(String(c.body ?? ""));
   return <p dir={textDir(text)} className={"msg-text" + (/^\p{Extended_Pictographic}{1,3}$/u.test(text) ? " jumbo" : "")}>{linkify(text)}</p>;
@@ -417,8 +418,24 @@ function tagHtml(html: string) {
 }
 
 /** Sanitized HTML; gives mention pills their avatars and opens them in-app. */
-function Html({ html, room, onUser }: { html: string; room: Room; onUser: (id: string) => void }) {
+/** Message HTML with its emoji as Apple's pictures (the JSX runtime's job everywhere else); code stays as typed. */
+function emojiHtml(html: string, big: boolean) {
+  if (emojiSplit(html).length === 1) return html;
+  const t = document.createElement("template");
+  t.innerHTML = html;
+  const w = document.createTreeWalker(t.content, NodeFilter.SHOW_TEXT), texts: Text[] = [];
+  while (w.nextNode()) texts.push(w.currentNode as Text);
+  for (const n of texts) {
+    const parts = emojiSplit(n.data);
+    if (parts.length > 1 && !n.parentElement?.closest("pre, code")) n.replaceWith(...parts.map((p, i) => (i % 2 ? emojiImg(p, big) : p)));
+  }
+  return t.innerHTML;
+}
+
+function Html({ html, room, onUser, big = false }: { html: string; room: Room; onUser: (id: string) => void; big?: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
+  const shown = useMemo(() => emojiHtml(html, big), [html, big]);
+  useEffect(() => ref.current?.querySelectorAll<HTMLImageElement>("img.emoji").forEach(watch), [shown]);
   useEffect(() => {
     ref.current?.querySelectorAll<HTMLAnchorElement>("a.mention").forEach((a) => {
       const id = a.dataset.mxid!;
@@ -498,7 +515,7 @@ function Html({ html, room, onUser }: { html: string; room: Room; onUser: (id: s
     if (a.dataset.mxid!.startsWith("@")) onUser(a.dataset.mxid!);
     else openRoomPill(a);
   };
-  return <span ref={ref} onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <span ref={ref} onClick={onClick} dangerouslySetInnerHTML={{ __html: shown }} />;
 }
 
 const LINKIFY_RE = new RegExp(`(${LINK_SRC}|${HASHTAG_SRC}|matrix:[^\\s<]+[^\\s<.,;:!?)"'])`, "giu");

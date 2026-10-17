@@ -11,6 +11,7 @@ import { emoteRe, isDarkMono, normalize, type Gif } from "../logic.ts";
 import { confirmDialog } from "./dialog.tsx";
 import { formattedPlain, previewText } from "./common.tsx";
 import { Icon } from "../icons.tsx";
+import { emojiUrl, missing } from "../jsx/jsx-runtime.ts";
 
 type Emoji = { u: string; name: string; search: string; custom?: Emote };
 type Raw = { unicode: string; label: string; tags?: string[]; group?: number; order?: number };
@@ -25,6 +26,7 @@ const GROUPS: [number, string, string][] = [
 const IRAN = "🇮🇷", ISRAEL = "🇮🇱";
 const strip = (s: string) => s.replace(/️/g, ""); // CLDR keys drop the emoji variation selector
 let data: Promise<Map<number, Emoji[]>> | null = null;
+const held: HTMLImageElement[] = [];
 
 function loadEmoji() {
   data ??= Promise.all([fetch(enUrl).then((r) => r.json()), (lang === "fa" ? fetch(faUrl).then((r) => r.json()) : { annotations: { annotations: {} } })]).then(([en, fa]: [Raw[], any]) => {
@@ -40,6 +42,9 @@ function loadEmoji() {
     }
     const flags = groups.get(9) ?? [], ir = flags.findIndex((e) => e.u === IRAN);
     if (ir > 0) flags.unshift(...flags.splice(ir, 1));
+    // every picture at once, and held (~12 MB), so each group shows whole the moment it's opened; the disk keeps them
+    // for the next launch (jsDelivr caches for a year)
+    for (const g of groups.values()) for (const e of g) held.push(Object.assign(new Image(), { src: emojiUrl(e.u), onerror: () => { if (navigator.onLine) missing.add(e.u); } }));
     return groups;
   });
   data.catch(() => { data = null; }); // retry next time the panel opens
