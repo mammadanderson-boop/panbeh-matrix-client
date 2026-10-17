@@ -46,7 +46,6 @@ const P = {
   chevron: "M9 5l7 7-7 7",
   archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
   copy: "M9 9h11v11H9zM5 15V4h11",
-  clipboard: "M9 4H5v17h14V4h-4M9 2.5h6V7H9zM8 12h8M8 16h5",
   select: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.5l3 3 5-6",
   unread: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 12h.01",
   phone: "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z",
