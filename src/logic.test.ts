@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel, deriveDraftKey, sealDraft, openDraft } from "./logic.ts";
-import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, deleteBack, cachedSlice, hashtagsOf, soleHashtag, isEmojiOnly, type Msg } from "./logic.ts";
+import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, deleteBack, cachedSlice, hashtagsOf, soleHashtag, isEmojiOnly, unreadSince, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
 const m = (id: string, sender: string, min: number, kind: Msg["kind"] = "msg"): Msg => ({ id, sender, ts: T + min * 60_000, kind });
@@ -525,6 +525,15 @@ test("cachedSlice pages the cache, then hands over to the server's token", () =>
 });
 
 test("isEmojiOnly: up to 3 emoji, any sequence, nothing else", () => {
-  for (const s of ["👍", "❤️", "👍🏽", "🇮🇷", "👨‍👩‍👧", "😂 😂 😂", "1️⃣"]) assert.ok(isEmojiOnly(s), s);
+  for (const s of ["👍", "❤️", "👍🏽", "🇮🇷", "👨‍👩‍👧", "😂 😂 😂", "1️⃣", "👍\uFE0F", "👎\uFE0F👍\uFE0F"]) assert.ok(isEmojiOnly(s), s);
   for (const s of ["👍👍👍👍", "hi 👍", "1", "#", "", " "]) assert.ok(!isEmojiOnly(s), s);
+});
+
+test("unreadSince: counted replies after the newest read one; null when the read point isn't loaded", () => {
+  const rs = [{ read: true, n: true }, { read: false, n: true }, { read: false, n: false }, { read: false, n: true }];
+  const run = (r: typeof rs, complete: boolean) => unreadSince(r, (e) => e.read, (e) => e.n, complete);
+  assert.equal(run(rs, false), 2);
+  assert.equal(run([...rs, { read: true, n: true }], false), 0); // read to the end
+  assert.equal(run(rs.slice(1), false), null); // read point further back than what's loaded
+  assert.equal(run(rs.slice(1), true), 2); // all loaded, none read
 });

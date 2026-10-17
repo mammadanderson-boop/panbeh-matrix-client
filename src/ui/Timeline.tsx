@@ -11,6 +11,7 @@ import { audioDuration, bdi, formatSize, isVoice, me, noticeText } from "./commo
 import { AudioPlayer } from "./Voice.tsx";
 import { captionOf } from "./Composer.tsx";
 import { useAttentive } from "../desktop.ts";
+import { unreadCount } from "../chats.ts";
 
 const EVENTS = [
   RoomEvent.Timeline, RoomEvent.TimelineReset, RoomEvent.LocalEchoUpdated, RoomEvent.Redaction, RoomEvent.Receipt,
@@ -317,7 +318,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
   // sending from a window: go to the message just sent
   const liveLast = live.getEvents().at(-1);
   useEffect(() => { if (!atLive && liveLast?.status && liveLast.getSender() === me()) toBottom(); }, [liveLast]);
-  const unread = thread ? 0 : room.getUnreadNotificationCount();
+  const unread = thread ? 0 : unreadCount(room);
   // Virtuoso mounted with no data stays hidden waiting for its initial "LAST" scroll, so wait for rows
   if (!rows.length || !opened) return (
     <div className="timeline-wrap" aria-busy>

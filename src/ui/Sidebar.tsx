@@ -6,7 +6,7 @@ import { NotificationCountType, UserEvent, type Room } from "matrix-js-sdk";
 import { client, dmPeer, emoteMap } from "../matrix.ts";
 import { setMuted } from "../notify.ts";
 import { isCallStart, useFolderOrder, useRooms, useTick, useTyping, type RoomRow } from "../hooks.ts";
-import { ARCHIVED, leaveAndForget, markRead, PINNED, setMarkedUnread, setTag } from "../chats.ts";
+import { ARCHIVED, leaveAndForget, markRead, PINNED, setMarkedUnread, setTag, unreadCount } from "../chats.ts";
 import { applyFolderOrder, BASE_FOLDERS, inFolder, isUnread, listTime, moveFolder, normalize, num } from "../logic.ts";
 import { useSortableTabs } from "./useSortableTabs.ts";
 import { pushBack } from "../back.ts";
@@ -233,7 +233,7 @@ function RoomItem({ row, active, onClick, onMenu }: { row: RoomRow; active: bool
   const muted = !!row.muted;
   const bumped = useChange(row.unread);
   const previewChanged = useChange(preview, 350);
-  const mentioned = row.unread > 0 && room.getUnreadNotificationCount(NotificationCountType.Highlight) > 0;
+  const mentioned = row.unread > 0 && unreadCount(room, NotificationCountType.Highlight) > 0;
   return (
     <button className={"room-item" + (active ? " active" : "")} onClick={click(onClick)} {...handlers}>
       <span className="avatar-wrap"><RoomAvatar room={room} size={50} />{row.isDM && !row.invite && <OnlineDot room={room} />}</span>

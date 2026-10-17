@@ -423,6 +423,17 @@ export function mediaKind(type: string, c: Record<string, unknown>): MediaKind |
 }
 export const isUnread = (r: RoomInfo) => r.unread > 0 || !!r.marked;
 
+/** How many of a thread's `replies` (oldest first) after the newest read one `count`; null if none is read and some
+ *  aren't loaded (`complete` false): the read point is further back than we can see. */
+export function unreadSince<T>(replies: T[], read: (e: T) => boolean, count: (e: T) => boolean, complete: boolean): number | null {
+  let n = 0;
+  for (let i = replies.length - 1; i >= 0; i--) {
+    if (read(replies[i])) return n;
+    if (count(replies[i])) n++;
+  }
+  return complete ? n : null;
+}
+
 /** An unmuted archived chat with new messages shows in the main list until it's read again. */
 export const inArchive = (r: RoomInfo) => !!r.archived && !(r.unread > 0 && !r.muted);
 
@@ -784,8 +795,9 @@ export function cachedSlice<T extends { id: string }>(older: T[], n: number, bac
   return back ? { chunk, end: back } : { chunk };
 }
 
-/** Up to 3 emoji and nothing else (spaces allowed): shown big, without a bubble. */
+/** Up to 3 emoji and nothing else (spaces allowed): shown big, without a bubble. A stray U+FE0F after one is allowed:
+ *  emojibase (our picker) writes 👍️ ⭐️ ✨️ and ~150 more that way, which isn't their RGI form. */
 let EMOJI_ONLY: RegExp;
-try { EMOJI_ONLY = new RegExp("^\\s*(?:\\p{RGI_Emoji}\\s*){1,3}$", "v"); }
-catch { EMOJI_ONLY = /^\p{Extended_Pictographic}{1,3}$/u; } // an old WebView without the v flag
+try { EMOJI_ONLY = new RegExp("^\\s*(?:\\p{RGI_Emoji}\\uFE0F?\\s*){1,3}$", "v"); }
+catch { EMOJI_ONLY = /^(?:\p{Extended_Pictographic}\uFE0F?){1,3}$/u; } // an old WebView without the v flag
 export const isEmojiOnly = (s: string) => EMOJI_ONLY.test(s);
