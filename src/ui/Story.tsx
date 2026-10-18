@@ -8,7 +8,7 @@ import { client, mediaUrl } from "../matrix.ts";
 import { usePromise, useTick } from "../hooks.ts";
 import { errText, RoomAvatar, senderName, Sheet, toast } from "./common.tsx";
 import { alertDialog } from "./dialog.tsx";
-import { hasUnseen, markStorySeen, sendStory, storiesOf, storyLanes } from "../stories.ts";
+import { hasUnseen, markStorySeen, myStoryRoomId, sendStory, storiesOf, storyLanes } from "../stories.ts";
 import { Icon } from "../icons.tsx";
 import { stamp } from "../logic.ts";
 
@@ -19,7 +19,7 @@ export function StoriesLane() {
   const rooms = storyLanes();
   const [view, setView] = useState<{ rooms: Room[]; start: number } | null>(null);
   const [composing, setComposing] = useState(false);
-  const mine = rooms.find((r) => !!r.getAccountData("ir.panbeh.story.mine" as never));
+  const mine = rooms.find((r) => r.roomId === myStoryRoomId());
   return (
     <div className="story-lane">
       <button className="story-cell" onClick={() => (mine ? setView({ rooms, start: rooms.indexOf(mine) }) : setComposing(true))}>

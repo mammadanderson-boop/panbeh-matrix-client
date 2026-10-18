@@ -8,7 +8,9 @@ import { client, dmPeer, isDirect, sendFile, ENCRYPTION } from "./matrix.ts";
 import { isStory, storySort, STORY_EXP } from "./logic.ts";
 
 export const STORY = "ir.panbeh.story"; // room state marker: this room only shows stories
-const MINE = "ir.panbeh.story.mine"; // my room-account flag: which story room is mine
+const MINE = "ir.panbeh.story.mine"; // user-account pointer: which story room is mine ({ roomId })
+export const myStoryRoomId = (): string | undefined =>
+  client.getAccountData(MINE as never)?.getContent()?.roomId as string | undefined;
 
 export const isStoryRoom = (room: Room) => !!room.currentState.getStateEvents(STORY, "");
 
@@ -23,14 +25,14 @@ const peers = () => {
 };
 
 export async function ensureStoryRoom(): Promise<Room> {
-  const cur = storyRooms()?.find((r) => !!r.getAccountData(MINE as never));
+  const cur = storyRooms().find((r) => r.roomId === myStoryRoomId());
   if (cur) return cur;
   const { room_id } = await client.createRoom({
     preset: Preset.PrivateChat,
     initial_state: [ENCRYPTION, { type: STORY, state_key: "", content: {} }],
     invite: peers(),
   });
-  await client.setRoomAccountData(MINE as never, room_id, {});
+  await client.setAccountData(MINE as never, { roomId: room_id });
   const room = client.getRoom(room_id);
   if (!room) throw new Error("story room vanished after create");
   return room;
@@ -53,15 +55,15 @@ export function storiesOf(room: Room): MatrixEvent[] {
 
 /** Unseen = a live story newer than my read marker in the room. */
 export function hasUnseen(room: Room) {
-  const readTs = room.getEventReadUpTo(client.getSafeUserId()) || 0;
+  const readTs = Number(room.getEventReadUpTo(client.getSafeUserId()) ?? 0);
   return storiesOf(room).some((e) => e.getTs() > readTs);
 }
 
 /** The lane's rooms, ordered: my room first, then fresh stories first; rooms without live stories drop out. */
 export function storyLanes(): Room[] {
   const rooms = storyRooms();
-  const mine = rooms.find((r) => !!r.getAccountData(MINE as never));
-  return storySort(rooms.map((r) => ({ mine: r === mine, ts: Math.max(0, ...storiesOf(r).map((e) => e.getTs())) })))
+  const mineId = myStoryRoomId();
+  return storySort(rooms.map((r) => ({ mine: r.roomId === mineId, ts: Math.max(0, ...storiesOf(r).map((e) => e.getTs())) })))
     .map((i) => rooms[i]).filter((r) => storiesOf(r).length);
 }
 
