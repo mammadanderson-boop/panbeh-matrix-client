@@ -32,7 +32,7 @@ export async function ensureStoryRoom(): Promise<Room> {
     initial_state: [ENCRYPTION, { type: STORY, state_key: "", content: {} }],
     invite: peers(),
   });
-  await client.setAccountData(MINE as never, { roomId: room_id });
+  await client.setAccountData(MINE as never, { roomId: room_id } as never);
   const room = client.getRoom(room_id);
   if (!room) throw new Error("story room vanished after create");
   return room;
