@@ -1,6 +1,13 @@
 // Persian, the source language: every key starts here.
 export default {
   "app.name": "پنبه",
+  "story.title": "وضعیت‌ها",
+  "story.new": "وضعیت من",
+  "story.add": "افزودن به وضعیت",
+  "story.caption": "متن…",
+  "story.send": "انتشار",
+  "story.sent": "در وضعیت شما منتشر شد",
+  "story.pickHint": "عکس یا ویدیو را انتخاب کنید",
   "web.newBuild": "نسخه‌ی جدید منتشر شده؛ بازخوانی کنید",
   "settings.language": "زبان (Language)",
   "lang.choose": "زبان را انتخاب کنید",

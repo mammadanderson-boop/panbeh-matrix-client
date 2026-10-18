@@ -582,7 +582,7 @@ export const avatarUrl = (mxc: string | null | undefined, size = 96) =>
 
 // ---------- rooms ----------
 
-const ENCRYPTION: ICreateRoomStateEvent = { type: EventType.RoomEncryption, state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } };
+export const ENCRYPTION: ICreateRoomStateEvent = { type: EventType.RoomEncryption, state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } };
 
 /** Record a DM in m.direct (is_direct only lives on the invite event, so clients must keep this list). */
 export async function addDirect(userId: string, roomId: string) {

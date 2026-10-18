@@ -813,3 +813,12 @@ const MOTIONS: [RegExp, string][] = [
   [/😴|💤/, "em-bob"],
 ];
 export const emojiMotion = (s: string) => MOTIONS.find(([re]) => re.test(s))?.[1] ?? "";
+
+// ---------- stories (Telegram/WhatsApp-style 24h posts; Panbeh-only convention, see stories.ts) ----------
+export const STORY_EXP = "ir.panbeh.story.exp";
+export type StoryItem = { id: string; ts: number; exp: number };
+export const isStory = (c: Record<string, unknown>) => typeof c[STORY_EXP] === "number";
+/** Still alive (posted ≤ 24h ago). */
+export const liveStories = (list: StoryItem[], now = Date.now()) => list.filter((s) => s.exp > now);
+/** Lane order: my own story first (posting is where you look for it), then freshest first. */
+export const storySort = (items: { mine: boolean; ts: number }[]) => items.map((x, i) => ({ x, i })).sort((a, b) => (a.x.mine !== b.x.mine ? (a.x.mine ? -1 : 1) : b.x.ts - a.x.ts)).map((x) => x.i);

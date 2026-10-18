@@ -3,6 +3,13 @@ import type fa from "./fa.ts";
 // Plural forms ride along as "<key>.one" next to the key itself (the "other" form).
 export default {
   "app.name": "Panbeh",
+  "story.title": "Stories",
+  "story.new": "My story",
+  "story.add": "Add to story",
+  "story.caption": "Caption…",
+  "story.send": "Post",
+  "story.sent": "Posted to your story",
+  "story.pickHint": "Choose a photo or video",
   "web.newBuild": "A new build is live; reload to update",
   "settings.language": "Language",
   "lang.choose": "Choose your language",

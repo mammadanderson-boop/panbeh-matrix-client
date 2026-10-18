@@ -21,6 +21,8 @@ import { RoomInfo } from "./RoomInfo.tsx";
 import { MessageResults, requestJump } from "./Search.tsx";
 import { QuickSwitch } from "./QuickSwitch.tsx";
 import { CallsList } from "./Calls.tsx";
+import { StoriesLane } from "./Story.tsx";
+import { isStoryRoom } from "../stories.ts";
 import { alertDialog, confirmDialog } from "./dialog.tsx";
 
 type Props = { loading?: boolean; selected?: string; onSelect: (id: string) => void; onSettings: () => void; banner?: ReactNode };
@@ -45,7 +47,7 @@ export function Sidebar({ loading, selected, onSelect, onSettings, banner }: Pro
   const inArchiveView = archive && !q && archived.length > 0;
   const inCalls = calls && !q;
   useEffect(() => { if (!archived.length) setArchive(false); }, [archived.length]); // last one unarchived
-  const shown = rows.filter((r) => (q ? normalize(r.room.name).includes(q) : inFolder(r, inArchiveView ? "archive" : active)));
+  const shown = rows.filter((r) => !isStoryRoom(r.room) && (q ? normalize(r.room.name).includes(q) : inFolder(r, inArchiveView ? "archive" : active)));
   const unreadIn = (id: string) => rows.filter((r) => isUnread(r) && inFolder(r, id)).length;
   const unreadChats = rows.filter((r) => isUnread(r) && !r.muted).length;
   useEffect(() => { document.title = unreadChats ? t("app.titleUnread", { count: unreadChats }) : t("app.name"); setBadge(unreadChats); }, [unreadChats]);
@@ -166,6 +168,7 @@ export function Sidebar({ loading, selected, onSelect, onSettings, banner }: Pro
           {unreadIn("archive") > 0 && <span className="badge muted">{num(unreadIn("archive"))}</span>}
         </button>
       )}
+      {!q && !inArchiveView && <StoriesLane />}
       {q.length >= 2 ? (
         <div className="room-list scroll">
           {shown.length === 0 ? <p className="empty-list">{t("quick.none")}</p> : shown.map((r) => <div key={r.id}>{item(r)}</div>)}

@@ -10,6 +10,7 @@ import { clock, deleteBack, escRe, formatMessage, hashtagsOf, prefixLines, toggl
 import { isMessage } from "../hooks.ts";
 import { VideoNoteRecorder, VoiceRecorder, type RecControl, type Voice } from "./Voice.tsx";
 import { PollForm } from "./Poll.tsx";
+import { StoryComposer } from "./Story.tsx";
 import { EmojiPanel, EmoteImg, PreviewText } from "./Emoji.tsx";
 import { caretOf, EmoteInput, focusAt, placeCaret } from "./EmoteInput.tsx";
 import { alertDialog, editable, editImage, promptDialog } from "./dialog.tsx";
@@ -56,6 +57,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const [menu, setMenu] = useState(false);
   const [menuShown, menuClosing] = useExit(menu);
   const [pollForm, setPollForm] = useState(false);
+  const [story, setStory] = useState(false);
   const [editNext, setEditNext] = useState<File | null>(null); // a photo just taken: the send dialog opens the editor on it
   // recording a voice or video message: held while the finger is down (slide up locks, slide toward the text cancels)
   const [rec, setRec] = useState<{ kind: "voice" | "video"; locked: boolean; dx: number } | null>(null);
@@ -592,6 +594,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                   {/* one location entry: the map opens first, then it's a spot chosen on it, the GPS position or live sharing */}
                   <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="location" /> {t("loc.title")}</button>
                   <button role="menuitem" onClick={() => setPollForm(true)}><Icon name="poll" /> {t("poll.poll")}</button>
+                  <button role="menuitem" onClick={() => setStory(true)}><Icon name="camera" /> {t("story.add")}</button>
                 </div>
               </>
             )}
@@ -616,6 +619,7 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
       {picking && <SchedulePicker onPick={(ts) => { setPicking(false); schedule(ts); }} onClose={() => setPicking(false)} />}
       {schedList && <ScheduledList room={room} list={sched.list} onClose={() => setSchedList(false)} />}
       {pollForm && <PollForm room={room} threadId={threadId} onClose={() => setPollForm(false)} />}
+      {story && <StoryComposer onClose={() => setStory(false)} />}
       {livePick && <LiveLocationPicker room={room} onClose={() => setLivePick(false)} />}
       {mapPick && (
         <Suspense fallback={null}>

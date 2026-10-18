@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyFolderOrder, moveFolder, byListOrder, endpointOf, inArchive, isUnread, parseStats, fmtStats, AUTO_DL_DEFAULT, mergeAutoDl, shouldAutoDl, blurhashEncode, blurhashDecode, scheduleDays, fmtSpan, scheduleLabel, deriveDraftKey, sealDraft, openDraft } from "./logic.ts";
-import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, deleteBack, cachedSlice, hashtagsOf, soleHashtag, isEmojiOnly, emojiMotion, unreadSince, type Msg } from "./logic.ts";
+import { aliasLocalpart, buildRows, roomName, dayLabel, downsample, fmtDuration, inFolder, isUserId, formatMessage, parseGeoUri, spaceRooms, stamp, normalizeServer, normalize, matchRange, toEvict, hashPin, lockDelay, lastSeen, tallyPoll, fitSize, fitMenu, packImages, codeFrom, freeCode, cleanCode, padToRatio, isDarkMono, tintOf, toggleWrap, prefixLines, deleteBack, cachedSlice, hashtagsOf, soleHashtag, isEmojiOnly, emojiMotion, storySort, unreadSince, type Msg } from "./logic.ts";
 
 const T = new Date("2026-09-30T12:00:00").getTime();
 const m = (id: string, sender: string, min: number, kind: Msg["kind"] = "msg"): Msg => ({ id, sender, ts: T + min * 60_000, kind });
@@ -535,6 +535,11 @@ test("emojiMotion: a motion class per emoji family, none otherwise", () => {
   assert.equal(emojiMotion("😂"), "em-shake");
   assert.equal(emojiMotion("🚀"), "");
   assert.equal(emojiMotion("hello"), "");
+});
+
+test("storySort: my lane first, then freshest first; order is stable", () => {
+  assert.deepEqual(storySort([{ mine: true, ts: 5 }, { mine: false, ts: 1 }]), [0, 1]);
+  assert.deepEqual(storySort([{ mine: false, ts: 1 }, { mine: false, ts: 9 }, { mine: false, ts: 4 }]), [1, 2, 0]);
 });
 
 test("unreadSince: counted replies after the newest read one; null when the read point isn't loaded", () => {
