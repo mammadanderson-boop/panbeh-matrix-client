@@ -43,12 +43,10 @@ if (import.meta.env.PROD && !isNative && !isDesktop && "serviceWorker" in naviga
 // web: let the browser offer Panbeh for matrix: links; the hash form is picked up by Shell (see parseMatrixHash)
 try { navigator.registerProtocolHandler?.("matrix", location.origin + location.pathname + "#/?uri=%s"); } catch { /* unsupported or not secure */ }
 
-function App() {
-  const [phase, setPhase] = useState<"boot" | "login" | "ready" | "error">((savedSession() && !isAdding()) || isOAuthCallback() ? "boot" : "login");
-  const [loginError, setLoginError] = useState<unknown>();
-  const [bootError, setBootError] = useState<unknown>();
+/** Web deploys while the tab is open don't switch bundles on their own; fetch shows a new asset name = time to reload. */
+function NewBuildBanner() {
   const [stale, setStale] = useState(false);
-  useEffect(() => { // a web deploy while the tab is open: the old bundle runs in memory until a reload happens
+  useEffect(() => {
     if (!location.protocol.startsWith("http")) return; // native/desktop ship assets inside their bundle; desktop has its own updater
     const mine = document.querySelector<HTMLScriptElement>("script[src*='/assets/']")?.src.split("/").pop() ?? "none";
     let gone = false;
@@ -59,6 +57,13 @@ function App() {
     }).catch(() => {}), 300_000); // offline or fetch failure: try again later
     return () => { gone = true; clearInterval(tick); };
   }, []);
+  return stale ? <button className="banner" onClick={() => location.reload()}>{t("web.newBuild")}</button> : null;
+}
+
+function App() {
+  const [phase, setPhase] = useState<"boot" | "login" | "ready" | "error">((savedSession() && !isAdding()) || isOAuthCallback() ? "boot" : "login");
+  const [loginError, setLoginError] = useState<unknown>();
+  const [bootError, setBootError] = useState<unknown>();
   useEffect(() => {
     const s = savedSession();
     // keep the session on failure: dropping it silently would orphan this device and its crypto store
@@ -158,7 +163,7 @@ function Shell() {
         banner={<>
           {(sync === SyncState.Error || sync === SyncState.Reconnecting) && <div className="banner warn">{t("boot.connecting")}</div>}
           <UpdateBanner />
-          {stale && <button className="banner" onClick={() => location.reload()}>{t("web.newBuild")}</button>}
+          <NewBuildBanner />
           {security !== "ok" && (
             <button className="banner" onClick={() => setSettings("privacy")}>
               <Icon name="lock" size={16} /> {security === "unlock" ? t("banner.verify") : t("banner.setupRecovery")}
