@@ -872,7 +872,7 @@ function ReactionChip({ room, ev, emoji, users, added }: { room: Room; ev: Matri
   return (
     <button className={(mineToo ? "on" : "") + (added ? " added" : "")} title={users.map(senderName).join(", ")} onClick={() => toggleReaction(room, ev, emoji)}
       onContextMenu={emoji.startsWith("mxc://") ? (e) => { e.preventDefault(); e.stopPropagation(); grab(shortcodeOf(users[0]) || "emoji", emoji, "emoticon"); } : undefined}>
-      <ReactionKey k={emoji} ev={users[0]} /> <span className={bump ? "bump" : undefined}>{num(users.length)}</span>
+      <ReactionKey k={emoji} ev={users[0]} />{users.length > 1 && <> <span className={bump ? "bump" : undefined}>{num(users.length)}</span></>}
     </button>
   );
 }
