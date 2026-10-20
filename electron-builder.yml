@@ -56,9 +56,11 @@ linux:
   synopsis: Matrix messenger
   # one PNG per hicolor size: a lone 1024px icon lands in hicolor/1024x1024, which GNOME never looks in
   icon: build/icons
-  target: [AppImage, deb]
+  target: [AppImage, deb, rpm]
   syncDesktopName: true # window ↔ launcher entry, via desktopName in package.json
 appImage:
   artifactName: Panbeh-linux-${arch}.${ext}
 deb:
+  artifactName: Panbeh-linux-${arch}.${ext}
+rpm:
   artifactName: Panbeh-linux-${arch}.${ext}

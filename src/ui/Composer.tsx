@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type Clip
 import { ContentHelpers, LocationAssetType, M_BEACON_INFO, MsgType, type IContent, type MatrixEvent, type Room } from "matrix-js-sdk";
 import { client, emoteMap, emotesFor, GIF_INFO, loadEvent, scheduleMessage, startUpload, type Emote } from "../matrix.ts";
 import { getDraft, setDraft, showingDraft } from "../drafts.ts";
-import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages, nativeHoldIme } from "../native.ts";
+import { isNative, captureCameraPhoto, pickGalleryPhotos, clipboardImages, nativeHoldIme, onImeImage } from "../native.ts";
 import { Icon } from "../icons.tsx";
 import { Avatar, bdi, ContextMenu, errText, formatSize, me, previewText, senderName, stripReplyFallback, toast } from "./common.tsx";
 import { clock, deleteBack, escRe, formatMessage, hashtagsOf, prefixLines, toggleWrap, normalize, num, neshanUrl, scheduleLabel, type Gif } from "../logic.ts";
@@ -77,6 +77,9 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
   const [schedList, setSchedList] = useState(false);
   const sendPress = useLongPress(canSched ? (x, y) => { if (text.trim() && mode?.kind !== "edit") setSendMenu({ x, y }); } : undefined);
   const ta = useRef<HTMLDivElement>(null);
+  const sending = useRef(false); // the send dialog is open: a keyboard image typed into its caption joins it
+  sending.current = files.length > 0;
+  useEffect(() => onImeImage((f) => { if (sending.current || document.activeElement === ta.current) setFiles((x) => [...x, ...f]); }), [setFiles]);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { // the composer floats over the timeline; tell it how much room to leave at the bottom
     const el = root.current!, host = el.parentElement!;
@@ -378,14 +381,6 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
     if (f[0] && editable(f[0])) setEditNext(f[0]);
   }
 
-  /** Paste from clipboard: the image copied in another app. Android's WebView hides it from the paste event, so it's
-   *  read straight off the clipboard through the plugin; anything else there is nothing to send. */
-  async function pasteClipboard() {
-    const f = await clipboardImages();
-    if (f?.length) setFiles((x) => [...x, ...f]);
-    else toast(t("composer.noClipImage"));
-  }
-
   /** Markdown markers around the selection (or "> " before its lines), the same text left selected. */
   function format(mark: string) {
     const el = ta.current;
@@ -587,7 +582,6 @@ export function Composer({ room, threadId, mode, setMode, files, setFiles }: Pro
                 <div className={"attach-menu" + (menuClosing ? " closing" : "")} role="menu" onClick={() => setMenu(false)}>
                   {canCamera && <button role="menuitem" onClick={takePhoto}><Icon name="camera" /> {t("composer.camera")}</button>}
                   <button role="menuitem" onClick={pickPhotos}><Icon name="image" /> {t("media.tabMedia")}</button>
-                  {isNative && <button role="menuitem" onClick={pasteClipboard}><Icon name="clipboard" /> {t("composer.paste")}</button>}
                   <button role="menuitem" onClick={() => fileInput.current?.click()}><Icon name="file" /> {t("composer.file")}</button>
                   {/* one location entry: the map opens first, then it's a spot chosen on it, the GPS position or live sharing */}
                   <button role="menuitem" onClick={() => setMapPick(true)}><Icon name="location" /> {t("loc.title")}</button>

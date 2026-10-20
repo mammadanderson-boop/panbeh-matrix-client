@@ -54,6 +54,23 @@ export function copyTextOf(ev: MatrixEvent): string {
   return stripReplyFallback(String(c.body ?? ""));
 }
 
+/** The selection's text if it touches `el`. Emoji pictures give their emoji (Selection.toString skips images; a copy keeps
+ *  their alt), and the time and avatars, which can't be selected, are left out. */
+function selectedText(el: Node) {
+  const s = getSelection();
+  if (!s?.rangeCount || s.isCollapsed || !s.getRangeAt(0).intersectsNode(el)) return "";
+  const r = s.getRangeAt(0), at = r.commonAncestorContainer;
+  const box = document.createElement("div"); // innerText needs it laid out, to give the line breaks
+  box.style.cssText = `position:fixed;left:-9999px;top:0;white-space:${getComputedStyle(at instanceof Element ? at : at.parentElement!).whiteSpace}`;
+  box.append(r.cloneContents());
+  box.querySelectorAll(".msg-meta, .avatar").forEach((n) => n.remove());
+  box.querySelectorAll("img").forEach((i) => i.replaceWith(i.alt));
+  document.body.append(box);
+  const text = box.innerText.replace(/^\n+|\n+$/g, ""); // a triple-click takes the line's break too
+  box.remove();
+  return text;
+}
+
 export const copyMessages = (text: string) => copyText(text).then(() => toast(t("msg.copied")), (e) => alertDialog(errText(e)));
 
 let pillRoom: Room | null = null; // the room being rendered; sanitize() is synchronous
@@ -117,9 +134,12 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   const [picker, setPicker] = useState(false);
   const [fullPicker, setFullPicker] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null); // touch screens have no hover: a tap (or right-click) opens this
+  const [sel, setSel] = useState(""); // what was selected inside this message when its menu opened (the menu's focus can collapse it)
   const row = useRef<HTMLDivElement>(null);
   const g = useRef<{ id: number; x: number; y: number; timer: number; lock: boolean; px: number; crossed: boolean } | null>(null);
   const swallow = useRef(false); // the click that follows a swipe / hold
+  const textSel = useRef(false); // touch: this press began while text in a selected message was selected; its tap only clears that
+  const openMenu = (x: number, y: number) => { setSel(selectedText(row.current!)); setMenu((m) => m ?? { x, y }); };
   const mine = ev.getSender() === me();
   const [deleting, setDeleting] = useState(false);
   const items = album ?? [ev];
@@ -150,6 +170,11 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   const reacted = items.some((e) => !!e.getId() && !!room.relations.getChildEventsForEvent(e.getId()!, RelationType.Annotation, EventType.Reaction)
     ?.getSortedAnnotationsByKey()?.some(([, set]) => set.size > 0));
 
+  useEffect(() => { // unselected: its text can't be selected any more, nor stay so
+    const s = getSelection();
+    if (!selected && s?.anchorNode && row.current?.contains(s.anchorNode)) s.removeAllRanges();
+  }, [selected]);
+
   const setX = (px: number) => { row.current!.style.setProperty("--sx", `${-px}px`); row.current!.style.setProperty("--sp", String(Math.min(1, px / SWIPE_AT))); };
   const end = (cancel: boolean) => {
     if (swallow.current) setTimeout(() => { swallow.current = false; }, 350); // eat only the click this finger-up brings
@@ -167,6 +192,8 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
   // swipe LEFT to reply for both own and others' messages; rows stay physically LTR so -x is left
   const inside = (e: { target: EventTarget }) => row.current!.contains(e.target as Node); // portals (menu, picker) bubble through React
   const down = (e: PointerEvent) => {
+    const s = getSelection();
+    textSel.current = !!s && !s.isCollapsed && !!s.anchorNode?.parentElement?.closest(".msg.selected");
     if (!inside(e) || e.pointerType !== "touch" || !live || selecting || (e.target as HTMLElement).closest("input,video,audio")) return;
     const { clientX: x, clientY: y } = e;
     clearTimeout(g.current?.timer);
@@ -174,7 +201,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
       g.current = null; // held: no swipe after this
       swallow.current = true;
       navigator.vibrate?.(15);
-      if (actions.select) select(); else setMenu({ x, y }); // a thread has no selection: its hold still opens the menu
+      if (actions.select) select(); else openMenu(x, y); // a thread has no selection: its hold still opens the menu
     }, LONG_PRESS) };
   };
   const move = (e: PointerEvent) => {
@@ -202,19 +229,24 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
       onPointerDown={down} onPointerMove={move} onPointerUp={() => end(false)} onPointerCancel={() => end(true)}
       onContextMenu={(e) => {
         if (!inside(e)) return;
-        if (touched) return e.preventDefault(); // Android's own long-press: our hold timer has it
+        // Android's own long-press: our hold timer has it. Except on a selected message's text: that's where the system's
+        // text selection starts (Telegram's), with its own Copy and Select all.
+        if (touched) return void (selected && (e.target as HTMLElement).closest(".msg-text") || e.preventDefault());
         if (!live || selecting) return;
         e.preventDefault();
-        setMenu((m) => m ?? { x: e.clientX, y: e.clientY });
+        openMenu(e.clientX, e.clientY);
       }}
       onClickCapture={(e) => {
         if (!inside(e)) return;
         if (swallow.current) { e.preventDefault(); e.stopPropagation(); swallow.current = false; } // first: a hold that just selected
-        else if (selecting) { e.preventDefault(); e.stopPropagation(); select(); } // taps only toggle while selecting
+        else if (selecting) { // taps only toggle while selecting; one that ends a text selection does just that
+          e.preventDefault(); e.stopPropagation();
+          if (textSel.current) getSelection()?.removeAllRanges(); else select();
+        }
       }}
       onClick={(e) => { // touch: a tap anywhere on the row opens the menu (Telegram's), unless on a link, button or media
         const t = e.target as HTMLElement;
-        if (touched && live && inside(e) && !t.closest("a,button,input,video,audio,[role=button],[data-mx-spoiler]")) setMenu({ x: e.clientX, y: e.clientY });
+        if (touched && live && inside(e) && !t.closest("a,button,input,video,audio,[role=button],[data-mx-spoiler]")) openMenu(e.clientX, e.clientY);
       }}>
       {selecting && <span className="sel-check" aria-hidden>{selected && <Icon name="check" size={14} />}</span>}
       {swipeOk && <span className="swipe-ico" aria-hidden><Icon name="reply" size={20} /></span>}
@@ -249,7 +281,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
         {thread && thread.length > 0 && (
           <button className="thread-link" onClick={() => actions.thread?.(ev)}>
             <Icon name="thread" size={15} /> {t("thread.replies", { count: thread.length })}
-            {threadUnread(thread) > 0 && <span className="badge">{num(threadUnread(thread))}</span>}
+            {threadUnread(thread, undefined, true) > 0 && <span className="badge">{num(threadUnread(thread, undefined, true))}</span>}
           </button>
         )}
       </div>
@@ -282,6 +314,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
       {menu && (
         <MsgMenu {...menu} onClose={() => setMenu(null)} onReact={(k) => toggleReaction(room, ev, k)} onMore={() => setFullPicker(true)} items={[
           { icon: "reply", label: t("msg.reply"), run: () => actions.reply(ev) },
+          sel && { icon: "copy", label: t("msg.copySelection"), run: () => void copyMessages(sel) },
           text && { icon: "copy", label: t("common.copy"), run: () => void copyMessages(text) },
           ev.getId() && { icon: "link", label: t("common.copyLink"), run: copyLink },
           !M_POLL_START.matches(ev.getType()) && { icon: "forward", label: t("msg.forward"), run: forward },
@@ -839,7 +872,7 @@ function ReactionChip({ room, ev, emoji, users, added }: { room: Room; ev: Matri
   return (
     <button className={(mineToo ? "on" : "") + (added ? " added" : "")} title={users.map(senderName).join(", ")} onClick={() => toggleReaction(room, ev, emoji)}
       onContextMenu={emoji.startsWith("mxc://") ? (e) => { e.preventDefault(); e.stopPropagation(); grab(shortcodeOf(users[0]) || "emoji", emoji, "emoticon"); } : undefined}>
-      <ReactionKey k={emoji} ev={users[0]} /> <span className={bump ? "bump" : undefined}>{num(users.length)}</span>
+      <ReactionKey k={emoji} ev={users[0]} />{users.length > 1 && <> <span className={bump ? "bump" : undefined}>{num(users.length)}</span></>}
     </button>
   );
 }

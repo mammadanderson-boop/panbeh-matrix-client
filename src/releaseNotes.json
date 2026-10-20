@@ -1,4 +1,18 @@
 {
+  "0.9.1": {
+    "fa": [
+      "ساخت حساب جدید از همان کارت ورود",
+      "اندروید: ارسال عکس، گیف و استیکر مستقیم از کیبورد",
+      "کپی کردن متن انتخاب‌شدهٔ پیام (منوی دسکتاپ) با حفظ ایموجی و خط‌های جدید، بدون ساعت",
+      "لمسی: مثل تلگرام، پیام را نگه دارید تا انتخاب شود و دوباره روی متنش نگه دارید تا بخشی از آن را انتخاب کنید"
+    ],
+    "en": [
+      "Create an account right from the login card",
+      "Android: send images, GIFs and stickers straight from the keyboard",
+      "Copy selected message text (desktop menu), keeping emoji and line breaks and leaving out the time",
+      "Touch: like Telegram, hold a message to select it, then hold its text to select part of it"
+    ]
+  },
   "0.9.0": {
     "fa": [
       "ویرایشگر عکس: برش، نقاشی، متن، استیکر، شکل، تنظیم رنگ و محو کردن، قبل از ارسال یا برای عکس پروفایل و گروه",

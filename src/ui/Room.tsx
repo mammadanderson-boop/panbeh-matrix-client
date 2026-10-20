@@ -1,5 +1,5 @@
 import { t } from "../i18n.ts";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { KnownMembership, type MatrixEvent, type Room as SdkRoom } from "matrix-js-sdk";
 import { addDirect, client, dmPeer, isDirect, loadEvent } from "../matrix.ts";
 import { usePresence, useTick, useTyping } from "../hooks.ts";
@@ -13,6 +13,7 @@ import { NowPlaying } from "./Voice.tsx";
 import { CallBar, CallButtons } from "./Call.tsx";
 import { Composer, DropZone, type Mode } from "./Composer.tsx";
 import { takeShared } from "../drafts.ts";
+import { loadThreads } from "../chats.ts";
 import { copyMessages, copyTextOf, type Actions } from "./Message.tsx";
 import { ReactedBy, RoomInfo, SeenBy } from "./RoomInfo.tsx";
 import { UserProfile } from "./Profile.tsx";
@@ -31,6 +32,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   // lazy-loaded sync only has members who spoke recently; thread replies (/relations) bring none, so senders showed as IDs
   // ponytail: whole member list per opened room; fetch single profiles instead if huge rooms get slow
   useEffect(() => { room.loadMembersIfNeeded().catch(() => {}); }, [room]);
+  useEffect(() => { loadThreads(room).catch(() => {}); }, [room]); // for the unread thread and mention buttons
   const [mode, setMode] = useState<Mode>(null);
   const [files, setFiles] = useState<File[]>(() => takeShared(room.roomId));
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -45,6 +47,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   const [search, setSearch] = useState<string | null>(null); // the sheet's starting query, while open
 
   const jumper = useRef<Jumper>(null);
+  const threadJumper = useRef<Jumper>(null);
   useEffect(() => { // Ctrl+F (Sidebar's shortcuts)
     const open = (e: Event) => { if (room.getMyMembership() !== KnownMembership.Invite) setSearch((e as CustomEvent<string | undefined>).detail ?? ""); }; // detail: a tapped #hashtag
     addEventListener("panbeh-search", open);
@@ -119,8 +122,10 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
     if (root && root !== id) { // thread replies aren't in the main timeline: open their thread
       const rootEv = await loadEvent(room, root).catch(() => null);
       if (!rootEv) return false;
+      if (threadId !== root) threadJumper.current = null; // the open thread's jumper is the wrong one until the new one renders
       actions.thread!(rootEv);
-      return true;
+      for (let i = 0; i < 10 && !threadJumper.current; i++) await new Promise((r) => setTimeout(r, 100));
+      return (await threadJumper.current?.(id, maxPages)) ?? true; // the thread is open even if the reply isn't found
     }
     return jumper.current?.(id, maxPages) ?? false;
   }
@@ -200,7 +205,7 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
             <div className="room-head-text"><b>{t("thread.title")}</b><span>{t("thread.replies", { count: thread.length })}</span></div>
             <button className="icon-btn" onClick={() => setThreadId(null)} aria-label={t("thread.close")}><Icon name="close" /></button>
           </header>
-          <ThreadView key={thread.id} room={room} threadId={thread.id} view={setViewing} info={setSeenFor} reactions={setReactionsFor} profile={setProfile} forward={forward1} />
+          <ThreadView key={thread.id} room={room} threadId={thread.id} jumpRef={threadJumper} view={setViewing} info={setSeenFor} reactions={setReactionsFor} profile={setProfile} forward={forward1} />
         </aside>
       )}
       {search !== null && <SearchSheet key={search} room={room} initial={search} onJump={(id, server) => searchJump(id, server ? 50 : undefined)} onClose={() => setSearch(null)} />}
@@ -214,11 +219,10 @@ export function Room({ room, onBack }: { room: SdkRoom; onBack: () => void }) {
   );
 }
 
-type ThreadProps = { room: SdkRoom; threadId: string; view: (ev: MatrixEvent) => void; info: (ev: MatrixEvent) => void; reactions: (ev: MatrixEvent) => void; profile: (id: string) => void; forward: (ev: MatrixEvent | MatrixEvent[]) => void };
-function ThreadView({ room, threadId, view, info, reactions, profile, forward }: ThreadProps) {
+type ThreadProps = { room: SdkRoom; threadId: string; jumpRef: RefObject<Jumper | null>; view: (ev: MatrixEvent) => void; info: (ev: MatrixEvent) => void; reactions: (ev: MatrixEvent) => void; profile: (id: string) => void; forward: (ev: MatrixEvent | MatrixEvent[]) => void };
+function ThreadView({ room, threadId, jumpRef: jumper, view, info, reactions, profile, forward }: ThreadProps) {
   const [mode, setMode] = useState<Mode>(null);
   const [files, setFiles] = useState<File[]>([]);
-  const jumper = useRef<Jumper>(null);
 
   const actions: Actions = useMemo(() => ({
     reply: (ev: MatrixEvent) => setMode({ kind: "reply", ev }),

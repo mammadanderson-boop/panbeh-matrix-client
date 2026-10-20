@@ -143,6 +143,9 @@ button:disabled { opacity: 0.6; cursor: default; }
   justify-self: center; display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; padding: 8px 16px; border-radius: 999px;
   color: var(--accent); font-size: 14px; font-weight: 500; border: 1.5px solid color-mix(in srgb, var(--accent) 55%, transparent); transition: background 0.15s;
 }
+.login-card .login-switch { justify-self: center; margin-top: 0; padding: 6px 12px; color: var(--accent); font-size: 14px; }
+.login-card .login-terms { display: flex; align-items: flex-start; gap: 10px; color: var(--text); font-size: 14px; line-height: 1.6; cursor: pointer; }
+.login-card .login-terms input { height: auto; width: 18px; flex: none; margin-top: 3px; accent-color: var(--accent); }
 .login-card .login-lang:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .lang-pick .lang-hint { margin: -6px 0 4px; text-align: center; font-size: 14px; color: var(--muted); }
 .lang-pick button.primary { height: 52px; margin-top: 0; font-size: 17px; }
@@ -1040,12 +1043,18 @@ img.tint {
   margin: 8px 0; padding: 4px; text-align: center; font-size: 13px; font-weight: 500; color: var(--accent);
   background: color-mix(in srgb, var(--panel) 85%, transparent);
 }
-.jump-bottom {
-  position: absolute; right: 16px; bottom: calc(var(--composer-h, 0px) + 12px); z-index: 5; display: grid; place-items: center; width: 46px; height: 46px;
+/* ↓ at the bottom, the unread thread and @ buttons stacked above it */
+.timeline-fabs {
+  position: absolute; right: 16px; bottom: calc(var(--composer-h, 0px) + 12px); z-index: 5; display: flex; flex-direction: column; gap: 12px;
+  pointer-events: none;
+}
+.tl-fab {
+  position: relative; display: grid; place-items: center; width: 46px; height: 46px; pointer-events: auto;
   border-radius: 50%; background: var(--panel); color: var(--muted); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
 }
-.jump-bottom:hover { color: var(--text); }
-.jump-bottom .badge { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); }
+.tl-fab:hover { color: var(--text); }
+.tl-fab:disabled { opacity: 0.6; }
+.tl-fab .badge { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); }
 .reply-quote[role="button"] { cursor: pointer; }
 .link-preview {
   display: flex; gap: 8px; margin: 6px 0 18px; /* the time sits under the card */ padding: 4px 8px; border-inline-start: 3px solid var(--accent); border-radius: 6px;
@@ -1119,6 +1128,7 @@ img.tint {
 @media (hover: none) {
   body, body * { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   body input, body textarea, body .emote-input, body .emote-input * { user-select: text; -webkit-user-select: text; }
+  .msg.selected .msg-text, .msg.selected .msg-text * { user-select: text; -webkit-user-select: text; -webkit-touch-callout: default; } /* hold the text to select it */
   .recovery-key { user-select: all; -webkit-user-select: all; }
 }
 .msg-menu { z-index: 46; min-width: 220px; max-width: calc(100vw - 16px); padding: 6px; }
@@ -1332,8 +1342,9 @@ img.tint {
 .reactions button:active { transform: scale(0.92); }
 
 .badge.bump { animation: bump 0.35s var(--ease-spring); }
-.jump-bottom { transition: opacity var(--dur) var(--ease-out), transform var(--dur-slow) var(--ease-spring), color var(--dur-fast); }
-.jump-bottom.away { opacity: 0; transform: scale(0.5) translateY(14px); visibility: hidden; transition: opacity var(--dur) var(--ease-out), transform var(--dur) var(--ease-out), visibility 0s linear var(--dur); }
+.jump-bottom { transition: opacity var(--dur) var(--ease-out), transform var(--dur-slow) var(--ease-spring), margin var(--dur-slow) var(--ease-spring), color var(--dur-fast); }
+/* gone from the stack too: the buttons above slide down into its place */
+.jump-bottom.away { opacity: 0; transform: scale(0.5) translateY(14px); visibility: hidden; margin-top: -58px; transition: opacity var(--dur) var(--ease-out), transform var(--dur) var(--ease-out), margin var(--dur) var(--ease-out), visibility 0s linear var(--dur); }
 
 .dots { display: inline-flex; gap: 2px; margin-inline-start: 4px; vertical-align: baseline; }
 .dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: dot 1.2s ease-in-out infinite; }

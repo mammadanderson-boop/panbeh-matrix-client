@@ -176,17 +176,74 @@ export async function start(s: Session) {
   return c;
 }
 
+const deviceName = () => isNative ? "Panbeh Android" : isDesktop ? "Panbeh Desktop" : "Panbeh Web";
+const finish = (baseUrl: string, r: { user_id: string; device_id?: string; access_token?: string }) => {
+  const s = { baseUrl, userId: r.user_id, deviceId: r.device_id!, accessToken: r.access_token! };
+  save(s);
+  return start(s);
+};
+
 export async function login(server: string, user: string, password: string) {
   const baseUrl = normalizeServer(server);
   const r = await createClient({ baseUrl }).loginRequest({
     type: "m.login.password",
     identifier: { type: "m.id.user", user },
     password,
-    initial_device_display_name: isNative ? "Panbeh Android" : isDesktop ? "Panbeh Desktop" : "Panbeh Web",
+    initial_device_display_name: deviceName(),
   });
-  const s = { baseUrl, userId: r.user_id, deviceId: r.device_id, accessToken: r.access_token };
-  save(s);
-  return start(s);
+  return finish(baseUrl, r);
+}
+
+// ---------- registration ----------
+
+type Policy = Record<string, string | { name?: string; url?: string }> & { version?: string };
+/** What signing up on this server takes: the steps of the flow we'll follow, and the terms to agree to if one is m.login.terms. */
+export type RegisterInfo = { flow: string[]; policies: Policy[] };
+type UiaState = { flows?: { stages: string[] }[]; params?: Record<string, { policies?: Record<string, Policy> }>; session?: string; completed?: string[]; errcode?: string };
+
+/** Whether this server lets people sign up here; null = it doesn't (or only with email/phone, which we don't do). */
+export async function registerInfo(baseUrl: string, mode: "oauth" | "password"): Promise<RegisterInfo | null> {
+  const c = createClient({ baseUrl });
+  if (mode === "oauth") return (await c.getAuthMetadata()).prompt_values_supported?.includes("create") ? { flow: [], policies: [] } : null;
+  try {
+    await c.registerRequest({}); // no username or password: servers answer with the steps, never with an account
+    return null;
+  } catch (e) {
+    const d = (e as MatrixError).data as UiaState | undefined;
+    const flow = d?.flows?.find((f) => !f.stages.some((s) => s === "m.login.email.identity" || s === "m.login.msisdn"))?.stages;
+    if ((e as MatrixError).httpStatus !== 401 || !flow) return null;
+    return { flow, policies: Object.values(d!.params?.["m.login.terms"]?.policies ?? {}) };
+  }
+}
+
+/** Signs up and starts the new account. Steps we have no form for (a captcha…) are done on the server's own page. */
+export async function register(server: string, user: string, password: string, info: RegisterInfo, token: string) {
+  const baseUrl = normalizeServer(server);
+  const c = createClient({ baseUrl });
+  let auth: Record<string, unknown> | undefined;
+  for (let round = 0; round < 10; round++) {
+    try {
+      return await finish(baseUrl, await c.registerRequest({ username: user, password, initial_device_display_name: deviceName(), auth: auth as never }));
+    } catch (e) {
+      const d = (e as MatrixError).data as UiaState | undefined;
+      // an errcode on a 401 = the last step was rejected (a wrong token…); sending it again won't help
+      if ((e as MatrixError).httpStatus !== 401 || !d?.session) throw e;
+      if (auth && d.errcode) throw auth.type === "m.login.registration_token" ? new Error(t("register.badToken")) : e;
+      const type = info.flow.find((s) => !d.completed?.includes(s));
+      if (!type) throw e;
+      const session = d.session;
+      if (type === "m.login.dummy" || type === "m.login.terms") auth = { type, session };
+      else if (type === "m.login.registration_token") auth = { type, token, session };
+      else {
+        // opened from the dialog's button: a popup opened after the requests above, with no click of its own, gets blocked
+        if (!(await confirmDialog(t("register.fallback"), { ok: t("register.openPage") }))) throw new Error(t("common.cancelled"));
+        window.open(`${baseUrl}/_matrix/client/v3/auth/${encodeURIComponent(type)}/fallback/web?session=${encodeURIComponent(session)}`, "_blank");
+        if (!(await confirmDialog(t("register.fallbackDone"), { ok: t("login.continue") }))) throw new Error(t("common.cancelled"));
+        auth = { session };
+      }
+    }
+  }
+  throw new Error(t("login.incomplete"));
 }
 
 // ---------- OAuth 2.0 (next-gen auth, e.g. MAS) ----------
@@ -209,7 +266,7 @@ export async function loginMode(baseUrl: string) {
 }
 
 /** Registers Panbeh with the server's auth service (once per issuer) and leaves the page for its login screen. */
-export async function startOAuth(server: string) {
+export async function startOAuth(server: string, create = false) {
   const baseUrl = normalizeServer(server);
   const meta = await createClient({ baseUrl }).getAuthMetadata();
   const idKey = `panbeh.oauthClient:${meta.issuer}:${redirectUri()}`;
@@ -228,7 +285,7 @@ export async function startOAuth(server: string) {
   const state = crypto.randomUUID();
   pendingStore().setItem(PENDING_KEY, JSON.stringify({ state, baseUrl, ...o.context }));
   // query, not fragment: the hash is the open room
-  const url = await o.generateAuthorizationCodeGrantUrl(state, redirectUri(), "query");
+  const url = await o.generateAuthorizationCodeGrantUrl(state, redirectUri(), "query", create ? "create" : undefined);
   if (isDesktop) openExternal(url); // the browser, where the user's password manager and passkeys are
   else location.href = url;
 }

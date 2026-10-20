@@ -522,6 +522,9 @@ const ERRORS: Record<string, string> = {
   M_UNKNOWN_TOKEN: t("err.unknownToken"),
   M_CANNOT_LEAVE_SERVER_NOTICE_ROOM: t("err.noticeRoom"),
   M_GUEST_ACCESS_FORBIDDEN: t("err.guest"),
+  M_USER_IN_USE: t("err.userInUse"),
+  M_INVALID_USERNAME: t("err.badUsername"),
+  M_WEAK_PASSWORD: t("err.weakPassword"),
 };
 
 /** Our text for a Matrix error code; undefined = show the server's own message. */
