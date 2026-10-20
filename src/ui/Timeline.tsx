@@ -12,6 +12,7 @@ import { AudioPlayer } from "./Voice.tsx";
 import { captionOf } from "./Composer.tsx";
 import { useAttentive } from "../desktop.ts";
 import { unreadCount } from "../chats.ts";
+import { pendingJump } from "./Search.tsx";
 
 const EVENTS = [
   RoomEvent.Timeline, RoomEvent.TimelineReset, RoomEvent.LocalEchoUpdated, RoomEvent.Redaction, RoomEvent.Receipt,
@@ -54,6 +55,23 @@ function unreadAnchor(room: Room, events: MatrixEvent[]) {
   if (read < 0 || !unreadAfterRead(events, read)) return;
   for (let i = read; i >= 0; i--) if (shown(events[i])) return rowId(events[i]);
 }
+
+// Where the reader left off in each chat: the topmost event on screen, kept per account (local only — a scroll
+// position isn't worth syncing like drafts) so a chat reopens there. Cleared once they reach the latest again.
+const resumeKey = (userId: string) => `panbeh.readpos:${userId}`;
+const loadResume = (userId: string): Record<string, string> => {
+  try { return JSON.parse(localStorage.getItem(resumeKey(userId)) ?? "{}") ?? {}; } catch { return {}; }
+};
+const getResume = (userId: string, roomId: string) => loadResume(userId)[roomId];
+const putResume = (userId: string, roomId: string, eventId: string | null) => {
+  try {
+    const all = loadResume(userId);
+    if (eventId ? all[roomId] === eventId : !all[roomId]) return; // nothing changed
+    if (eventId) all[roomId] = eventId;
+    else delete all[roomId];
+    localStorage.setItem(resumeKey(userId), JSON.stringify(all));
+  } catch { /* full or blocked: memory only */ }
+};
 
 /** The history around an old event, a page each way (the SDK's /context asks for none), decrypted; null if not found.
  *  Shown decrypted like pages: rows turning into hidden events would shift it under the reader. */
@@ -98,15 +116,17 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
   if (held > 0) events = events.slice(held);
   // placed once on open and left there while the chat stays open
   const [unreadAfter, setUnreadAfter] = useState(() => (thread ? undefined : unreadAnchor(room, events)));
+  // reopen where the reader left off (their last scroll-up position); threads aren't kept
+  const [resume] = useState(() => (!thread ? getResume(me(), room.roomId) : undefined));
   // read point older than what's loaded, with unread messages after it: open the history around it (skeleton meanwhile)
-  const [opening] = useState(() => !thread && !unreadAfter && readIndex(room, events) < 0 && unreadAfterRead(events, -1)
+  const [opening] = useState(() => !thread && !unreadAfter && !resume && readIndex(room, events) < 0 && unreadAfterRead(events, -1)
     && (readPoint(room).receipt ?? readPoint(room).marker ?? null));
   const [loading, setLoading] = useState(false);
-  const [atBottom, setAtBottom] = useState(!unreadAfter && !opening); // opening at the divider mustn't mark everything read
+  const [atBottom, setAtBottom] = useState(!unreadAfter && !opening && !resume); // opening at the divider mustn't mark everything read
   const list = useRef<VirtuosoHandle>(null);
   // Pinned to the bottom until the *user* scrolls up; layout changes (thread panel, images, late
   // thread summaries) must not unpin us, which is what Virtuoso's own atBottom would do.
-  const stuck = useRef(!unreadAfter && !opening);
+  const stuck = useRef(!unreadAfter && !opening && !resume);
   const jumpingUntil = useRef(0); // while a jump settles, passing the bottom mustn't re-pin us there
   const pagingUntil = useRef(0); // while older history loads/settles, height changes mustn't drag us to the bottom
   // floating date: label of the topmost visible row while scrolling, hidden 1.2s after it stops
@@ -145,8 +165,36 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
   }
   const rows = buildRows(msgs, undefined, unreadAfter);
 
-  const [opened, setOpened] = useState(!opening);
+  // the topmost visible event, kept so the chat reopens here; only real ids (a local echo's isn't one yet)
+  const readPos = useRef<string | null>(resume ?? null);
+  const saveT = useRef(0);
+  const savePos = (r: Row | undefined) => {
+    const ids = r ? (r.type === "notice" ? [r.id] : rowEvents(r)) : [];
+    const id = ids.map((x) => byId.get(x)).find((e) => e?.getId()?.startsWith("$"))?.getId() ?? null;
+    readPos.current = id;
+    if (!id) return;
+    clearTimeout(saveT.current);
+    saveT.current = window.setTimeout(() => putResume(me(), room.roomId, id), 500); // not per scroll tick
+  };
   useEffect(() => {
+    if (thread) return; // a thread shares the room: its close mustn't clear the main timeline's pointer
+    return () => { // the chat closes: keep (or clear) the pointer at once, not half a second later
+      clearTimeout(saveT.current);
+      putResume(me(), room.roomId, readPos.current);
+    };
+  }, []);
+
+  const [opened, setOpened] = useState(!opening && !resume);
+  useEffect(() => {
+    if (resume && pendingJump.current?.roomId !== room.roomId) { // reopen around the saved position; a link jump wins
+      (async () => {
+        const tl = await openWindow(room, resume).catch(() => null);
+        if (tl) setView({ win: tl === room.getLiveTimeline() ? null : tl, n: 0, at: resume });
+        else putResume(me(), room.roomId, null); // gone (redacted or pruned): the usual view next time
+        setOpened(true);
+      })();
+      return;
+    }
     if (!opening) return;
     (async () => {
       const tl = await openWindow(room, opening).catch(() => null);
@@ -341,7 +389,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
       className="timeline"
       data={rows}
       firstItemIndex={firstItemIndex}
-      initialTopMostItemIndex={opensAt >= 0 ? { index: opensAt, align: "center" } : view.n === 0 && divider >= 0 ? { index: divider, align: "start" } : { index: "LAST", align: "end" }}
+      initialTopMostItemIndex={opensAt >= 0 ? { index: opensAt, align: view.at === resume ? "start" : "center" } : view.n === 0 && divider >= 0 ? { index: divider, align: "start" } : { index: "LAST", align: "end" }}
       alignToBottom
       // my message being sent (local echo) follows even when scrolled up; mine arriving otherwise (another device,
       // or a window linking up with the live end) mustn't yank the reader down
@@ -357,8 +405,13 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
       endReached={() => { loadNewer(); }}
       rangeChanged={({ startIndex, endIndex }) => {
         const r = rows[startIndex - firstItemIndex];
-        topKey.current = rows.slice(startIndex - firstItemIndex).find((x) => x.type !== "day")?.key ?? null; // day rows move
+        const top = rows.slice(startIndex - firstItemIndex).find((x) => x.type !== "day"); // day rows move
+        topKey.current = top?.key ?? null;
         topLabel.current = !r || r.type === "day" ? "" : r.type === "unread" ? topLabel.current : dayLabel(byId.get(r.id)!.getTs());
+        if (!thread) { // remember where the reader is: nothing at the latest, the topmost event otherwise
+          if (bottomRef.current) { clearTimeout(saveT.current); readPos.current = null; }
+          else savePos(top);
+        }
         if (startIndex - firstItemIndex < 15) loadOlder(); // fetch the next page while there's still some left to read
         if (rows.length - (endIndex - firstItemIndex) < 15) loadNewer();
       }}
