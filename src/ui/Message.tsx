@@ -281,7 +281,7 @@ export function Message({ ev, room, first, last, actions, flash, enter, album }:
         {thread && thread.length > 0 && (
           <button className="thread-link" onClick={() => actions.thread?.(ev)}>
             <Icon name="thread" size={15} /> {t("thread.replies", { count: thread.length })}
-            {threadUnread(thread) > 0 && <span className="badge">{num(threadUnread(thread))}</span>}
+            {threadUnread(thread, undefined, true) > 0 && <span className="badge">{num(threadUnread(thread, undefined, true))}</span>}
           </button>
         )}
       </div>

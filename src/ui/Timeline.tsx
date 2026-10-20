@@ -1,8 +1,8 @@
 import { t } from "../i18n.ts";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { ClientEvent, EventStatus, EventTimeline, RoomEvent, RoomStateEvent, ThreadEvent, type MatrixEvent, type Room, type Thread } from "matrix-js-sdk";
-import { cancelUpload, client, type Upload } from "../matrix.ts";
+import { ClientEvent, EventStatus, EventTimeline, NotificationCountType, RoomEvent, RoomStateEvent, ThreadEvent, type MatrixEvent, type Room, type Thread } from "matrix-js-sdk";
+import { cancelUpload, client, loadEvent, type Upload } from "../matrix.ts";
 import { chainOf, isMessage, useTick, useUploads } from "../hooks.ts";
 import { Icon } from "../icons.tsx";
 import { buildRows, dayLabel, isGif, num, type Msg, type Row } from "../logic.ts";
@@ -11,7 +11,7 @@ import { audioDuration, bdi, formatSize, isVoice, me, noticeText } from "./commo
 import { AudioPlayer } from "./Voice.tsx";
 import { captionOf } from "./Composer.tsx";
 import { useAttentive } from "../desktop.ts";
-import { unreadCount } from "../chats.ts";
+import { replyRead, unreadCount, unreadMentions, unreadThreads } from "../chats.ts";
 
 const EVENTS = [
   RoomEvent.Timeline, RoomEvent.TimelineReset, RoomEvent.LocalEchoUpdated, RoomEvent.Redaction, RoomEvent.Receipt,
@@ -40,8 +40,10 @@ const rowEvents = (r: Row) => (r.type === "album" ? r.ids : r.type === "msg" ? [
 const readPoint = (room: Room) => ({ marker: room.getAccountData("m.fully_read")?.getContent().event_id as string | undefined, receipt: room.getEventReadUpTo(me()) });
 const unreadAfterRead = (events: MatrixEvent[], read: number) => events.slice(read + 1).some((e) => isMessage(e) && e.getSender() !== me());
 
-/** Index of the last event I've read (fully-read marker, receipt or my own event, whichever is newest), -1 if not loaded. */
-function readIndex(room: Room, events: MatrixEvent[]) {
+/** Index of the last event I've read (fully-read marker, receipt or my own event, whichever is newest), -1 if not loaded.
+ *  In a thread: its newest read reply, else the root on top (seen in the chat). */
+function readIndex(room: Room, events: MatrixEvent[], thread?: Thread) {
+  if (thread) return events.findLastIndex((e, i) => i === 0 || e.getSender() === me() || replyRead(thread, e));
   const { marker, receipt } = readPoint(room);
   let read = -1;
   events.forEach((e, i) => { if (e.getId() === marker || e.getId() === receipt || e.getSender() === me()) read = i; });
@@ -49,8 +51,8 @@ function readIndex(room: Room, events: MatrixEvent[]) {
 }
 
 /** Row id of the last visible event I've read, if messages from others follow it. */
-function unreadAnchor(room: Room, events: MatrixEvent[]) {
-  const read = readIndex(room, events);
+function unreadAnchor(room: Room, events: MatrixEvent[], thread?: Thread) {
+  const read = readIndex(room, events, thread);
   if (read < 0 || !unreadAfterRead(events, read)) return;
   for (let i = read; i >= 0; i--) if (shown(events[i])) return rowId(events[i]);
 }
@@ -63,7 +65,9 @@ async function openWindow(room: Room, id: string) {
   if (!tl) return null;
   const page = (backwards: boolean) => tl.getPaginationToken(backwards ? EventTimeline.BACKWARDS : EventTimeline.FORWARDS)
     && client.paginateEventTimeline(tl, { backwards, limit: 20 }).catch(console.warn);
-  if (tl !== room.getLiveTimeline() && tl.getEvents().length < 10) await Promise.all([page(true), page(false)]);
+  // near either end, that side too: a read point last in its run would open with nothing unread after it
+  const at = tl.getEvents().findIndex((e) => e.getId() === id);
+  if (tl !== room.getLiveTimeline()) await Promise.all([at < 10 && page(true), tl.getEvents().length - at <= 10 && page(false)]);
   await Promise.all(chainOf(tl).flatMap((t) => t.getEvents()).map((e) => client.decryptEventIfNeeded(e).catch(() => {})));
   return tl;
 }
@@ -97,7 +101,8 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
   const held = hold.current ? events.indexOf(hold.current) : -1;
   if (held > 0) events = events.slice(held);
   // placed once on open and left there while the chat stays open
-  const [unreadAfter, setUnreadAfter] = useState(() => (thread ? undefined : unreadAnchor(room, events)));
+  // ponytail: a thread still fetching its first page on open gets no divider; re-anchor on its TimelineReset if that bites
+  const [unreadAfter, setUnreadAfter] = useState(() => unreadAnchor(room, events, thread));
   // read point older than what's loaded, with unread messages after it: open the history around it (skeleton meanwhile)
   const [opening] = useState(() => !thread && !unreadAfter && readIndex(room, events) < 0 && unreadAfterRead(events, -1)
     && (readPoint(room).receipt ?? readPoint(room).marker ?? null));
@@ -180,7 +185,17 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     return true;
   };
   const olderLater = useRef(0), newerLater = useRef(0);
-  useEffect(() => { mountedAt.current = Date.now(); }, [view.n, opened]);
+  // Virtuoso reports the bottom once on mount, before it has scrolled to the divider or jump target: opened away from the
+  // bottom, that mustn't pin us there or mark the chat read until the list has settled
+  const [settled, setSettled] = useState(stuck.current);
+  useEffect(() => {
+    mountedAt.current = Date.now();
+    if (stuck.current) return;
+    setSettled(false);
+    jumpingUntil.current = Date.now() + 700;
+    const t = setTimeout(() => setSettled(true), 700);
+    return () => clearTimeout(t);
+  }, [view.n, opened]);
   const loadOlder = useCallback(async () => {
     const first = chainRef.current[0];
     if (settling(olderLater, loadOlder)) return;
@@ -232,12 +247,12 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
   const attentive = useAttentive();
   const lastEv = events.at(-1);
   useEffect(() => {
-    if (!atBottom || !atLive || !lastEv || lastEv.status || !attentive || lastEv.getSender() === me()) return;
+    if (!atBottom || !settled || !atLive || !lastEv || lastEv.status || !attentive || lastEv.getSender() === me()) return;
     if (room.hasUserReadEvent(me(), lastEv.getId()!)) return;
     client.sendReadReceipt(lastEv).catch(() => {});
     // fully-read marker (where the divider goes next time) only; the receipt above keeps its thread semantics
     if (!thread) client.setRoomReadMarkers(room.roomId, lastEv.getId()!).catch(() => {});
-  }, [atBottom, atLive, lastEv, room, attentive]);
+  }, [atBottom, settled, atLive, lastEv, room, attentive]);
 
   // jump to an event (pinned messages): page back until it's loaded, then scroll once its row renders
   const [target, setTarget] = useState<string | null>(null);
@@ -318,7 +333,7 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
   // sending from a window: go to the message just sent
   const liveLast = live.getEvents().at(-1);
   useEffect(() => { if (!atLive && liveLast?.status && liveLast.getSender() === me()) toBottom(); }, [liveLast]);
-  const unread = thread ? 0 : unreadCount(room);
+  const unread = thread ? 0 : room.getRoomUnreadNotificationCount(NotificationCountType.Total); // threads have their own button
   // Virtuoso mounted with no data stays hidden waiting for its initial "LAST" scroll, so wait for rows
   if (!rows.length || !opened) return (
     <div className="timeline-wrap" aria-busy>
@@ -331,10 +346,13 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
   return (
     <div className="timeline-wrap">
     {loading && <span className="spinner" />}
-    <button className={"jump-bottom" + (atBottom && atLive ? " away" : "")} onClick={toBottom} title={t("timeline.latest")} aria-label={t("timeline.toLatest")} inert={atBottom && atLive}>
-      <Icon name="down" />
-      {unread > 0 && <span className="badge">{num(unread)}</span>}
-    </button>
+    <div className="timeline-fabs">
+      {!thread && <UnreadJumps room={room} actions={actions} />}
+      <button className={"tl-fab jump-bottom" + (atBottom && atLive ? " away" : "")} onClick={toBottom} title={t("timeline.latest")} aria-label={t("timeline.toLatest")} inert={atBottom && atLive}>
+        <Icon name="down" />
+        {unread > 0 && <span className="badge">{num(unread)}</span>}
+      </button>
+    </div>
     {floating.label && <div className={"pill date-float" + (floating.show ? " show" : "")} aria-hidden>{floating.label}</div>}
     <Virtuoso
       key={view.n}
@@ -378,6 +396,58 @@ export function Timeline({ room, thread, actions, jumpRef }: Props) {
     />
     </div>
   );
+}
+
+/** Telegram's thread and @ buttons over the ↓: each tap takes the oldest unread one not taken yet while the chat is open. */
+function UnreadJumps({ room, actions }: { room: Room; actions: Actions }) {
+  const taken = useRef(new Set<string>());
+  const [searching, setSearching] = useState(false);
+  const [gaveUp, setGaveUp] = useState(false); // the server counts mentions we can't find (read point too far back, or stale)
+  const threads = unreadThreads(room).filter((th) => !taken.current.has(th.id));
+  const found = unreadMentions(room);
+  const mentions = found.filter((e) => !taken.current.has(e.getId()!));
+  // the server's count also has mentions not loaded yet (before what's shown); taken ones stay unread until read
+  const left = gaveUp ? mentions.length : Math.max(mentions.length, unreadCount(room, NotificationCountType.Highlight) - (found.length - mentions.length));
+
+  const openThread = async () => {
+    const th = threads[0];
+    taken.current.add(th.id);
+    const root = th.rootEvent ?? await loadEvent(room, th.id).catch(() => null);
+    if (root) actions.thread?.(root);
+  };
+  const nextMention = async () => {
+    const untaken = () => unreadMentions(room).find((e) => !taken.current.has(e.getId()!));
+    let next: MatrixEvent | undefined = mentions[0];
+    if (!next) { // counted but not loaded: page the live timeline back to it
+      setSearching(true);
+      const live = room.getLiveTimeline();
+      // ponytail: page cap, 10 × 40 events; a mention further back gives up
+      for (let i = 0; i < 10 && !next && live.getPaginationToken(EventTimeline.BACKWARDS); i++) {
+        await client.paginateEventTimeline(live, { backwards: true, limit: 40 }).catch(console.warn);
+        await Promise.all(live.getEvents().map((e) => client.decryptEventIfNeeded(e).catch(() => {})));
+        next = untaken();
+      }
+      setSearching(false);
+      if (!next) return setGaveUp(true);
+    }
+    taken.current.add(next.getId()!);
+    actions.jump?.(next.getId()!);
+  };
+
+  return <>
+    {threads.length > 0 && (
+      <button className="tl-fab" onClick={openThread} title={t("timeline.nextThread")} aria-label={t("timeline.nextThread")}>
+        <Icon name="thread" />
+        <span className="badge">{num(threads.length)}</span>
+      </button>
+    )}
+    {left > 0 && (
+      <button className="tl-fab" onClick={nextMention} disabled={searching} title={t("timeline.nextMention")} aria-label={t("timeline.nextMention")}>
+        <Icon name="at" />
+        <span className="badge">{num(left)}</span>
+      </button>
+    )}
+  </>;
 }
 
 type Ctx = { roomId: string; threadId: string | null };
