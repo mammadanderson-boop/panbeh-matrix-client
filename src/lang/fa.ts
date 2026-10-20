@@ -109,6 +109,8 @@ export default {
   "timeline.latest": "آخرین پیام",
   "timeline.toLatest": "رفتن به آخرین پیام",
   "timeline.unread": "پیام‌های خوانده‌نشده",
+  "timeline.nextMention": "نام‌بردن بعدی از شما",
+  "timeline.nextThread": "رشته‌ی خوانده‌نشده‌ی بعدی",
   "upload.cancel": "لغو ارسال",
   "upload.failed": "ارسال نشد",
   "upload.queued": "در صف…",

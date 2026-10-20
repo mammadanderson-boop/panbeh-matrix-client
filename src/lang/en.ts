@@ -118,6 +118,8 @@ export default {
   "timeline.latest": "Latest message",
   "timeline.toLatest": "Jump to the latest message",
   "timeline.unread": "Unread messages",
+  "timeline.nextMention": "Next mention of you",
+  "timeline.nextThread": "Next unread thread",
   "upload.cancel": "Cancel upload",
   "upload.failed": "Not sent",
   "upload.queued": "Queued…",
